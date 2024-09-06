@@ -1,7 +1,9 @@
 import os
 import pandas as pd
+from datetime import datetime
+
 from google.cloud import storage
-def save_dataframe_as_csv(df, filename, gcs_bucket_name=None):
+def save_dataframe_as_csv(df, fin_asset, gcs_bucket_name=None):
     """
     Save a Pandas DataFrame as a CSV file either locally or to Google Cloud Storage (GCS).
 
@@ -11,6 +13,8 @@ def save_dataframe_as_csv(df, filename, gcs_bucket_name=None):
     - gcs_bucket_name (str, optional): The name of the GCS bucket. If provided, the file will be saved to GCS.
       If None, the file will be saved locally.
     """
+    today = datetime.now().strftime('%Y-%m-%d')
+    filename = f'{fin_asset}-{today}'
     if gcs_bucket_name:
         # Save the file to a temporary location
         temp_filename = f'/tmp/{filename}'
@@ -28,25 +32,5 @@ def save_dataframe_as_csv(df, filename, gcs_bucket_name=None):
         print(f"File saved to GCS bucket '{gcs_bucket_name}' as '{filename}'.")
     else:
         # Save the file locally
-        df.to_csv(filename, index=False)
+        df.to_csv(f'../data/{filename}', index=False, sep="|")
         print(f"File saved locally as '{filename}'.")
-
-
-# Example usage:
-file_content = "Hello, world!"
-file_name = "example.txt"
-
-import pandas as pd
-
-# Create a dictionary with data
-data = {
-    'Name': ['Alice', 'Bob', 'Charlie'],
-    'Age': [25, 30, 35],
-    'City': ['New York', 'Los Angeles', 'Chicago']
-}
-
-# Create a DataFrame using the dictionary
-df = pd.DataFrame(data)
-
-# Save locally
-save_dataframe_as_csv(df, 'sample.csv')

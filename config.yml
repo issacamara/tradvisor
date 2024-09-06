@@ -1,6 +1,6 @@
 - url:
     shares: https://www.brvm.org/en/cours-actions/0
-    bonds:
-    capitalisations:
-    obligations:
-    indices:
+    bonds: https://www.brvm.org/en/cours-obligations/0
+    capitalisations: https://www.brvm.org/en/capitalisations/0
+    volumes: https://www.brvm.org/en/volumes/0
+    indices: https://www.brvm.org/en/indices

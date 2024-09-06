@@ -2,11 +2,12 @@ import requests
 import yaml
 import pandas as pd
 from google.cloud import storage
+from helper import save_dataframe_as_csv
 
 from bs4 import BeautifulSoup
 
 
-def scrape_brvm(url):
+def scrape_brvm_indices(url):
     params = {
         "hl": "en"  # language
     }
@@ -25,7 +26,7 @@ def scrape_brvm(url):
     headers = []
     header_row = table.find('thead').find_all('th')
     for th in header_row:
-        headers.append(th.get_text().strip())
+        headers.append(th.get_text().strip().replace(' ', "_").upper())
 
 
     # Extract the rows from the table
@@ -33,16 +34,16 @@ def scrape_brvm(url):
     for tr in table.find('tbody').find_all('tr'):
         cells = tr.find_all(['td', 'th'])
         row = [cell.text.strip() for cell in cells]
-        for i in range(2,6):
-            row[i] = float(row[i].replace(" ", ""))
-        rows.append(row)
+        rows.append(row[:-1])
 
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
+    df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
 
     # Display the DataFrame
-    print(df)
+    return df.drop(df.columns[-2:], axis=1)
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)
-scrape_brvm(config[0]['url']['shares'])
+df = scrape_brvm_indices(config[0]['url']['indices'])
+save_dataframe_as_csv(df, 'INDICES')
