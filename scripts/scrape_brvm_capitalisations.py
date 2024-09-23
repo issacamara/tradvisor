@@ -5,6 +5,7 @@ from google.cloud import storage
 from helper import save_dataframe_as_csv
 
 from bs4 import BeautifulSoup
+from helper import scrape
 
 
 def scrape_brvm_capitalisations(url):
@@ -50,5 +51,5 @@ def scrape_brvm_capitalisations(url):
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)
-df = scrape_brvm_capitalisations(config[0]['url']['capitalisations'])
+df = scrape_brvm_capitalisations(config['url']['capitalisations'])
 save_dataframe_as_csv(df, 'CAPITALISATIONS')

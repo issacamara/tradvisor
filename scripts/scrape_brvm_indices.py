@@ -2,7 +2,7 @@ import requests
 import yaml
 import pandas as pd
 from google.cloud import storage
-from helper import save_dataframe_as_csv
+from helper import save_dataframe_as_csv, scrape
 
 from bs4 import BeautifulSoup
 
@@ -45,5 +45,5 @@ def scrape_brvm_indices(url):
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)
-df = scrape_brvm_indices(config[0]['url']['indices'])
+df = scrape_brvm_indices(config['url']['indices'])
 save_dataframe_as_csv(df, 'INDICES')

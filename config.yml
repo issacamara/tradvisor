@@ -1,6 +1,25 @@
-- url:
+url:
     shares: https://www.brvm.org/en/cours-actions/0
     bonds: https://www.brvm.org/en/cours-obligations/0
     capitalisations: https://www.brvm.org/en/capitalisations/0
     volumes: https://www.brvm.org/en/volumes/0
     indices: https://www.brvm.org/en/indices
+    dividends: https://www.richbourse.com/common/dividende/index
+data:
+    path: data/
+# GCP BigQuery configuration
+bigquery:
+    project_id: "your_project_id"
+    dataset: "your_dataset"
+    tables:
+      bonds: "bonds"
+      shares: "shares"
+
+duckdb:
+    database: duckdb/financial_assets.db
+    tables:
+      bonds: "bonds"
+      shares: "shares"
+
+csv_directory: data/
+environment: on-premise
