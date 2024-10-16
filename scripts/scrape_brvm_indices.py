@@ -1,8 +1,8 @@
 import requests
 import yaml
 import pandas as pd
-from google.cloud import storage
-from helper import save_dataframe_as_csv, scrape
+from util.helper import save_dataframe_as_csv
+from datetime import datetime
 
 from bs4 import BeautifulSoup
 
@@ -39,9 +39,9 @@ def scrape_brvm_indices(url):
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
     df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
-
+    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
-    return df.drop(df.columns[-2:], axis=1)
+    return df[["NAME","PREVIOUS_CLOSING","CLOSING","DATE"]]
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)

@@ -1,9 +1,7 @@
-import requests
 import yaml
 import pandas as pd
-from google.cloud import storage
-from helper import save_dataframe_as_csv, scrape
-
+from util.helper import save_dataframe_as_csv, scrape
+from datetime import datetime
 
 
 def scrape_brvm_share(url):
@@ -13,12 +11,11 @@ def scrape_brvm_share(url):
     df = pd.DataFrame(rows, columns=headers)
     df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
     df['VOLUME'] = df['VOLUME'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['PREVIOUS_PRICE'] = df['PREVIOUS_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
     df['OPENING_PRICE'] = df['OPENING_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
     df['CLOSING_PRICE'] = df['CLOSING_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-
+    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
-    return df.drop(df.columns[-1], axis=1)
+    return df[["SYMBOL","NAME","VOLUME","OPENING_PRICE","CLOSING_PRICE","DATE"]]
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)

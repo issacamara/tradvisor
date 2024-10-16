@@ -1,14 +1,12 @@
 import requests
 import yaml
 import pandas as pd
-from google.cloud import storage
-from helper import save_dataframe_as_csv
-
+from util.helper import save_dataframe_as_csv
+from datetime import datetime
 from bs4 import BeautifulSoup
-from helper import scrape
 
 
-def scrape_brvm_capitalisations(url):
+def scrape_brvm_capitalizations(url):
     params = {
         "hl": "en"  # language
     }
@@ -45,11 +43,11 @@ def scrape_brvm_capitalisations(url):
     df['FLOATING_CAPITALIZATION'] = df['FLOATING_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
     df['GLOBAL_CAPITALIZATION'] = df['GLOBAL_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
     df['GLOBAL_CAPITALIZATION_(%)'] = df['GLOBAL_CAPITALIZATION_(%)'].str.replace(' ', '').str.replace(',', '.').astype(float)
-
+    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
     return df
 
 with open("../config.yml", 'r') as file:
     config = yaml.safe_load(file)
-df = scrape_brvm_capitalisations(config['url']['capitalisations'])
-save_dataframe_as_csv(df, 'CAPITALISATIONS')
+df = scrape_brvm_capitalizations(config['url']['capitalizations'])
+save_dataframe_as_csv(df, 'CAPITALIZATIONS')
