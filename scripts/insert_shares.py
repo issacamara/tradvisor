@@ -43,6 +43,8 @@ def process_csv_files(csv_files, config):
         elif environment == "on-premise":
             insert_into_duckdb(df, config['duckdb']['database'], product)
 
+
+
 # Load CSV files
 csv_files = load_shares_files(config['csv_directory'])
 
