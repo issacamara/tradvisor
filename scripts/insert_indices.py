@@ -29,9 +29,9 @@ def insert_into_bigquery(df, project_id, dataset, table):
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
-    con = duckdb.connect(f"../{db_path}")
-    con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df")  # Create table if not exists
-    con.execute(f"INSERT INTO {table} SELECT * FROM df")
+    with duckdb.connect(f"../{db_path}") as con:
+        con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df")  # Create table if not exists
+        con.execute(f"INSERT INTO {table} SELECT * FROM df")
 
 # Define a function to process each CSV file
 def process_csv_files(csv_files, config):

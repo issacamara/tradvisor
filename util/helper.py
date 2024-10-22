@@ -66,10 +66,6 @@ def scrape(url):
     return headers, rows
 
 def move_csv_files(source_dir, destination_dir, pattern):
-    # Ensure the destination directory exists
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
-
     # List all files in the source directory
     files = [f for f in os.listdir(f"../{source_dir}") if f.startswith(pattern)]
 
