@@ -5,8 +5,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 import numpy as np
-import util.trading as tr
-
+import trading as tr
 
 # Load configuration from YAML file
 def load_config(config_path='config.yml'):
