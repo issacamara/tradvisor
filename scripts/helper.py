@@ -68,7 +68,7 @@ def scrape(url):
 
 def move_csv_files(source_dir, destination_dir, pattern):
     # List all files in the source directory
-    files = [f for f in os.listdir(f"../{source_dir}") if f.startswith(pattern)]
+    files = [f for f in os.path.join(os.path.dirname(__file__), '..', source_dir) if f.startswith(pattern)]
 
     # Loop through the files and move the CSV files to the destination directory
     for file in files:
