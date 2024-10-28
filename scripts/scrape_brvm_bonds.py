@@ -1,6 +1,6 @@
 import yaml
 import pandas as pd
-from util.helper import save_dataframe_as_csv
+from helper import save_dataframe_as_csv
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime

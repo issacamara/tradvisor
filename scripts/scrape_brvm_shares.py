@@ -1,5 +1,4 @@
-import sys, os
-sys.path.insert(1, "/".join(os.path.realpath(__file__).split("/")[0:-2]))
+import os
 import requests
 import yaml
 import pandas as pd
@@ -7,7 +6,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from util.helper import save_dataframe_as_csv
+from helper import save_dataframe_as_csv
 from datetime import datetime
 
 config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')

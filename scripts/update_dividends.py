@@ -4,9 +4,8 @@ import yaml
 import pandas as pd
 from google.cloud import bigquery
 import duckdb
-from util.helper import move_csv_files
+from helper import move_csv_files
 
-from datetime import datetime
 # Load configuration from YAML file
 with open('../config.yml', 'r') as file:
     config = yaml.safe_load(file)
