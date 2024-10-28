@@ -1,4 +1,5 @@
-
+import sys, os
+sys.path.insert(1, "/".join(os.path.realpath(__file__).split("/")[0:-2]))
 import requests
 import yaml
 import pandas as pd
@@ -6,7 +7,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from ..util.helper import save_dataframe_as_csv
+from util.helper import save_dataframe_as_csv
 from datetime import datetime
 
 

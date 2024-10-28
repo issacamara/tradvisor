@@ -1,11 +1,11 @@
-import os
-
+import sys, os
+sys.path.insert(1, "/".join(os.path.realpath(__file__).split("/")[0:-2]))
 import glob
 import yaml
 import pandas as pd
 from google.cloud import bigquery
 import duckdb
-from ..util.helper import move_csv_files
+from util.helper import move_csv_files
 
 from datetime import datetime
 # Load configuration from YAML file
