@@ -72,7 +72,9 @@ def move_csv_files(source_dir, destination_dir, pattern):
 
     # Loop through the files and move the CSV files to the destination directory
     for file in files:
-        source_file = os.path.join(f"../{source_dir}", file)
-        destination_file = os.path.join(f"../{destination_dir}", file)
+        source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, file)
+        destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, file)
+        # source_file = os.path.join(f"../{source_dir}", file)
+        # destination_file = os.path.join(f"../{destination_dir}", file)
         shutil.move(source_file, destination_file)
         print(f'Moved: {file}')
