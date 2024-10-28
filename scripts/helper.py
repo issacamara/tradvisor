@@ -1,6 +1,7 @@
 import os
 import shutil
 import pandas as pd
+import glob
 import requests
 from bs4 import BeautifulSoup
 
@@ -69,12 +70,14 @@ def scrape(url):
 def move_csv_files(source_dir, destination_dir, pattern):
     # List all files in the source directory
     files = [f for f in os.path.join(os.path.dirname(__file__), '..', source_dir) if f.startswith(pattern)]
+    csv_files = glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '..', source_dir), f"{pattern}*.csv"))
 
     # Loop through the files and move the CSV files to the destination directory
-    for file in files:
-        source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, file)
-        destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, file)
+    for file in csv_files:
+        file_name = file.split("/")[-1]
+        source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, file_name)
+        destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, file_name)
         # source_file = os.path.join(f"../{source_dir}", file)
         # destination_file = os.path.join(f"../{destination_dir}", file)
         shutil.move(source_file, destination_file)
-        print(f'Moved: {file}')
+        print(f'Moved: {file_name}')
