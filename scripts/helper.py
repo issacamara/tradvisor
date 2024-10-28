@@ -36,7 +36,8 @@ def save_dataframe_as_csv(df, fin_asset, gcs_bucket_name=None):
         print(f"File saved to GCS bucket '{gcs_bucket_name}' as '{filename}'.")
     else:
         # Save the file locally
-        df.to_csv(f'../data/{filename}', index=False, sep="|")
+        file = os.path.join(os.path.dirname(__file__), '..','data', filename)
+        df.to_csv(file, index=False, sep="|")
         print(f"File saved locally as '{filename}'.")
 
 def scrape(url):
