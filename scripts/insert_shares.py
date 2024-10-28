@@ -1,14 +1,11 @@
 import os
-from pathlib import Path
-import sys
-path_root = Path(__file__).parents[2]
-sys.path.append(str(path_root))
+
 import glob
 import yaml
 import pandas as pd
 from google.cloud import bigquery
 import duckdb
-from util.helper import move_csv_files
+from ..util.helper import move_csv_files
 
 from datetime import datetime
 # Load configuration from YAML file
