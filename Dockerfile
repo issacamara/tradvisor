@@ -7,7 +7,7 @@ RUN git clone https://github.com/issacamara/tradvisor.git .
 
 RUN pip install -r requirements.txt
 
-RUN export PYTHONPATH="${PYTHONPATH}:$HOME/tradvisor/util/"
+#RUN export PYTHONPATH="${PYTHONPATH}:$HOME/tradvisor/util/"
 RUN mkdir "data"
 RUN mkdir "database"
 RUN mkdir "processed_data"

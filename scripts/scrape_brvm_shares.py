@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 from util.helper import save_dataframe_as_csv
 from datetime import datetime
 
+config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
+
 
 def scrape(url):
     params = {
@@ -57,7 +59,7 @@ def scrape_brvm_share(url):
     return df
 
 
-with open("../config.yml", 'r') as file:
+with open(config_file, 'r') as file:
     config = yaml.safe_load(file)
 df = scrape_brvm_share(config['url']['shares'])
 save_dataframe_as_csv(df, 'SHARES')
