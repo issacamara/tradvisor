@@ -12,7 +12,7 @@ data:
 gcp:
     project_id: sbx-31371-w1hiyk9cwjro3yyxgs6l
     gcs:
-        path: data-brvm
+        bucket: data-brvm
     bigquery:
         dataset: test
 

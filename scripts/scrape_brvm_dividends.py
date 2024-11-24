@@ -16,8 +16,7 @@ def scrape_dividends(url):
     }
     data = []
     for i in range(1, 3):
-        page = requests.get(url=f"{url}?page={i}", params=params, headers=headers,
-                            timeout=30)
+        page = requests.get(url=f"{url}?page={i}", params=params, headers=headers, timeout=30, verify=False)
         soup = BeautifulSoup(page.content, 'html.parser')
         # Find the table in the HTML (assuming there's only one table)
         table = soup.find('table', {"class": "table table-striped table-bordered"})

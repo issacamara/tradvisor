@@ -4,7 +4,7 @@ import pandas as pd
 from helper import save_dataframe_as_csv
 from datetime import datetime
 from bs4 import BeautifulSoup
-
+import os
 
 def scrape_brvm_capitalizations(url):
     params = {
@@ -47,7 +47,11 @@ def scrape_brvm_capitalizations(url):
     # Display the DataFrame
     return df
 
-with open("../config.yml", 'r') as file:
+config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
+
+# Load configuration from YAML file
+with open(config_file, 'r') as file:
     config = yaml.safe_load(file)
+
 df = scrape_brvm_capitalizations(config['url']['capitalizations'])
 save_dataframe_as_csv(df, 'CAPITALIZATIONS')

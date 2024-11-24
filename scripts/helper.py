@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 from google.cloud import storage
-def save_dataframe_as_csv(df, fin_asset, gcs_bucket_name=None):
+def save_dataframe_as_csv(df, fin_asset, conf):
     """
     Save a Pandas DataFrame as a CSV file either locally or to Google Cloud Storage (GCS).
 
@@ -20,21 +20,17 @@ def save_dataframe_as_csv(df, fin_asset, gcs_bucket_name=None):
     """
     today = datetime.now().strftime('%Y-%m-%d')
     filename = f'{fin_asset}-{today}.csv'
-    if gcs_bucket_name:
+    if conf['gcp']=='cloud':
         # Save the file to a temporary location
-        temp_filename = f'/tmp/{filename}'
-        df.to_csv(temp_filename, index=False)
+        csv_string = df.to_csv(index=False, sep="|")
 
         # Upload the file to GCS
         client = storage.Client()
-        bucket = client.bucket(gcs_bucket_name)
+        bucket = client.bucket(conf['gcp']['gcs']['bucket'])
         blob = bucket.blob(filename)
-        blob.upload_from_filename(temp_filename)
+        blob.upload_from_string(csv_string)
 
-        # Optionally, remove the local temp file after upload
-        os.remove(temp_filename)
-
-        print(f"File saved to GCS bucket '{gcs_bucket_name}' as '{filename}'.")
+        print(f"File saved to GCS bucket '{conf['gcp']['gcs']['bucket']}' as '{filename}'.")
     else:
         # Save the file locally
         file = os.path.join(os.path.dirname(__file__), '..','data', filename)

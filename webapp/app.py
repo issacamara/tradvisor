@@ -1,10 +1,11 @@
 import sys
-sys.path.append('../..')
 import duckdb as db
 import pandas as pd
 import streamlit as st
 import yaml
 import numpy as np
+from streamlit import columns
+
 import trading as tr
 
 # Load configuration from YAML file
@@ -47,10 +48,14 @@ st.title("Tradvisor")
 # Load and display stock data
 
 main_container = st.container()
-mt1, mt2 = main_container.tabs(["Top 10 Stocks", "Tab 2"])
+mt1, mt2 = main_container.tabs(["Top 10 Stocks", "Portfolio"])
 with mt1:
     shares, bonds, indices, dividends, capitalizations = load_data()
     # mt1.dataframe(shares.head())
+    header_rows = mt1.columns(5)
+    headers = ['NAME', 'PRICE', 'DIVIDEND', 'ROI', 'ADVICE']
+    for i in range(5):
+        header_rows[i].write(headers[i])
     for i in range(5):
         columns = mt1.columns(5)
         columns[0].write(shares.loc[i, 'NAME'])
@@ -66,6 +71,24 @@ with mt1:
     # mt1.dataframe(indices.head())
     # mt1.dataframe(dividends.head())
     # mt1.dataframe(capitalizations.head())
-with mt2:
-    mt2.write("Coming soon !")
+with mt2.form("stock_form"):
+    # Input form for adding new stock
+    mt2.subheader("Add a new stock to your portfolio")
+
+    ticker = mt2.text_input("Stock Ticker", max_chars=5).upper()
+    price = mt2.number_input("Price of Purchase", min_value=0.01, format="%.2f")
+    quantity = mt2.number_input("Number of Stocks", min_value=1, format="%d")
+
+    submit_button = st.form_submit_button("Add Stock")
+
+    if submit_button:
+        if ticker and price > 0 and quantity > 0:
+            mt2.session_state.portfolio.append({
+                'Ticker': ticker,
+                'Price': price,
+                'Quantity': quantity
+            })
+            st.success(f"Added {quantity} shares of {ticker} at ${price:.2f} each.")
+        else:
+            st.error("Please enter valid stock details.")
 

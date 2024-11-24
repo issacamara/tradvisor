@@ -12,8 +12,7 @@ def scrape(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
     }
-    page = requests.get(url=url, params=params, headers=headers,
-                        timeout=30)
+    page = requests.get(url=url, params=params, headers=headers, timeout=30, verify=False)
     soup = BeautifulSoup(page.content, 'html.parser')
     # Find the table in the HTML (assuming there's only one table)
     table = soup.find('table', {"class": "table table-hover table-striped sticky-enabled"})

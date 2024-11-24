@@ -19,8 +19,7 @@ def scrape(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
     }
-    page = requests.get(url=url, params=params, headers=headers,
-                        timeout=30)
+    page = requests.get(url=url, params=params, headers=headers, timeout=30, verify=False)
     soup = BeautifulSoup(page.content, 'html.parser')
     # Find the table in the HTML (assuming there's only one table)
     table = soup.find('table', {"class": "tablesorter tbl100_6 tbl1"})
@@ -61,4 +60,4 @@ def scrape_brvm_share(url):
 with open(config_file, 'r') as file:
     config = yaml.safe_load(file)
 df = scrape_brvm_share(config['url']['shares'])
-save_dataframe_as_csv(df, 'SHARES')
+save_dataframe_as_csv(df, 'SHARES', config)
