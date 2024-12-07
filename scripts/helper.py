@@ -77,3 +77,28 @@ def move_csv_files(source_dir, destination_dir, pattern):
         # destination_file = os.path.join(f"../{destination_dir}", file)
         shutil.move(source_file, destination_file)
         print(f'Moved: {file_name}')
+
+
+def move_files(source_bucket_name, destination_bucket_name):
+    # Initialize the storage client
+    storage_client = storage.Client()
+    # Get the source and destination buckets
+    source_bucket = storage_client.bucket(source_bucket_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # List all blobs (files) in the source bucket
+    blobs = source_bucket.list_blobs()
+
+    for blob in blobs:
+        # Get the source blob
+        source_blob = source_bucket.blob(blob.name)
+
+        # Copy the blob to the destination bucket
+        destination_blob = destination_bucket.blob(blob.name)
+        source_bucket.copy_blob(source_blob, destination_bucket, blob.name)
+
+        # Delete the blob from the source bucket
+        source_blob.delete()
+
+        print(f'Moved {blob.name} from {source_bucket_name} to {destination_bucket_name}')
+

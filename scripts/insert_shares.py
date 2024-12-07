@@ -1,26 +1,30 @@
-import sys, os
-sys.path.insert(1, "/".join(os.path.realpath(__file__).split("/")[0:-2]))
+import os, io
 import glob
 import yaml
 import pandas as pd
-from google.cloud import bigquery
+from google.cloud import bigquery, storage
+
 import duckdb
 from helper import move_csv_files
 
-config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
+# config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
 
 # Load configuration from YAML file
-with open(config_file, 'r') as file:
+with open("config.yml", 'r') as file:
     config = yaml.safe_load(file)
 
 # Determine the environment
 environment = config['environment']
 product = "SHARES"
 # Define a function to load CSV files based on today's date
-def load_shares_files(directory):
+def load_files(directory):
+    if environment == 'cloud':
+        bucket = storage.Client().bucket(config['gcp']['gcs']['bucket'])
+        return bucket.list_blobs(prefix=product)
 
-    csv_files = glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '..', directory), f"{product}*.csv"))
-    return csv_files
+    else:
+        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '..', directory), f"{product}*.csv"))
+
 
 # Define a function to insert data into BigQuery
 def insert_into_bigquery(df, project_id, dataset, table):
@@ -38,23 +42,25 @@ def insert_into_duckdb(df, db_path, table):
         con.execute(f"INSERT INTO {table} SELECT * FROM df")
 
 # Define a function to process each CSV file
-def process_csv_files(csv_files, config):
+def process_csv_files(files, conf):
+    if environment == "cloud":
+        for f in files:
+            content = f.download_as_text()
+            df = pd.read_csv(io.StringIO(content), sep='|')
+            insert_into_bigquery(df, conf['gcp']['project_id'], conf['gcp']['bigquery']['dataset'], product)
 
-    for file in csv_files:
-        df = pd.read_csv(file, sep='|')
-        if environment == "GCP":
-            insert_into_bigquery(df, config['bigquery']['project_id'], config['bigquery']['dataset'], product)
-        elif environment == "on-premise":
-            insert_into_duckdb(df, config['duckdb']['database'], product)
-
+    else:
+        for f in files:
+            df = pd.read_csv(f, sep='|')
+            insert_into_duckdb(df, conf['duckdb']['database'], product)
 
 
 # Load CSV files
-csv_files = load_shares_files(config['csv_directory'])
+csv_files = load_files(config['csv_directory'])
 
 # Process each CSV file
 process_csv_files(csv_files, config)
 
-move_csv_files(config["csv_directory"],config["archive"],product)
+#move_csv_files(config["csv_directory"],config["archive"],product)
 
 print("Data insertion completed.")

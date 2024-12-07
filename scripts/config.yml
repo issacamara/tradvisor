@@ -20,6 +20,6 @@ duckdb:
     database: database/financial_assets.db
 
 
-csv_directory: data/
+csv_directory: /Users/issacamara/Developer/tradvisor/data/
 archive: processed_data/
 environment: on-premise

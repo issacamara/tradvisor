@@ -6,8 +6,10 @@ from google.cloud import bigquery
 import duckdb
 from helper import move_csv_files
 
+config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
+
 # Load configuration from YAML file
-with open('../config.yml', 'r') as file:
+with open(config_file, 'r') as file:
     config = yaml.safe_load(file)
 
 # Determine the environment

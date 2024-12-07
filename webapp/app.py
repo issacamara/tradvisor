@@ -23,23 +23,25 @@ conn = db.connect(config['duckdb']['database'])
 # @st.cache_data(ttl=86400)
 def load_data():
     query1 = f"""SELECT * FROM shares order by date desc"""
-
-    query2 = f"SELECT * FROM bonds"
-    query3 = f"SELECT * FROM indices"
-    query4 = f"SELECT * FROM dividends"
-    query5 = f"SELECT * FROM capitalizations"
     shares = conn.execute(query1).df()
-    bonds = conn.execute(query2).df()
-    indices = conn.execute(query3).df()
+
+    # query2 = f"SELECT * FROM bonds"
+    # query3 = f"SELECT * FROM indices"
+    query4 = f"SELECT * FROM dividends"
+    # query5 = f"SELECT * FROM capitalizations"
+    #
+    # bonds = conn.execute(query2).df()
+    # indices = conn.execute(query3).df()
     dividends = conn.execute(query4).df()
-    capitalizations = conn.execute(query5).df()
+    # capitalizations = conn.execute(query5).df()
 
     shares = pd.merge(shares, dividends[["SYMBOL","DIVIDEND","PAYMENT_DATE"]], on='SYMBOL', how='left')
+    # shares = shares.set_index('DATE')
+    shares = tr.get_trading_decisions(shares)
 
-    # shares = tr.get_trading_decisions(shares)
 
-
-    return shares, bonds, indices, dividends, capitalizations
+    # return shares, bonds, indices, dividends, capitalizations
+    return shares
 
 
 # Streamlit app
@@ -50,7 +52,12 @@ st.title("Tradvisor")
 main_container = st.container()
 mt1, mt2 = main_container.tabs(["Top 10 Stocks", "Portfolio"])
 with mt1:
-    shares, bonds, indices, dividends, capitalizations = load_data()
+    shares = load_data()
+    shares = shares[shares.index=='2024-12-06'].reset_index()
+    # print(shares[['NAME','Buy','Sell','Keep','MA', 'EMA', 'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_middle', 'BB_lower',
+    #                        'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP']].sort_values(by='Buy',ascending=False))
+
+    # shares, bonds, indices, dividends, capitalizations = load_data()
     # mt1.dataframe(shares.head())
     header_rows = mt1.columns(5)
     headers = ['NAME', 'PRICE', 'DIVIDEND', 'ROI', 'ADVICE']
@@ -59,13 +66,13 @@ with mt1:
     for i in range(5):
         columns = mt1.columns(5)
         columns[0].write(shares.loc[i, 'NAME'])
-        columns[1].metric('💸💸💸', f"{shares.loc[i, 'CLOSE']:.0f}")
+        columns[1].metric('', f"{shares.loc[i, 'CLOSE']:.0f}")
         columns[2].metric('💸💸💸',shares.loc[i, 'DIVIDEND'])
         value = shares.loc[i, 'DIVIDEND']
         if np.isnan(value):
             value = 0
         columns[3].metric('ROI',f"{value/shares.loc[i, 'CLOSE']:.1%}" )
-        columns[4].write(shares.loc[i, 'PAYMENT_DATE'])
+        columns[4].write(shares.loc[i, 'Keep'])
 
     # mt1.dataframe(bonds.head())
     # mt1.dataframe(indices.head())

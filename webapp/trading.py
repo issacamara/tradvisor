@@ -4,7 +4,6 @@ import yfinance as yf
 from datetime import datetime
 
 def calculate_technical_indicators(df):
-
     # Calculate indicators
     df['MA'] = ta.sma(df['CLOSE'], length=14)
     df['EMA'] = ta.ema(df['CLOSE'], length=14)
@@ -22,12 +21,14 @@ def calculate_technical_indicators(df):
     df['CMF'] = ta.cmf(df['HIGH'], df['LOW'], df['CLOSE'], df['VOLUME'])
     df['CCI'] = ta.cci(df['HIGH'], df['LOW'], df['CLOSE'], length=14)
     df['PSAR'] = ta.psar(df['HIGH'], df['LOW'], df['CLOSE']).iloc[:, 0]
+    df = df.set_index('DATE')
+    df.index = pd.to_datetime(df.index)
     df['VWAP'] = ta.vwap(df['HIGH'], df['LOW'], df['CLOSE'], df['VOLUME'])
     return df
 
 # Define decision boundaries
 def decision_ma(row):
-    tau = 0.05
+    tau = 0.01
     if row['CLOSE'] >= (1+tau)*row['MA']:
         return "Buy"
     elif row['CLOSE'] <= (1-tau)*row['MA']:
@@ -37,7 +38,7 @@ def decision_ma(row):
 
 
 def decision_ema(row):
-    tau = 0.05
+    tau = 0.01
     if row['CLOSE'] >= (1+tau)*row['EMA']:
         return "Buy"
     elif row['CLOSE'] <= (1-tau)*row['EMA']:
@@ -56,7 +57,7 @@ def decision_rsi(row):
 
 
 def decision_macd(row):
-    tau = 0.05
+    tau = 0.01
     if row['MACD'] >= (1+tau)*row['MACD_signal']:
         return "Buy"
     elif row['MACD'] <= (1-tau)*row['MACD_signal']:
@@ -102,7 +103,7 @@ def decision_cci(row):
 
 
 def decision_psar(row):
-    tau = 0.05
+    tau = 0.01
     if row['CLOSE'] >= (1+tau)*row['PSAR']:
         return "Buy"
     elif row['CLOSE'] <= (1-tau)*row['PSAR']:
@@ -112,7 +113,7 @@ def decision_psar(row):
 
 
 def decision_vwap(row):
-    tau = 0.05
+    tau = 0.01
     if row['CLOSE'] >= (1+tau)*row['VWAP']:
         return "Buy"
     elif row['CLOSE'] <= (1-tau)*row['VWAP']:
@@ -125,7 +126,7 @@ indicators_proba = {
     'ma': 0.10,
     'ema': 0.10,
     'rsi': 0.15,
-    # 'macd': 0.15,
+    'macd': 0.15,
     'bb': 0.10,
     'stoch': 0.10,
     'cmf': 0.05,
@@ -144,8 +145,9 @@ def scores(row):
         decision_scores[decision] = decision_scores[decision] + p
     return pd.Series(decision_scores)
 
-def get_trading_decisions(df):
-    symbols = set(df['SYMBOL'])
+def get_trading_decisions(data):
+    symbols = set(data['SYMBOL'])
+    df = data.sort_values(by='DATE', ascending=True)
     result = []
     for symbol in symbols:
         df_tmp = df[df["SYMBOL"]==symbol].copy()
@@ -154,7 +156,6 @@ def get_trading_decisions(df):
         data = data.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_middle', 'BB_lower',
                           'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP'], axis=1)
         result = result + [data]
-
 
     return pd.concat(result).sort_values(by=['Buy', 'DIVIDEND'])
 # Load your data
