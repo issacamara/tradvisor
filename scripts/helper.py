@@ -20,7 +20,7 @@ def save_dataframe_as_csv(df, fin_asset, conf):
     """
     today = datetime.now().strftime('%Y-%m-%d')
     filename = f'{fin_asset}-{today}.csv'
-    if conf['gcp']=='cloud':
+    if conf['environment']=='gcp':
         # Save the file to a temporary location
         csv_string = df.to_csv(index=False, sep="|")
 
@@ -30,12 +30,12 @@ def save_dataframe_as_csv(df, fin_asset, conf):
         blob = bucket.blob(filename)
         blob.upload_from_string(csv_string)
 
-        print(f"File saved to GCS bucket '{conf['gcp']['gcs']['bucket']}' as '{filename}'.")
+        return f"File saved to GCS bucket '{conf['gcp']['gcs']['bucket']}' as '{filename}'.\n"
     else:
         # Save the file locally
         file = os.path.join(os.path.dirname(__file__), '..','data', filename)
         df.to_csv(file, index=False, sep="|")
-        print(f"File saved locally as '{filename}'.")
+        return(f"File saved locally as '{filename}'.\n")
 
 def scrape(url):
     params = {
@@ -76,10 +76,10 @@ def move_csv_files(source_dir, destination_dir, pattern):
         # source_file = os.path.join(f"../{source_dir}", file)
         # destination_file = os.path.join(f"../{destination_dir}", file)
         shutil.move(source_file, destination_file)
-        print(f'Moved: {file_name}')
+        print(f'Moved: {file_name}\n')
 
 
-def move_files(source_bucket_name, destination_bucket_name):
+def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
     # Initialize the storage client
     storage_client = storage.Client()
     # Get the source and destination buckets
@@ -87,14 +87,14 @@ def move_files(source_bucket_name, destination_bucket_name):
     destination_bucket = storage_client.bucket(destination_bucket_name)
 
     # List all blobs (files) in the source bucket
-    blobs = source_bucket.list_blobs()
+    blobs = [blob for blob in source_bucket.list_blobs() if blob.name.startswith(pattern)]
 
     for blob in blobs:
         # Get the source blob
         source_blob = source_bucket.blob(blob.name)
 
         # Copy the blob to the destination bucket
-        destination_blob = destination_bucket.blob(blob.name)
+        # destination_blob = destination_bucket.blob(blob.name)
         source_bucket.copy_blob(source_blob, destination_bucket, blob.name)
 
         # Delete the blob from the source bucket

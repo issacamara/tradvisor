@@ -5,25 +5,18 @@ import pandas as pd
 from google.cloud import bigquery, storage
 
 import duckdb
-from helper import move_csv_files
+from helper import move_csv_files, move_csv_files_gcp
 
-# config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
 
-# Load configuration from YAML file
-with open("config.yml", 'r') as file:
-    config = yaml.safe_load(file)
-
-# Determine the environment
-environment = config['environment']
-product = "SHARES"
 # Define a function to load CSV files based on today's date
-def load_files(directory):
-    if environment == 'cloud':
+def load_files(config):
+
+    if config['environment'] == 'gcp':
         bucket = storage.Client().bucket(config['gcp']['gcs']['bucket'])
-        return bucket.list_blobs(prefix=product)
+        return bucket.list_blobs(prefix='SHARES')
 
     else:
-        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '..', directory), f"{product}*.csv"))
+        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '', config['csv_directory']), "SHARES*.csv"))
 
 
 # Define a function to insert data into BigQuery
@@ -43,24 +36,35 @@ def insert_into_duckdb(df, db_path, table):
 
 # Define a function to process each CSV file
 def process_csv_files(files, conf):
-    if environment == "cloud":
+    if conf['environment'] == "gcp":
         for f in files:
             content = f.download_as_text()
             df = pd.read_csv(io.StringIO(content), sep='|')
-            insert_into_bigquery(df, conf['gcp']['project_id'], conf['gcp']['bigquery']['dataset'], product)
+            insert_into_bigquery(df, conf['gcp']['project_id'], conf['gcp']['bigquery']['dataset'], 'SHARES')
 
     else:
         for f in files:
             df = pd.read_csv(f, sep='|')
-            insert_into_duckdb(df, conf['duckdb']['database'], product)
+            insert_into_duckdb(df, conf['duckdb']['database'], 'SHARES')
 
+def entry_point(request=None):
+    # Load configuration from YAML file
+    with open("config.yml", 'r') as file:
+        config = yaml.safe_load(file)
 
-# Load CSV files
-csv_files = load_files(config['csv_directory'])
+    # Determine the environment
 
-# Process each CSV file
-process_csv_files(csv_files, config)
+    product = "SHARES"
 
-#move_csv_files(config["csv_directory"],config["archive"],product)
+    # Load CSV files
+    csv_files = load_files(config)
 
-print("Data insertion completed.")
+    # Process each CSV file
+    process_csv_files(csv_files, config)
+    if config['environment'] == 'gcp':
+        move_csv_files_gcp(config["gcp"]['gcs']['bucket'],config["gcp"]['gcs']['archive'],product)
+    else:
+        move_csv_files(config["csv_directory"],config["archive"],product)
+
+    return "Data insertion successfully completed !\n"
+

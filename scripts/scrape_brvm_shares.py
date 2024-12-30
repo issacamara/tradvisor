@@ -3,13 +3,11 @@ import requests
 import yaml
 import pandas as pd
 import re
-
+import functions_framework
 from bs4 import BeautifulSoup
 
 from helper import save_dataframe_as_csv
 from datetime import datetime
-
-config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
 
 
 def scrape(url):
@@ -25,14 +23,14 @@ def scrape(url):
     table = soup.find('table', {"class": "tablesorter tbl100_6 tbl1"})
     # Extract the headers from the table
     # Extract the header
-    headers = ['SYMBOL','NAME','OPEN','HIGH','LOW','VOLUME','CLOSE']
+    headers = ['SYMBOL', 'NAME', 'OPEN', 'HIGH', 'LOW', 'VOLUME', 'CLOSE']
 
     # Extract the rows from the table
     rows = []
     for tr in table.find('tbody').find_all('tr'):
         cells = tr.find_all(['td', 'th'])
-        del cells[-1] # remove VARIATION column
-        del cells[-2] # remove VOLUME_(FCFA)
+        del cells[-1]  # remove VARIATION column
+        del cells[-2]  # remove VOLUME_(FCFA)
         symbol = cells[0].find('a', href=True)['href'].split("_")[1].split(".")[0]
         row = [symbol] + [cells[0].text.strip().replace('\xa0', ' ')] + [
             re.sub(r'[^0-9]', '', cell.text.strip()) for cell in cells[1:]]
@@ -56,8 +54,11 @@ def scrape_brvm_share(url):
     # Display the DataFrame
     return df
 
+@functions_framework.http
+def entry_point(request=None):
+    with open('config.yml', 'r') as file:
+        config = yaml.safe_load(file)
+    df = scrape_brvm_share(config['url']['shares'])
+    return save_dataframe_as_csv(df, 'SHARES', config)
 
-with open(config_file, 'r') as file:
-    config = yaml.safe_load(file)
-df = scrape_brvm_share(config['url']['shares'])
-save_dataframe_as_csv(df, 'SHARES', config)
+# print(entry_point())
