@@ -1,25 +1,24 @@
-import os
+import os, io
 import glob
 import yaml
 import pandas as pd
-from google.cloud import bigquery
+from google.cloud import bigquery, storage
+
 import duckdb
-from helper import move_csv_files
+from helper import move_csv_files, move_csv_files_gcp
+from google.auth import default
 
-config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
 
-# Load configuration from YAML file
-with open(config_file, 'r') as file:
-    config = yaml.safe_load(file)
-
-# Determine the environment
-environment = config['environment']
-product = "BONDS"
 # Define a function to load CSV files based on today's date
-def load_shares_files(directory):
+def load_files(config):
 
-    csv_files = glob.glob(os.path.join(f"../{directory}", f"{product}*.csv"))
-    return csv_files
+    if config['environment'] == 'gcp':
+        bucket = storage.Client().bucket(config['gcp']['gcs']['bucket'])
+        return bucket.list_blobs(prefix='BONDS')
+
+    else:
+        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '', config['csv_directory']), "BONDS*.csv"))
+
 
 # Define a function to insert data into BigQuery
 def insert_into_bigquery(df, project_id, dataset, table):
@@ -28,27 +27,47 @@ def insert_into_bigquery(df, project_id, dataset, table):
     job = client.load_table_from_dataframe(df, table_id)
     job.result()  # Wait for the job to complete
 
+
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
-    with duckdb.connect(f"../{db_path}") as con:
+
+    with duckdb.connect(os.path.join(os.path.dirname(__file__), '..', db_path)) as con:
         con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df")  # Create table if not exists
         con.execute(f"INSERT INTO {table} SELECT * FROM df")
+
 # Define a function to process each CSV file
-def process_csv_files(csv_files, config):
-    for file in csv_files:
-        df = pd.read_csv(file, sep='|')
+def process_csv_files(files, conf):
+    if conf['environment'] == "gcp":
+        for f in files:
+            content = f.download_as_text()
+            df = pd.read_csv(io.StringIO(content), sep='|')
+            _, project_id = default()
+            insert_into_bigquery(df, project_id, conf['gcp']['bigquery']['dataset'], 'BONDS')
 
-        if environment == "GCP":
-            insert_into_bigquery(df, config['bigquery']['project_id'], config['bigquery']['dataset'], product)
-        elif environment == "on-premise":
-            insert_into_duckdb(df, config['duckdb']['database'], product)
+    else:
+        for f in files:
+            df = pd.read_csv(f, sep='|')
+            insert_into_duckdb(df, conf['duckdb']['database'], 'BONDS')
 
-# Load CSV files
-csv_files = load_shares_files(config['csv_directory'])
+def entry_point(request=None):
+    # Load configuration from YAML file
+    with open("config.yml", 'r') as file:
+        config = yaml.safe_load(file)
 
-# Process each CSV file
-process_csv_files(csv_files, config)
+    # Determine the environment
 
-move_csv_files(config["csv_directory"],config["archive"],product)
+    asset = "BONDS"
 
-print("Data insertion completed.")
+    # Load CSV files
+    csv_files = load_files(config)
+
+    # Process each CSV file
+    process_csv_files(csv_files, config)
+    if config['environment'] == 'gcp':
+        move_csv_files_gcp(config["gcp"]['gcs']['bucket'],config["gcp"]['gcs']['archive'],asset)
+    else:
+        move_csv_files(config["csv_directory"],config["archive"],asset)
+
+    return "Data insertion successfully completed !\n"
+
+# print(entry_point())

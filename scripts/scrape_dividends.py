@@ -4,6 +4,7 @@ import pandas as pd
 from helper import save_dataframe_as_csv
 from datetime import datetime
 from bs4 import BeautifulSoup
+import functions_framework
 
 
 def scrape_dividends(url):
@@ -56,7 +57,11 @@ def scrape_dividends(url):
         columns={'DIVIDENDE': 'DIVIDEND', 'DATE_PAIEMENT': 'PAYMENT_DATE'})
 
 
-with open("../config.yml", 'r') as file:
-    config = yaml.safe_load(file)
-df = scrape_dividends(config['url']['dividends'])
-save_dataframe_as_csv(df, 'DIVIDENDS')
+@functions_framework.http
+def entry_point(request=None):
+    with open('config.yml', 'r') as file:
+        config = yaml.safe_load(file)
+    df = scrape_dividends(config['url']['dividends'])
+    return save_dataframe_as_csv(df, 'DIVIDENDS', config)
+
+# print(entry_point())

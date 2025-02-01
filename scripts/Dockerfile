@@ -7,7 +7,7 @@ WORKDIR tradvisor/scripts/
 #COPY . /app
 
 
-COPY scrape_brvm_shares.py main.py
+COPY scrape_shares.py main.py
 COPY helper.py helper.py
 COPY config.yml scrape_brvm_shares.py
 COPY requirements.txt requirements.txt

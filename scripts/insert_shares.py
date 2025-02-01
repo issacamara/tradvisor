@@ -6,7 +6,7 @@ from google.cloud import bigquery, storage
 
 import duckdb
 from helper import move_csv_files, move_csv_files_gcp
-
+from google.auth import default
 
 # Define a function to load CSV files based on today's date
 def load_files(config):
@@ -40,7 +40,8 @@ def process_csv_files(files, conf):
         for f in files:
             content = f.download_as_text()
             df = pd.read_csv(io.StringIO(content), sep='|')
-            insert_into_bigquery(df, conf['gcp']['project_id'], conf['gcp']['bigquery']['dataset'], 'SHARES')
+            _, project_id = default()
+            insert_into_bigquery(df, project_id, conf['gcp']['bigquery']['dataset'], 'SHARES')
 
     else:
         for f in files:
@@ -54,7 +55,7 @@ def entry_point(request=None):
 
     # Determine the environment
 
-    product = "SHARES"
+    asset = "SHARES"
 
     # Load CSV files
     csv_files = load_files(config)
@@ -62,9 +63,11 @@ def entry_point(request=None):
     # Process each CSV file
     process_csv_files(csv_files, config)
     if config['environment'] == 'gcp':
-        move_csv_files_gcp(config["gcp"]['gcs']['bucket'],config["gcp"]['gcs']['archive'],product)
+        move_csv_files_gcp(config["gcp"]['gcs']['bucket'],config["gcp"]['gcs']['archive'],asset)
     else:
-        move_csv_files(config["csv_directory"],config["archive"],product)
+        move_csv_files(config["csv_directory"],config["archive"],asset)
 
     return "Data insertion successfully completed !\n"
+
+# print(entry_point())
 

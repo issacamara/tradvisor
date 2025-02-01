@@ -4,6 +4,7 @@ from helper import save_dataframe_as_csv
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import functions_framework
 
 def scrape(url):
     params = {
@@ -58,8 +59,11 @@ def scrape_brvm_bonds(url):
     # Display the DataFrame
     return df
 
+@functions_framework.http
+def entry_point(request=None):
+    with open('config.yml', 'r') as file:
+        config = yaml.safe_load(file)
+    df = scrape_brvm_bonds(config['url']['bonds'])
+    return save_dataframe_as_csv(df, 'BONDS', config)
 
-with open("../config.yml", 'r') as file:
-    config = yaml.safe_load(file)
-df = scrape_brvm_bonds(config['url']['bonds'])
-save_dataframe_as_csv(df, 'BONDS')
+# print(entry_point())

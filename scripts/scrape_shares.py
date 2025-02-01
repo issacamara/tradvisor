@@ -1,4 +1,3 @@
-import os
 import requests
 import yaml
 import pandas as pd
@@ -39,7 +38,7 @@ def scrape(url):
     return headers, rows
 
 
-def scrape_brvm_share(url):
+def scrape_brvm_shares(url):
     headers, rows = scrape(url)
 
     # Convert to a DataFrame
@@ -58,7 +57,7 @@ def scrape_brvm_share(url):
 def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
-    df = scrape_brvm_share(config['url']['shares'])
+    df = scrape_brvm_shares(config['url']['shares'])
     return save_dataframe_as_csv(df, 'SHARES', config)
 
-# print(entry_point())
+print(entry_point())

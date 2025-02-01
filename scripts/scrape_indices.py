@@ -3,10 +3,12 @@ import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
 from datetime import datetime
-from bs4 import BeautifulSoup
-import os
 
-def scrape_brvm_capitalizations(url):
+from bs4 import BeautifulSoup
+import functions_framework
+
+
+def scrape_brvm_indices(url):
     params = {
         "hl": "en"  # language
     }
@@ -15,11 +17,10 @@ def scrape_brvm_capitalizations(url):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
     }
 
-    page = requests.get(url=url, params=params, headers=headers,
-                        timeout=30)
+    page = requests.get(url=url, params=params, headers=headers, timeout=30, verify=False)
     soup = BeautifulSoup(page.content, 'html.parser')
     # Find the table in the HTML (assuming there's only one table)
-    table = soup.find('table', {"class": "table table-hover table-striped sticky-enabled"})
+    table = soup.find('table', {"class": "table table-hover table-striped sticky-enabled "})
     # Extract the headers from the table
     # Extract the header
     headers = []
@@ -33,25 +34,21 @@ def scrape_brvm_capitalizations(url):
     for tr in table.find('tbody').find_all('tr'):
         cells = tr.find_all(['td', 'th'])
         row = [cell.text.strip() for cell in cells]
-        rows.append(row)
+        rows.append(row[:-1])
 
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
     df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
-    df['NUMBER_OF_SHARES'] = df['NUMBER_OF_SHARES'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['DAILY_PRICE'] = df['DAILY_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['FLOATING_CAPITALIZATION'] = df['FLOATING_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['GLOBAL_CAPITALIZATION'] = df['GLOBAL_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['GLOBAL_CAPITALIZATION_(%)'] = df['GLOBAL_CAPITALIZATION_(%)'].str.replace(' ', '').str.replace(',', '.').astype(float)
     df['DATE'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
-    return df
+    return df[["NAME","PREVIOUS_CLOSING","CLOSING","DATE"]]
 
-config_file = os.path.join(os.path.dirname(__file__), '..', 'config.yml')
 
-# Load configuration from YAML file
-with open(config_file, 'r') as file:
-    config = yaml.safe_load(file)
+@functions_framework.http
+def entry_point(request=None):
+    with open('config.yml', 'r') as file:
+        config = yaml.safe_load(file)
+    df = scrape_brvm_indices(config['url']['indices'])
+    return save_dataframe_as_csv(df, 'INDICES', config)
 
-df = scrape_brvm_capitalizations(config['url']['capitalizations'])
-save_dataframe_as_csv(df, 'CAPITALIZATIONS')
+print(entry_point())

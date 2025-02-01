@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 from google.cloud import storage
+
 def save_dataframe_as_csv(df, fin_asset, conf):
     """
     Save a Pandas DataFrame as a CSV file either locally or to Google Cloud Storage (GCS).

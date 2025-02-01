@@ -1,5 +1,5 @@
 output "function_uri" {
-  value = google_cloudfunctions2_function.scrape-shares.service_config[0].uri
+  value = [for f in google_cloudfunctions2_function.functions : f.service_config[0].uri]
 }
 
 output "project_number" {
