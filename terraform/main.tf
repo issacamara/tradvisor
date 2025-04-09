@@ -21,8 +21,7 @@ resource "google_bigquery_dataset" "stocks" {
 
 resource "google_project_service" "apis" {
   project = var.project_id
-  for_each = toset(["run.googleapis.com", "cloudfunctions.googleapis.com", "cloudbuild.googleapis.com",
-  "bigquery.googleapis.com", "workflows.googleapis.com", "cloudscheduler.googleapis.com"])
+  for_each = toset(var.apis)
   service                    = each.key
   disable_dependent_services = true
 }
@@ -30,3 +29,9 @@ resource "google_project_service" "apis" {
 
 data "google_project" "project" {}
 
+
+
+# Output the service URL
+output "service_url" {
+  value = google_cloud_run_v2_service.tradvisor_service.uri
+}

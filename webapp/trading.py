@@ -1,5 +1,6 @@
 import pandas as pd
 import pandas_ta as ta
+import numpy as np
 import yfinance as yf
 from datetime import datetime
 
@@ -8,7 +9,10 @@ def calculate_technical_indicators(df):
     df['MA'] = ta.sma(df['CLOSE'], length=14)
     df['EMA'] = ta.ema(df['CLOSE'], length=14)
     df['RSI'] = ta.rsi(df['CLOSE'], length=14)
-    macd = ta.macd(df['CLOSE'])
+    # macd = ta.macd(df['CLOSE'])
+    # df['MACD'] = macd.iloc[:, 0]
+    # df['MACD_signal'] = macd.iloc[:, 2]
+    macd = calculate_macd(df['CLOSE'])
     df['MACD'] = macd.iloc[:, 0]
     df['MACD_signal'] = macd.iloc[:, 2]
     bb = ta.bbands(df['CLOSE'], length=14)
@@ -25,6 +29,28 @@ def calculate_technical_indicators(df):
     df.index = pd.to_datetime(df.index)
     df['VWAP'] = ta.vwap(df['HIGH'], df['LOW'], df['CLOSE'], df['VOLUME'])
     return df
+
+def calculate_macd(data, fast_length=12, slow_length=26, signal_length=9):
+
+    if not isinstance(data, (pd.Series, np.ndarray)):
+      return pd.DataFrame() # Handle invalid input
+
+    if isinstance(data, np.ndarray):
+        data = pd.Series(data) # Convert numpy array to pandas Series if needed
+
+    if len(data) < slow_length: # Need enough data points for calculations
+       return pd.DataFrame()
+
+    fast_ema = data.ewm(span=fast_length, adjust=False).mean()
+    slow_ema = data.ewm(span=slow_length, adjust=False).mean()
+
+    macd = fast_ema - slow_ema
+    signal = macd.ewm(span=signal_length, adjust=False).mean()
+    histogram = macd - signal
+
+    df = pd.DataFrame({'MACD': macd, 'MACD_signal': signal, 'Histogram': histogram})
+    return df
+
 
 # Define decision boundaries
 def decision_ma(row):
@@ -156,7 +182,6 @@ def get_trading_decisions(data):
         data = data.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_middle', 'BB_lower',
                           'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP'], axis=1)
         result = result + [data]
-
     return pd.concat(result).sort_values(by=['Buy', 'DIVIDEND'])
 # Load your data
 

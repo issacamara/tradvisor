@@ -1,13 +1,23 @@
-import os
+import os, io
 import shutil
+from fileinput import filename
+import duckdb
+
+from google.cloud import bigquery
 import pandas as pd
 import glob
 import requests
 from bs4 import BeautifulSoup
-
+from google.cloud import resourcemanager_v3
 from datetime import datetime
 
 from google.cloud import storage
+from google.auth import default
+
+def get_project_number(project_id):
+    client = resourcemanager_v3.ProjectsClient()
+    project = client.get_project(name=f"projects/{project_id}")
+    return project.name.split("/")[1]  # Format is "projects/{project_number}"
 
 def save_dataframe_as_csv(df, fin_asset, conf):
     """
@@ -21,17 +31,19 @@ def save_dataframe_as_csv(df, fin_asset, conf):
     """
     today = datetime.now().strftime('%Y-%m-%d')
     filename = f'{fin_asset}-{today}.csv'
-    if conf['environment']=='gcp':
+    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
         # Save the file to a temporary location
         csv_string = df.to_csv(index=False, sep="|")
-
+        credentials, project_id = default()
+        project_number = get_project_number(project_id)
         # Upload the file to GCS
         client = storage.Client()
-        bucket = client.bucket(conf['gcp']['gcs']['bucket'])
+        bucket_url = f"data-{project_number}"
+        bucket = client.bucket(bucket_url)
         blob = bucket.blob(filename)
         blob.upload_from_string(csv_string)
 
-        return f"File saved to GCS bucket '{conf['gcp']['gcs']['bucket']}' as '{filename}'.\n"
+        return f"File saved to GCS bucket '{bucket_url}' as '{filename}'.\n"
     else:
         # Save the file locally
         file = os.path.join(os.path.dirname(__file__), '..','data', filename)
@@ -79,6 +91,14 @@ def move_csv_files(source_dir, destination_dir, pattern):
         shutil.move(source_file, destination_file)
         print(f'Moved: {file_name}\n')
 
+def move_csv_file(source_dir, destination_dir, file):
+
+    filename = file.split("/")[-1]
+    source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, filename)
+    destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, filename)
+    shutil.move(source_file, destination_file)
+    print(f'File {filename} moved to {destination_dir}\n')
+
 
 def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
     # Initialize the storage client
@@ -103,3 +123,56 @@ def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
 
         print(f'Moved {blob.name} from {source_bucket_name} to {destination_bucket_name}')
 
+def move_csv_file_gcp(source_bucket_name, destination_bucket_name, filename):
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(source_bucket_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+    source_blob = source_bucket.blob(filename)
+    source_bucket.copy_blob(source_blob, destination_bucket, filename)
+    source_blob.delete()
+    print(f'Moved {filename} from {source_bucket_name} to {destination_bucket_name}')
+
+# Define a function to insert data into BigQuery
+def insert_into_bigquery(df, project_id, dataset, table):
+    client = bigquery.Client(project=project_id)
+    table_id = f"{project_id}.{dataset}.{table}"
+    job = client.load_table_from_dataframe(df, table_id)
+    job.result()  # Wait for the job to complete
+
+# Define a function to insert data into DuckDB
+def insert_into_duckdb(df, db_path, table):
+
+    with duckdb.connect(os.path.join(os.path.dirname(__file__), '..', db_path)) as con:
+        con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df where FALSE")  # Create table if not exists
+        con.execute(f"INSERT INTO {table} SELECT * FROM df")
+
+def process_files(conf, files, asset):
+    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):  # GCP cloud function environment
+        for f in files:
+            content = f.download_as_text()
+            df = pd.read_csv(io.StringIO(content), sep='|')
+            credentials, project_id = default()
+            project_number = get_project_number(project_id)
+            bucket_url1 = f"data-{project_number}"
+            bucket_url2 = f"archive-{project_number}"
+            insert_into_bigquery(df, project_id, 'stocks', asset)
+            move_csv_file_gcp(bucket_url1, bucket_url2, f.name)
+
+    else:
+        for f in files:
+            df = pd.read_csv(f, sep='|')
+            insert_into_duckdb(df, conf['duckdb']['database'], asset)
+            move_csv_file(conf["csv_directory"], conf["archive"], f)
+
+# Define a function to load CSV files based on today's date
+def load_files(config, asset):
+
+    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+        credentials, project_id = default()
+        project_number = get_project_number(project_id)
+        bucket_uri = f"data-{project_number}"
+        bucket = storage.Client().bucket(bucket_uri)
+        return bucket.list_blobs(prefix=asset)
+
+    else:
+        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '', config['csv_directory']), f"{asset}*.csv"))

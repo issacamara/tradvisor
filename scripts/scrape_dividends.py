@@ -5,7 +5,7 @@ from helper import save_dataframe_as_csv
 from datetime import datetime
 from bs4 import BeautifulSoup
 import functions_framework
-
+import os
 
 def scrape_dividends(url):
     params = {
@@ -64,4 +64,8 @@ def entry_point(request=None):
     df = scrape_dividends(config['url']['dividends'])
     return save_dataframe_as_csv(df, 'DIVIDENDS', config)
 
-# print(entry_point())
+env = 'gcp'
+if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+    pass
+else:
+    print(entry_point())

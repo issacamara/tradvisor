@@ -12,8 +12,8 @@ data:
 gcp:
 #    project_id:  prd-tradvisor
     gcs:
-        bucket: data-brvm1
-        archive: archive-brvm1
+        bucket: data-brvm
+        archive: archive-brvm
     bigquery:
         dataset: stocks
 
@@ -23,4 +23,3 @@ duckdb:
 
 csv_directory: /Users/issacamara/Developer/tradvisor/data/
 archive: processed_data/
-environment: on-premise

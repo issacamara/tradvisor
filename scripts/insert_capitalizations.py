@@ -1,8 +1,8 @@
 import os
-import yaml
-import functions_framework
-from helper import process_files, load_files
 
+import functions_framework
+import yaml
+from helper import process_files, load_files
 
 @functions_framework.http
 def entry_point(request=None):
@@ -10,7 +10,9 @@ def entry_point(request=None):
     with open("config.yml", 'r') as file:
         config = yaml.safe_load(file)
 
-    asset = "SHARES"
+    # Determine the environment
+
+    asset = "CAPITALIZATIONS"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import functions_framework
+import os
 
 def scrape(url):
     params = {
@@ -66,4 +67,8 @@ def entry_point(request=None):
     df = scrape_brvm_bonds(config['url']['bonds'])
     return save_dataframe_as_csv(df, 'BONDS', config)
 
-# print(entry_point())
+env = 'gcp'
+if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+    pass
+else:
+    print(entry_point())

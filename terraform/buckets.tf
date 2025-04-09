@@ -23,7 +23,7 @@ data "archive_file" "assets" {
 }
 
 resource "google_storage_bucket" "data-brvm" {
-  name                        = "data-brvm1"
+  name                        = "data-${data.google_project.project.number}"
   project                     = var.project_id
   location                    = var.region
   storage_class               = "STANDARD"
@@ -33,7 +33,7 @@ resource "google_storage_bucket" "data-brvm" {
 
 resource "google_storage_bucket" "archive-brvm" {
   project                     = var.project_id
-  name                        = "archive-brvm1"
+  name                        = "archive-${data.google_project.project.number}"
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
@@ -41,7 +41,7 @@ resource "google_storage_bucket" "archive-brvm" {
 }
 
 resource "google_storage_bucket" "bucket" {
-  name                        = "tmp-${var.project_id}"
+  name                        = "tmp-${data.google_project.project.number}"
   project                     = var.project_id
   location                    = var.region
   storage_class               = "STANDARD"

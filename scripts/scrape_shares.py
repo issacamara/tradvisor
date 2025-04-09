@@ -4,9 +4,10 @@ import pandas as pd
 import re
 import functions_framework
 from bs4 import BeautifulSoup
-
+import os
 from helper import save_dataframe_as_csv
 from datetime import datetime
+from google.auth import default
 
 
 def scrape(url):
@@ -60,4 +61,8 @@ def entry_point(request=None):
     df = scrape_brvm_shares(config['url']['shares'])
     return save_dataframe_as_csv(df, 'SHARES', config)
 
-print(entry_point())
+env = 'gcp'
+if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+    pass
+else:
+    print(entry_point())

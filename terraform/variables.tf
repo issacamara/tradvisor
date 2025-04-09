@@ -1,7 +1,7 @@
 variable "project_id" {
   description = "Id of the project"
   type        = string
-  default     = "sbx-31371-6tmkyf48crzuvr9197r7"
+  default     = "sbx-31371-xdipwytrb5mdz7qe2ld6"
 }
 variable "region" {
   description = "Region of the project"
@@ -12,7 +12,16 @@ variable "functions" {
   description = "List of function names"
   type        = list(string)
   default = ["scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-  "insert_shares", "insert_bonds", "update_dividends", "update_capitalizations"]
+              "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
+}
+
+variable "apis" {
+  description = "List of apis"
+  type        = list(string)
+  default = ["run.googleapis.com", "cloudfunctions.googleapis.com", "cloudbuild.googleapis.com",
+              "bigquery.googleapis.com", "workflows.googleapis.com", "cloudscheduler.googleapis.com",
+              "run.googleapis.com", "iam.googleapis.com","secretmanager.googleapis.com",
+              "cloudresourcemanager.googleapis.com"]
 }
 
 variable "jobs" {
@@ -26,4 +35,10 @@ variable "jobs" {
     job3 = { name = "dividends", schedule = "0 20 1 * *" }
     job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
   }
+}
+
+variable "docker_image" {
+  description = "Docker image URL on DockerHub (username/repo:tag)"
+  type        = string
+  default     = "issacamara/tradvisor:latest"
 }
