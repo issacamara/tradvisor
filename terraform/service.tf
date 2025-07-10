@@ -11,7 +11,6 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
   location = var.region
   depends_on = [google_project_service.apis]
   client   = "terraform"
-  deletion_protection=false
   template {
     timeout = "300s"
 
@@ -56,7 +55,7 @@ data "google_iam_policy" "noauth" {
   binding {
     role = "roles/run.invoker"
     members = [
-      "allAuthenticatedUsers",
+      "allUsers",
     ]
   }
 }

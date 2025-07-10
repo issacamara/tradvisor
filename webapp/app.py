@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 import numpy as np
+from pyarrow import dictionary
 from streamlit import columns
 import plotly.graph_objects as go
 import altair as alt
@@ -12,12 +13,23 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 # Load configuration from YAML file
 
+
 def initialize_bigquery():
     """Initialize BigQuery client with credentials"""
     credentials = service_account.Credentials.from_service_account_info(
         st.secrets["gcp_service_account"]
     )
     return bigquery.Client(credentials=credentials)
+
+ENVIRONMENT = 'gcp'
+if os.environ.get("GOOGLE_CLOUD_PROJECT"):
+    client = initialize_bigquery()
+else:
+    ENVIRONMENT = 'on-premise'
+    conn = db.connect('database/financial_assets.db')
+
+project_id = os.environ.get('GCP_PROJECT')
+dataset_names = {"on-premise": "", "gcp":f"{project_id}.stocks."}
 
 
 def create_stock_chart(data, symbol):
@@ -61,36 +73,34 @@ def display_recommendation_metrics(stock_data):
                 </div>
             """, unsafe_allow_html=True)
 # Cache data for 1 day (86400 seconds)
-# @st.cache_data(ttl=86400)
-def load_data(environment):
+@st.cache_data(ttl=86400)
+def load_data():
     shares = None
     dividends = None
     bq_dataset = ""
     query1 = f"""
                 WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM shares)               
-                SELECT * FROM {bq_dataset}shares
+                SELECT * FROM {dataset_names[ENVIRONMENT]}shares
                 WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
                     AND (SELECT max_date FROM latest_date)
                 ORDER BY date DESC
             """
-    if environment=='on-premise':
-        shares = conn.execute(query1).df()
-    else:
-        project_id = os.environ.get('GCP_PROJECT')
-        bq_dataset = f"{project_id}.stocks."
-        shares = pd.read_gbq(query1, credentials=client.credentials)
 
     # query2 = f"SELECT * FROM bonds"
     # query3 = f"SELECT * FROM indices"
     query4 = f"SELECT * FROM dividends WHERE date = (SELECT MAX(CAST(date AS DATE)) FROM dividends)"
     # query5 = f"SELECT * FROM capitalizations"
+    if ENVIRONMENT=='on-premise':
+        shares = conn.execute(query1).df()
+        dividends = conn.execute(query4).df()
+    else:
+        client = initialize_bigquery()
+        shares = pd.read_gbq(query1, credentials=client.credentials)
+        dividends = pd.read_gbq(query4, credentials=client.credentials)
+
     #
     # bonds = conn.execute(query2).df()
     # indices = conn.execute(query3).df()
-    if environment=='on-premise':
-        dividends = conn.execute(query4).df()
-    else:
-        dividends = pd.read_gbq(query4, credentials=client.credentials)
 
     # capitalizations = conn.execute(query5).df()
 
@@ -101,13 +111,6 @@ def load_data(environment):
     # return shares, bonds, indices, dividends, capitalizations
     return result
 
-
-env = 'gcp'
-if os.environ.get("GOOGLE_CLOUD_PROJECT"):
-    client = initialize_bigquery()
-else:
-    env = 'on-premise'
-    conn = db.connect('database/financial_assets.db')
 
 # Streamlit app
 st.title("Tradvisor")
@@ -120,7 +123,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 # Load and display stock data
-shares = load_data(env)
+shares = load_data()
 
 main_container = st.container()
 topn = 10

@@ -1,7 +1,8 @@
 variable "project_id" {
   description = "Id of the project"
   type        = string
-  default     = "sbx-31371-xdipwytrb5mdz7qe2ld6"
+  default     = "dev-tradvisor"
+#   default     = "sbx-31371-uw1yf3stmtx5c52rawmo"
 }
 variable "region" {
   description = "Region of the project"
