@@ -1,6 +1,7 @@
 import duckdb as db
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 import yaml
 import numpy as np
 from pyarrow import dictionary
@@ -134,15 +135,27 @@ with (mt1):
         "Select Stock Symbol",
         options=shares['SYMBOL'].unique()
     )
-    historical_data = shares[shares['SYMBOL']==selected_symbol]
-    line_chart = alt.Chart(historical_data.reset_index()).mark_line().encode(
-        x=alt.X('DATE:T', title='Date', axis=alt.Axis(labelAngle=-45)),
-        y=alt.Y('CLOSE:Q', title='Close Price'),
-        tooltip=['DATE:T', 'CLOSE:Q']
-    ).properties(height=500,width='container',title=f"Price History for {selected_symbol}"
-                 ).configure_mark(color='#1f77b4'
-                                  ).configure_axis(labelFontSize=12,titleFontSize=14)
-    mt1.altair_chart(line_chart, use_container_width=True)
+    historical_data = shares[shares['SYMBOL']==selected_symbol].sort_index()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['CLOSE'], mode='lines', name='Close Price'))
+    fig.update_layout(
+        title=f"{selected_symbol} Closing Price",
+        xaxis_title="Date",
+        yaxis_title="Close Price (XOF)",
+        template="plotly_white",
+        height=600,
+    )
+    mt1.plotly_chart(fig, use_container_width=True)
+
+    # line_chart = alt.Chart(historical_data.reset_index()).mark_line().encode(
+    #     x=alt.X('DATE:T', title='Date', axis=alt.Axis(labelAngle=-45)),
+    #     y=alt.Y('CLOSE:Q', title='Close Price'),
+    #     tooltip=['DATE:T', 'CLOSE:Q']
+    # ).properties(height=500,width='container',title=f"Price History for {selected_symbol}"
+    #              ).configure_mark(color='#1f77b4'
+    #                               ).configure_axis(labelFontSize=12,titleFontSize=14)
+    # mt1.altair_chart(line_chart, use_container_width=True)
 
     latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
     with(col2):
