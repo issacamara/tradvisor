@@ -5,6 +5,31 @@ resource "google_service_account" "tradvisor_sa" {
   display_name = "Service Account for tradvisor application"
 }
 
+# Create a key for the service account
+resource "google_service_account_key" "tradvisor_sa_key" {
+  service_account_id = google_service_account.tradvisor_sa.name
+  keepers = {
+    # Helps to rotate the key by triggering recreation when value changes
+    created_at = timestamp()
+  }
+  private_key_type = "TYPE_GOOGLE_CREDENTIALS_FILE"
+}
+
+resource "null_resource" "sa_key_file" {
+#   content  = google_service_account_key.tradvisor_sa_key.private_key
+#   filename = "../webapp/.streamlit/tradvisor-sa-key.json"
+#   file_permission = "0600"
+  triggers = {
+    private_key = google_service_account_key.tradvisor_sa_key.private_key
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "${google_service_account_key.tradvisor_sa_key.private_key}" | base64 --decode > ../webapp/.streamlit/tradvisor-sa-key.json
+    EOT
+    interpreter = ["/bin/bash", "-c"]
+  }
+}
+
 # Create a service account for the Cloud Run service
 resource "google_service_account" "brvm_dashboard_sa" {
   account_id   = "brvm-dashboard-sa"

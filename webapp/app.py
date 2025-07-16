@@ -23,14 +23,15 @@ def initialize_bigquery():
     return bigquery.Client(credentials=credentials)
 
 ENVIRONMENT = 'gcp'
-if os.environ.get("GOOGLE_CLOUD_PROJECT"):
+project_id = os.environ.get('PROJECT_ID')
+if project_id:
     client = initialize_bigquery()
 else:
     ENVIRONMENT = 'on-premise'
     conn = db.connect('database/financial_assets.db')
 
-project_id = os.environ.get('GCP_PROJECT')
 dataset_names = {"on-premise": "", "gcp":f"{project_id}.stocks."}
+st.write(f"Environment is {ENVIRONMENT} ")
 
 
 def create_stock_chart(data, symbol):
@@ -114,7 +115,7 @@ def load_data():
 
 
 # Streamlit app
-st.title("Tradvisor")
+st.title(f"Tradvisor {ENVIRONMENT} test")
 # Custom CSS for styling
 st.markdown("""
     <style>
