@@ -7,25 +7,32 @@ import numpy as np
 from pyarrow import dictionary
 from streamlit import columns
 import plotly.graph_objects as go
-import altair as alt
 import os
 import trading as tr
 from google.cloud import bigquery
+import json
 from google.oauth2 import service_account
 # Load configuration from YAML file
 
-
-def initialize_bigquery():
+def getBigQueryClient():
     """Initialize BigQuery client with credentials"""
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"]
-    )
-    return bigquery.Client(credentials=credentials)
+    # credentials = service_account.Credentials.from_service_account_info(
+    #     st.secrets["gcp_service_account"]
+    # )
+    # return bigquery.Client(credentials=credentials)
+    if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
+        creds_dict = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+        with open("key.json", "w") as f:
+            json.dump(creds_dict, f)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "key.json"
+
+    return bigquery.Client()
 
 ENVIRONMENT = 'gcp'
 project_id = os.environ.get('PROJECT_ID')
+client = None
 if project_id:
-    client = initialize_bigquery()
+    client = getBigQueryClient()
 else:
     ENVIRONMENT = 'on-premise'
     conn = db.connect('database/financial_assets.db')
@@ -96,9 +103,12 @@ def load_data():
         shares = conn.execute(query1).df()
         dividends = conn.execute(query4).df()
     else:
-        client = initialize_bigquery()
-        shares = pd.read_gbq(query1, credentials=client.credentials)
-        dividends = pd.read_gbq(query4, credentials=client.credentials)
+        # client = initialize_bigquery()
+
+        # shares = pd.read_gbq(query1, credentials=credentials)
+        # dividends = pd.read_gbq(query4, credentials=credentials)
+        shares = client.query(query1).to_dataframe()
+        dividends = client.query(query4).to_dataframe()
 
     #
     # bonds = conn.execute(query2).df()

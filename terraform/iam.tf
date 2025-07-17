@@ -15,20 +15,33 @@ resource "google_service_account_key" "tradvisor_sa_key" {
   private_key_type = "TYPE_GOOGLE_CREDENTIALS_FILE"
 }
 
-resource "null_resource" "sa_key_file" {
-#   content  = google_service_account_key.tradvisor_sa_key.private_key
-#   filename = "../webapp/.streamlit/tradvisor-sa-key.json"
-#   file_permission = "0600"
-  triggers = {
-    private_key = google_service_account_key.tradvisor_sa_key.private_key
+resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
+  secret_id = "tradvisor_sa_key"
+  replication {
+    auto {}
   }
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "${google_service_account_key.tradvisor_sa_key.private_key}" | base64 --decode > ../webapp/.streamlit/tradvisor-sa-key.json
-    EOT
-    interpreter = ["/bin/bash", "-c"]
-  }
+  depends_on = [google_service_account.tradvisor_sa]
 }
+
+resource "google_secret_manager_secret_version" "sa_key_secret_version" {
+  secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
+  secret_data = base64decode(google_service_account_key.tradvisor_sa_key.private_key)
+}
+
+# resource "null_resource" "sa_key_file" {
+# #   content  = google_service_account_key.tradvisor_sa_key.private_key
+# #   filename = "../webapp/.streamlit/tradvisor-sa-key.json"
+# #   file_permission = "0600"
+#   triggers = {
+#     private_key = google_service_account_key.tradvisor_sa_key.private_key
+#   }
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       echo "${google_service_account_key.tradvisor_sa_key.private_key}" | base64 --decode > ../webapp/.streamlit/tradvisor-sa-key.json
+#     EOT
+#     interpreter = ["/bin/bash", "-c"]
+#   }
+# }
 
 # Create a service account for the Cloud Run service
 resource "google_service_account" "brvm_dashboard_sa" {

@@ -28,7 +28,15 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
         name  = "PROJECT_ID"
         value = var.project_id
       }
-
+      env {
+          name = "GOOGLE_APPLICATION_CREDENTIALS_JSON"
+          value_source {
+            secret_key_ref {
+              secret = google_secret_manager_secret.tradvisor_sa_key_secret.id
+              version  = "latest"
+            }
+          }
+        }
       # Resource limits
       resources {
         cpu_idle = true

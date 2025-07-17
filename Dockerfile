@@ -1,13 +1,17 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 #FROM ubuntu:18.04
 WORKDIR tradvisor/
 
 #RUN apt-get install -y git
 
+
 #RUN git clone https://github.com/issacamara/tradvisor.git .
 COPY database/ database/
 #COPY webapp/requirements.txt .
 COPY webapp/ webapp/
+#RUN mkdir -p webapp/.streamlit
+#COPY webapp/.streamlit/secrets.toml /root/.streamlit/secrets.toml
+#RUN chmod 600 webapp/.streamlit/secrets.toml
 #COPY webapp/config.yml .
 
 RUN pip install -r webapp/requirements.txt
