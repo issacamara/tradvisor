@@ -1,7 +1,5 @@
 import duckdb as db
-import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
 import yaml
 import numpy as np
 from pyarrow import dictionary
@@ -28,8 +26,11 @@ def getBigQueryClient():
 
     return bigquery.Client()
 
-ENVIRONMENT = 'gcp'
+# ENVIRONMENT = 'gcp'
 project_id = os.environ.get('PROJECT_ID')
+# project_id = "dev-tradvisor"
+# os.environ["PROJECT_ID"] = project_id
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "webapp/key.json"
 client = None
 if project_id:
     client = getBigQueryClient()
@@ -86,10 +87,9 @@ def display_recommendation_metrics(stock_data):
 def load_data():
     shares = None
     dividends = None
-    bq_dataset = ""
     query1 = f"""
-                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM shares)               
-                SELECT * FROM {dataset_names[ENVIRONMENT]}shares
+                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)               
+                SELECT * FROM `{dataset_names[ENVIRONMENT]}SHARES`
                 WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
                     AND (SELECT max_date FROM latest_date)
                 ORDER BY date DESC
@@ -97,7 +97,10 @@ def load_data():
 
     # query2 = f"SELECT * FROM bonds"
     # query3 = f"SELECT * FROM indices"
-    query4 = f"SELECT * FROM dividends WHERE date = (SELECT MAX(CAST(date AS DATE)) FROM dividends)"
+    query4 = f"""
+                SELECT * FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS` 
+                WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`)
+            """
     # query5 = f"SELECT * FROM capitalizations"
     if ENVIRONMENT=='on-premise':
         shares = conn.execute(query1).df()
@@ -105,8 +108,6 @@ def load_data():
     else:
         # client = initialize_bigquery()
 
-        # shares = pd.read_gbq(query1, credentials=credentials)
-        # dividends = pd.read_gbq(query4, credentials=credentials)
         shares = client.query(query1).to_dataframe()
         dividends = client.query(query4).to_dataframe()
 
