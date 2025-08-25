@@ -27,7 +27,7 @@ jobs:
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/tradvisor
           IMAGE_TAG=latest
           curl -X DELETE -H "Authorization: JWT $secrets.DOCKER_PASSWORD_TOKEN" https://hub.docker.com/v2/repositories/$IMAGE_NAME/tags/$IMAGE_TAG/
-          docker build -t $IMAGE_NAME:$IMAGE_TAG . --platform linux/amd64
+          docker build -t $IMAGE_NAME:$IMAGE_TAG . --platform linux/amd64  --no-cache
           docker push $IMAGE_NAME:$IMAGE_TAG
 
       # Set up GCP authentication
