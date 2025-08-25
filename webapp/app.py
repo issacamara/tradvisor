@@ -26,7 +26,7 @@ def getBigQueryClient():
 
     return bigquery.Client()
 
-# ENVIRONMENT = 'gcp'
+ENVIRONMENT = 'gcp'
 project_id = os.environ.get('PROJECT_ID')
 # project_id = "dev-tradvisor"
 # os.environ["PROJECT_ID"] = project_id
