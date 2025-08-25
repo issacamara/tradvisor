@@ -45,7 +45,7 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/tradvisor:latest
-          gcloud run deploy ${{ secrets.CLOUD_RUN_SERVICE }} \
+          gcloud run deploy tradvisor \
             --image $IMAGE_NAME \
             --platform managed \
             --region ${{ secrets.GCP_REGION }} \
