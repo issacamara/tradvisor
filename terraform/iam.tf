@@ -164,6 +164,26 @@ resource "google_project_iam_binding" "bq_job_user" {
   ]
 }
 
+resource "google_project_iam_binding" "run_admin" {
+  project    = var.project_id
+  role       = "roles/run.admin"
+  depends_on = [google_service_account.tradvisor_sa]
+  members = [
+    "serviceAccount:${google_service_account.tradvisor_sa.email}"
+#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+  ]
+}
+
+resource "google_project_iam_binding" "storage_admin" {
+  project    = var.project_id
+  role       = "roles/storage.admin"
+  depends_on = [google_service_account.tradvisor_sa]
+  members = [
+    "serviceAccount:${google_service_account.tradvisor_sa.email}"
+#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+  ]
+}
+
 resource "google_cloud_run_service_iam_policy" "noauth" {
   location    = google_cloud_run_v2_service.tradvisor_service.location
   project     = google_cloud_run_v2_service.tradvisor_service.project
