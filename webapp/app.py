@@ -70,9 +70,9 @@ def display_recommendation_metrics(stock_data):
     """Display recommendation metrics in a visually appealing way"""
     cols = st.columns(3)
     metrics = [
-        ("Buy", "Buy", "green"),
-        ("Keep", "Keep", "blue"),
-        ("Sell", "Sell", "red")
+        ("BUY", "BUY", "green"),
+        ("KEEP", "KEEP", "blue"),
+        ("SELL", "SELL", "red")
     ]
 
     for (label, col_name, color) in metrics:
