@@ -176,7 +176,7 @@ def get_trading_decisions(data):
     for symbol in symbols:
         df_tmp = df[df["SYMBOL"]==symbol].copy()
         data = calculate_technical_indicators(df_tmp)
-        data[['Buy', 'Sell', 'Keep']] = data.apply(scores, axis=1)
+        data[['BUY', 'SELL', 'KEEP']] = data.apply(scores, axis=1)
         data = data.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_middle', 'BB_lower',
                           'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP'], axis=1)
         result = result + [data]

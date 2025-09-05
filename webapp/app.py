@@ -80,7 +80,7 @@ def display_recommendation_metrics(stock_data):
             st.markdown(f"""
                 <div class="metric-card">
                     <h3 style="color: {color};">{label}</h3>
-                    <h2 style="color: {color};">{stock_data[col_name.capitalize()]:.0%}</h2>
+                    <h2 style="color: {color};">{stock_data[col_name.upper()]:.0%}</h2>
                 </div>
             """, unsafe_allow_html=True)
 # Cache data for 1 day (86400 seconds)
