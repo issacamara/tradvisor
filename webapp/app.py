@@ -7,6 +7,7 @@ from streamlit import columns
 import plotly.graph_objects as go
 import os
 import trading as tr
+from trading2 import TechnicalIndicatorTrading
 from google.cloud import bigquery
 import json
 from google.oauth2 import service_account
@@ -87,6 +88,7 @@ def display_recommendation_metrics(stock_data):
 def load_data():
     shares = None
     dividends = None
+    trading_system = TechnicalIndicatorTrading()
     query1 = f"""
                 WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)               
                 SELECT * FROM `{dataset_names[ENVIRONMENT]}SHARES`
@@ -118,7 +120,8 @@ def load_data():
     # capitalizations = conn.execute(query5).df()
 
     result = shares.merge(dividends[["SYMBOL","DIVIDEND","PAYMENT_DATE"]], on='SYMBOL', how='left')
-    result = tr.get_trading_decisions(result)
+    # result = tr.get_trading_decisions(result)
+    result = trading_system.generate_signals(result, adaptive_weights=True)
     result['ROI'] = result['DIVIDEND'] / result['CLOSE']
 
     # return shares, bonds, indices, dividends, capitalizations

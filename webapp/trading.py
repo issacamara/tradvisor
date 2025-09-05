@@ -181,23 +181,5 @@ def get_trading_decisions(data):
                           'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP'], axis=1)
         result = result + [data]
     return pd.concat(result).sort_values(by=['Buy', 'DIVIDEND'])
-# Load your data
 
-# tickers = ["AAPL","GOOG"]
-# end_date = datetime.now()
-# start_date = end_date.replace(year=end_date.year - 1)
-# data = []
-# for ticker in tickers:
-#     df = yf.download(ticker, start=start_date, end=end_date)
-#     df['Ticker'] = ticker
-#     data = data + [df]
-# data = pd.concat(data)
-# data = data.rename(columns={'Ticker':'SYMBOL','Close': 'CLOSE', 'Open': 'OPEN', 'Low': 'LOW', 'High':"HIGH", 'Volume':'VOLUME'})
-#
-# get_trading_decisions(data)
-
-# calculate_technical_indicators(data)
-# data[['Buy', 'Sell', 'Keep']] = data.apply(scores, axis=1)
-# data = data.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_signal', 'BB_upper', 'BB_middle', 'BB_lower',
-#        'STOCH_k', 'STOCH_d', 'CMF', 'CCI', 'PSAR', 'VWAP'], axis=1)
 
