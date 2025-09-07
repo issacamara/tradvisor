@@ -314,7 +314,8 @@ class TechnicalIndicatorTrading:
 
         # Ensure uppercase column names for output
         final_results.columns = final_results.columns.str.upper()
-
+        final_results = final_results.set_index('DATE')
+        final_results.index = pd.to_datetime(df.index)
         return final_results.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_SIGNAL', 'MACD_HISTOGRAM', 'BB_UPPER',
                                    'BB_MIDDLE','BB_LOWER', 'STOCH_K', 'STOCH_D', 'CMF', 'CCI', 'PSAR', 'VWAP',
                                    'MA_SIGNAL', 'EMA_SIGNAL', 'RSI_SIGNAL', 'MACD_SIGNAL_IND', 'BB_SIGNAL',
@@ -422,9 +423,9 @@ class TechnicalIndicatorTrading:
                 df['weighted_hold_score'] += (df[signal_col] == 0).astype(float) * weight
 
         # Convert to probabilities (percentages)
-        df['buy'] = df['weighted_buy_score'] * 100
-        df['sell'] = df['weighted_sell_score'] * 100
-        df['keep'] = df['weighted_hold_score'] * 100
+        df['buy'] = df['weighted_buy_score']
+        df['sell'] = df['weighted_sell_score']
+        df['keep'] = df['weighted_hold_score']
 
         # Final recommendation based on highest weighted probability
         df['recommendation'] = df.apply(
@@ -445,36 +446,6 @@ class TechnicalIndicatorTrading:
 
         return df
 
-    def get_indicator_performance(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Analyze individual indicator performance and accuracy"""
-        indicators = ['MA', 'EMA', 'RSI', 'MACD', 'BB', 'STOCH', 'CMF', 'CCI', 'PSAR', 'VWAP']
-        performance_data = []
-
-        for indicator in indicators:
-            signal_col = f'{indicator}_SIGNAL'
-            if signal_col in df.columns:
-                # Calculate signal distribution
-                buy_signals = (df[signal_col] == 1).sum()
-                sell_signals = (df[signal_col] == -1).sum()
-                hold_signals = (df[signal_col] == 0).sum()
-                total_signals = len(df)
-
-                # Get assigned weight
-                weight = self.weights.get(indicator, 0.0)
-
-                performance_data.append({
-                    'INDICATOR': indicator,
-                    'WEIGHT': weight,
-                    'BUY_SIGNALS': buy_signals,
-                    'SELL_SIGNALS': sell_signals,
-                    'HOLD_SIGNALS': hold_signals,
-                    'BUY_PERCENTAGE': (buy_signals / total_signals) * 100,
-                    'SELL_PERCENTAGE': (sell_signals / total_signals) * 100,
-                    'HOLD_PERCENTAGE': (hold_signals / total_signals) * 100,
-                    'ACTIVITY_RATE': ((buy_signals + sell_signals) / total_signals) * 100
-                })
-
-        return pd.DataFrame(performance_data).sort_values('WEIGHT', ascending=False)
 
 
 def create_sample_data(symbols: List[str] = ['AAPL', 'GOOGL', 'MSFT'], days: int = 100) -> pd.DataFrame:
@@ -522,14 +493,6 @@ def main():
     print("Weighted Technical Indicator Trading System - Fixed Version")
     print("=" * 70)
 
-    # Check pandas_ta availability
-    try:
-        import pandas_ta as ta
-        print(f"âœ… pandas_ta version: {ta.version}")
-    except ImportError:
-        print("âŒ pandas_ta not installed. Please install with: pip install pandas_ta")
-        return None, None
-
     try:
         # Initialize trading system with default weights
         trading_system = TechnicalIndicatorTrading()
@@ -560,7 +523,7 @@ def main():
         return results, trading_system
 
     except Exception as e:
-        print(f"âŒ Error in main execution: {e}")
+        print(f"Error in main execution: {e}")
         import traceback
         traceback.print_exc()
         return None, None
