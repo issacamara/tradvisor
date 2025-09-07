@@ -188,5 +188,6 @@ with (mt1):
 
     latest = shares[shares.index == shares.index.max()]
     mt1.dataframe(latest.sort_index(ascending=True),use_container_width=True)
+    mt1.dataframe(shares[shares['SYMBOL'] == selected_symbol])
 
 
