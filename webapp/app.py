@@ -153,7 +153,7 @@ with (mt1):
     historical_data = shares[shares['SYMBOL']==selected_symbol].sort_index()
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=historical_data['DATE'], y=historical_data['CLOSE'], mode='lines', name='Close Price'))
+    fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['CLOSE'], mode='lines', name='Close Price'))
     fig.update_layout(
         title=f"{selected_symbol} Closing Price",
         xaxis_title="Date",
