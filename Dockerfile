@@ -14,6 +14,7 @@ COPY webapp/ webapp/
 #RUN chmod 600 webapp/.streamlit/secrets.toml
 #COPY webapp/config.yml .
 
+RUN pip install --upgrade pip
 RUN pip install -r webapp/requirements.txt
 
 #RUN export PYTHONPATH="${PYTHONPATH}:$HOME/tradvisor/util/"
