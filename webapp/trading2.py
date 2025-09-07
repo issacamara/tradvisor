@@ -314,7 +314,7 @@ class TechnicalIndicatorTrading:
 
         # Ensure uppercase column names for output
         final_results.columns = final_results.columns.str.upper()
-        # final_results = final_results.set_index('DATE')
+        final_results = final_results.set_index('DATE')
         # final_results.index = pd.to_datetime(df.index)
         return final_results.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_SIGNAL', 'MACD_HISTOGRAM', 'BB_UPPER',
                                    'BB_MIDDLE','BB_LOWER', 'STOCH_K', 'STOCH_D', 'CMF', 'CCI', 'PSAR', 'VWAP',
