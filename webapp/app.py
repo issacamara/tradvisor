@@ -163,15 +163,6 @@ with (mt1):
     )
     mt1.plotly_chart(fig, use_container_width=True)
 
-    # line_chart = alt.Chart(historical_data.reset_index()).mark_line().encode(
-    #     x=alt.X('DATE:T', title='Date', axis=alt.Axis(labelAngle=-45)),
-    #     y=alt.Y('CLOSE:Q', title='Close Price'),
-    #     tooltip=['DATE:T', 'CLOSE:Q']
-    # ).properties(height=500,width='container',title=f"Price History for {selected_symbol}"
-    #              ).configure_mark(color='#1f77b4'
-    #                               ).configure_axis(labelFontSize=12,titleFontSize=14)
-    # mt1.altair_chart(line_chart, use_container_width=True)
-
     latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
     with(col2):
         st.markdown(f"""
