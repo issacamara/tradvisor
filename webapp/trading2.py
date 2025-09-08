@@ -3,9 +3,7 @@ import numpy as np
 from typing import Dict, List, Optional
 import warnings
 import talib
-
 warnings.filterwarnings('ignore')
-
 
 class TechnicalIndicatorTrading:
     """
