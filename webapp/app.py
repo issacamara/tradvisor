@@ -1,12 +1,7 @@
 import duckdb as db
 import streamlit as st
-import yaml
-import numpy as np
-from pyarrow import dictionary
-from streamlit import columns
 import plotly.graph_objects as go
 import os
-import trading as tr
 from trading2 import TechnicalIndicatorTrading
 from google.cloud import bigquery
 import json
