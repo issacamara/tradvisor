@@ -3,6 +3,7 @@ import numpy as np
 import pandas_ta as ta
 from typing import Dict, Tuple, List, Optional
 import warnings
+import talib
 
 warnings.filterwarnings('ignore')
 
@@ -117,11 +118,11 @@ class TechnicalIndicatorTrading:
             return self.weights
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate all technical indicators using pandas_ta library"""
+        """Calculate all technical indicators using ta-lib library"""
         try:
             data = df.copy()
 
-            # Ensure proper column names for pandas_ta (lowercase)
+            # Ensure proper column names (lowercase)
             data.columns = data.columns.str.lower()
 
             # Check required columns
@@ -141,22 +142,37 @@ class TechnicalIndicatorTrading:
                 data = data.set_index(date_col)
                 data.index = pd.to_datetime(data.index, errors='coerce')
 
+            # Convert to numpy arrays for ta-lib (ta-lib works with numpy arrays)
+            high = data['high'].values.astype(float)
+            low = data['low'].values.astype(float)
+            close = data['close'].values.astype(float)
+            volume = data['volume'].values.astype(float)
+
             # Calculate all indicators with error handling
-            data['ma'] = ta.sma(data['close'], length=20)
-            data['ema'] = ta.ema(data['close'], length=20)
-            data['rsi'] = ta.rsi(data['close'], length=14)
+            try:
+                data['ma'] = talib.SMA(close, timeperiod=20)
+            except Exception as e:
+                print(f"Warning: SMA calculation failed: {e}")
+                data['ma'] = np.nan
+
+            try:
+                data['ema'] = talib.EMA(close, timeperiod=20)
+            except Exception as e:
+                print(f"Warning: EMA calculation failed: {e}")
+                data['ema'] = np.nan
+
+            try:
+                data['rsi'] = talib.RSI(close, timeperiod=14)
+            except Exception as e:
+                print(f"Warning: RSI calculation failed: {e}")
+                data['rsi'] = np.nan
 
             # MACD with error handling
             try:
-                macd_data = ta.macd(data['close'], fast=12, slow=26, signal=9)
-                if macd_data is not None and not macd_data.empty:
-                    data['macd'] = macd_data.iloc[:, 0]  # MACD line
-                    data['macd_signal'] = macd_data.iloc[:, 2]  # Signal line
-                    data['macd_histogram'] = macd_data.iloc[:, 1]  # Histogram
-                else:
-                    data['macd'] = np.nan
-                    data['macd_signal'] = np.nan
-                    data['macd_histogram'] = np.nan
+                macd, macd_signal, macd_histogram = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+                data['macd'] = macd
+                data['macd_signal'] = macd_signal
+                data['macd_histogram'] = macd_histogram
             except Exception as e:
                 print(f"Warning: MACD calculation failed: {e}")
                 data['macd'] = np.nan
@@ -165,54 +181,44 @@ class TechnicalIndicatorTrading:
 
             # Bollinger Bands with error handling
             try:
-                bb_data = ta.bbands(data['close'], length=20, std=2)
-                if bb_data is not None and not bb_data.empty:
-                    # Get the upper, middle, lower bands (first 3 columns typically)
-                    bb_cols = bb_data.columns.tolist()
-                    data['bb_upper'] = bb_data[bb_cols[2]] if len(bb_cols) > 2 else np.nan  # Upper
-                    data['bb_middle'] = bb_data[bb_cols[1]] if len(bb_cols) > 1 else np.nan  # Middle
-                    data['bb_lower'] = bb_data[bb_cols[0]] if len(bb_cols) > 0 else np.nan  # Lower
-                else:
-                    data['bb_upper'] = data['bb_middle'] = data['bb_lower'] = np.nan
+                bb_upper, bb_middle, bb_lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
+                data['bb_upper'] = bb_upper
+                data['bb_middle'] = bb_middle
+                data['bb_lower'] = bb_lower
             except Exception as e:
                 print(f"Warning: Bollinger Bands calculation failed: {e}")
-                data['bb_upper'] = data['bb_middle'] = data['bb_lower'] = np.nan
+                data['bb_upper'] = np.nan
+                data['bb_middle'] = np.nan
+                data['bb_lower'] = np.nan
 
             # Stochastic with error handling
             try:
-                stoch_data = ta.stoch(data['high'], data['low'], data['close'], k=14, d=3)
-                if stoch_data is not None and not stoch_data.empty:
-                    stoch_cols = stoch_data.columns.tolist()
-                    data['stoch_k'] = stoch_data[stoch_cols[0]] if len(stoch_cols) > 0 else np.nan
-                    data['stoch_d'] = stoch_data[stoch_cols[1]] if len(stoch_cols) > 1 else np.nan
-                else:
-                    data['stoch_k'] = data['stoch_d'] = np.nan
+                stoch_k, stoch_d = talib.STOCH(high, low, close, fastk_period=14, slowk_period=3, slowk_matype=0,
+                                               slowd_period=3, slowd_matype=0)
+                data['stoch_k'] = stoch_k
+                data['stoch_d'] = stoch_d
             except Exception as e:
                 print(f"Warning: Stochastic calculation failed: {e}")
-                data['stoch_k'] = data['stoch_d'] = np.nan
+                data['stoch_k'] = np.nan
+                data['stoch_d'] = np.nan
 
-            # Other indicators with error handling
+            # Chaikin Money Flow (CMF) - ta-lib doesn't have CMF, so we'll calculate it manually
             try:
-                data['cmf'] = ta.cmf(data['high'], data['low'], data['close'], data['volume'], length=21)
+                data['cmf'] = self._calculate_cmf(high, low, close, volume, period=21)
             except Exception as e:
                 print(f"Warning: CMF calculation failed: {e}")
                 data['cmf'] = np.nan
 
+            # Commodity Channel Index (CCI)
             try:
-                data['cci'] = ta.cci(data['high'], data['low'], data['close'], length=14)
+                data['cci'] = talib.CCI(high, low, close, timeperiod=14)
             except Exception as e:
                 print(f"Warning: CCI calculation failed: {e}")
                 data['cci'] = np.nan
 
-            # PSAR with error handling
+            # Parabolic SAR (PSAR)
             try:
-                psar_data = ta.psar(data['high'], data['low'], af0=0.02, af=0.02, max_af=0.2)
-                if psar_data is not None and not psar_data.empty:
-                    psar_cols = psar_data.columns.tolist()
-                    # Use the first available PSAR column
-                    data['psar'] = psar_data[psar_cols[0]] if len(psar_cols) > 0 else np.nan
-                else:
-                    data['psar'] = np.nan
+                data['psar'] = talib.SAR(high, low, acceleration=0.02, maximum=0.2)
             except Exception as e:
                 print(f"Warning: PSAR calculation failed: {e}")
                 data['psar'] = np.nan
@@ -220,8 +226,7 @@ class TechnicalIndicatorTrading:
             # VWAP with error handling and fallback
             try:
                 if date_col and data.index.dtype.kind == 'M':  # datetime index
-                    vwap_result = ta.vwap(data['high'], data['low'], data['close'], data['volume'])
-                    data['vwap'] = vwap_result if vwap_result is not None else self._calculate_simple_vwap(data)
+                    data['vwap'] = self._calculate_vwap_with_date(data)
                 else:
                     data['vwap'] = self._calculate_simple_vwap(data)
             except Exception as e:
@@ -236,21 +241,71 @@ class TechnicalIndicatorTrading:
 
         except Exception as e:
             print(f"Error in calculate_indicators: {e}")
-            raise
+            return df
 
-    def _calculate_simple_vwap(self, data: pd.DataFrame) -> pd.Series:
-        """Calculate simple VWAP when pandas_ta version fails"""
+    def _calculate_cmf(self, high, low, close, volume, period=21):
+        """Calculate Chaikin Money Flow since ta-lib doesn't have it"""
+        try:
+            # Money Flow Multiplier
+            mf_multiplier = ((close - low) - (high - close)) / (high - low)
+
+            # Handle division by zero
+            mf_multiplier = np.where(high == low, 0, mf_multiplier)
+
+            # Money Flow Volume
+            mf_volume = mf_multiplier * volume
+
+            # CMF calculation using pandas rolling for convenience
+            mf_volume_series = pd.Series(mf_volume)
+            volume_series = pd.Series(volume)
+
+            cmf = mf_volume_series.rolling(window=period).sum() / volume_series.rolling(window=period).sum()
+
+            return cmf.values
+        except Exception as e:
+            print(f"Error calculating CMF: {e}")
+            return np.full(len(high), np.nan)
+
+    def _calculate_vwap_with_date(self, data):
+        """Calculate VWAP with date grouping"""
+        try:
+            # Group by date and calculate VWAP
+            data['typical_price'] = (data['high'] + data['low'] + data['close']) / 3
+            data['tp_volume'] = data['typical_price'] * data['volume']
+
+            # Reset index temporarily to group by date
+            temp_data = data.reset_index()
+            temp_data['date_only'] = temp_data[temp_data.columns[0]].dt.date
+
+            # Calculate cumulative VWAP for each date
+            grouped = temp_data.groupby('date_only')
+            vwap_list = []
+
+            for _, group in grouped:
+                cumulative_tp_volume = group['tp_volume'].cumsum()
+                cumulative_volume = group['volume'].cumsum()
+                group_vwap = cumulative_tp_volume / cumulative_volume
+                vwap_list.extend(group_vwap.tolist())
+
+            return np.array(vwap_list)
+        except Exception as e:
+            print(f"Error in VWAP calculation with date: {e}")
+            return self._calculate_simple_vwap(data)
+
+    def _calculate_simple_vwap(self, data):
+        """Simple VWAP calculation fallback"""
         try:
             typical_price = (data['high'] + data['low'] + data['close']) / 3
-            cumulative_pv = (typical_price * data['volume']).cumsum()
+            tp_volume = typical_price * data['volume']
+
+            cumulative_tp_volume = tp_volume.cumsum()
             cumulative_volume = data['volume'].cumsum()
 
-            # Avoid division by zero
-            cumulative_volume = cumulative_volume.replace(0, np.nan)
-            vwap = cumulative_pv / cumulative_volume
-            return vwap.fillna(method='ffill') if hasattr(vwap, 'fillna') else vwap.ffill()
-        except Exception:
-            return pd.Series(np.nan, index=data.index)
+            vwap = cumulative_tp_volume / cumulative_volume
+            return vwap.values
+        except Exception as e:
+            print(f"Error in simple VWAP calculation: {e}")
+            return np.full(len(data), np.nan)
 
     def generate_signals(self, df: pd.DataFrame, adaptive_weights: bool = True) -> pd.DataFrame:
         """
@@ -314,7 +369,7 @@ class TechnicalIndicatorTrading:
 
         # Ensure uppercase column names for output
         final_results.columns = final_results.columns.str.upper()
-        final_results = final_results.set_index('DATE')
+        # final_results = final_results.set_index('DATE')
         # final_results.index = pd.to_datetime(df.index)
         return final_results.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_SIGNAL', 'MACD_HISTOGRAM', 'BB_UPPER',
                                    'BB_MIDDLE','BB_LOWER', 'STOCH_K', 'STOCH_D', 'CMF', 'CCI', 'PSAR', 'VWAP',
@@ -507,7 +562,7 @@ def main():
         results = trading_system.generate_signals(sample_data, adaptive_weights=True)
         print("Weighted technical indicators calculated successfully!")
 
-        print(results)
+        print(results.columns)
         # Display results
         print("\n3. Weighted Results Summary:")
         print("-" * 35)

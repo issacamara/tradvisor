@@ -2,6 +2,54 @@ import pandas as pd
 import pandas_ta as ta
 import numpy as np
 
+import pandas as pd
+import numpy as np
+import talib
+
+
+def calculate_technical_indicators_talib(df):
+    # Ensure the DataFrame is in the correct format with columns 'DATE', 'CLOSE', 'HIGH', 'LOW', 'VOLUME'
+    df = df.set_index('DATE')
+    df.index = pd.to_datetime(df.index)
+
+    # Convert the required columns to numpy arrays for TA-Lib functions
+    close = df['CLOSE'].to_numpy()
+    high = df['HIGH'].to_numpy()
+    low = df['LOW'].to_numpy()
+    volume = df['VOLUME'].to_numpy()
+
+    # Calculate indicators
+    df['MA'] = talib.SMA(close, timeperiod=14)
+    df['EMA'] = talib.EMA(close, timeperiod=14)
+    df['RSI'] = talib.RSI(close, timeperiod=14)
+
+    # MACD returns three arrays: MACD, MACD_signal, and MACD_hist
+    macd, macd_signal, _ = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+    df['MACD'] = macd
+    df['MACD_signal'] = macd_signal
+
+    # Bollinger Bands returns three arrays: upper, middle, and lower bands
+    upper_bb, middle_bb, lower_bb = talib.BBANDS(close, timeperiod=14)
+    df['BB_upper'] = upper_bb
+    df['BB_middle'] = middle_bb
+    df['BB_lower'] = lower_bb
+
+    # Stochastic Oscillator returns two arrays: slowk and slowd
+    df['STOCH_k'], df['STOCH_d'] = talib.STOCH(high, low, close)
+
+    # CMF and CCI
+    df['CMF'] = talib.CMF(high, low, close, volume)
+    df['CCI'] = talib.CCI(high, low, close, timeperiod=14)
+
+    # Parabolic SAR
+    df['PSAR'] = talib.SAR(high, low)
+
+    # VWAP is not included in the standard TA-Lib library, as it requires volume data which is not part of the core C library.
+    # A separate calculation for VWAP is needed.
+    df['VWAP'] = (df['CLOSE'] * df['VOLUME']).cumsum() / df['VOLUME'].cumsum()
+
+    return df
+
 def calculate_technical_indicators(df):
     # Calculate indicators
     df['MA'] = ta.sma(df['CLOSE'], length=14)
