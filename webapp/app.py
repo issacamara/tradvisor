@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import os
 from trading2 import TechnicalIndicatorTrading
 from google.cloud import bigquery
+from helper import create_gauge_chart, create_signal_pie_chart, create_stock_chart
 import json
 from google.oauth2 import service_account
 # Load configuration from YAML file
@@ -38,29 +39,6 @@ dataset_names = {"on-premise": "", "gcp":f"{project_id}.stocks."}
 st.write(f"Environment is {ENVIRONMENT} ")
 
 
-def create_stock_chart(data, symbol):
-    """Create an interactive stock price chart using Plotly"""
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=data.index,
-            y=data['CLOSE'],
-            mode='lines',
-            name='Close Price',
-            line=dict(color='#1f77b4', width=2)
-        )
-    )
-
-    fig.update_layout(
-        title=f"{symbol} Stock Price History",
-        xaxis_title="Date",
-        yaxis_title="Price (XOF)",
-        template="plotly_white",
-        height=400
-    )
-    return fig
-
-
 def display_recommendation_metrics(stock_data):
     """Display recommendation metrics in a visually appealing way"""
     cols = st.columns(3)
@@ -78,6 +56,7 @@ def display_recommendation_metrics(stock_data):
                     <h2 style="color: {color};">{stock_data[col_name.upper()]:.0%}</h2>
                 </div>
             """, unsafe_allow_html=True)
+
 # Cache data for 1 day (86400 seconds)
 @st.cache_data(ttl=86400)
 def load_data():
@@ -137,7 +116,6 @@ st.markdown("""
 shares = load_data()
 
 main_container = st.container()
-topn = 10
 mt1, mt2 = main_container.tabs([f"Stocks Analysis", "Portfolio"])
 with (mt1):
     col1, col2 = mt1.columns([2, 1])
@@ -170,7 +148,14 @@ with (mt1):
                             """, unsafe_allow_html=True)
     with col1:
         st.subheader("Latest Recommendations")
-        display_recommendation_metrics(latest_data)
+        # Confidence gauge
+        gauge_fig = create_gauge_chart(latest_data['CONFIDENCE'], "Signal Confidence (%)")
+        st.plotly_chart(gauge_fig, use_container_width=True)
+
+        # Signal probabilities
+        pie_fig = create_signal_pie_chart(latest_data[['BUY', 'KEEP', 'SELL']])
+        st.plotly_chart(pie_fig, use_container_width=True)
+        # display_recommendation_metrics(latest_data)
 
     latest = shares[shares.index == shares.index.max()]
     mt1.dataframe(latest.sort_index(ascending=True),use_container_width=True)

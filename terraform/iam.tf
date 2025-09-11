@@ -24,6 +24,7 @@ resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
 }
 
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
+  depends_on = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
   secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
   secret_data = base64decode(google_service_account_key.tradvisor_sa_key.private_key)
 }
