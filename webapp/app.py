@@ -2,6 +2,9 @@ import duckdb as db
 import streamlit as st
 import plotly.graph_objects as go
 import os
+
+from streamlit import sidebar
+
 from trading2 import TechnicalIndicatorTrading
 from google.cloud import bigquery
 from helper import create_gauge_chart, create_signal_pie_chart, create_stock_chart
@@ -39,24 +42,6 @@ dataset_names = {"on-premise": "", "gcp":f"{project_id}.stocks."}
 st.write(f"Environment is {ENVIRONMENT} ")
 
 
-def display_recommendation_metrics(stock_data):
-    """Display recommendation metrics in a visually appealing way"""
-    cols = st.columns(3)
-    metrics = [
-        ("BUY", "BUY", "green"),
-        ("KEEP", "KEEP", "blue"),
-        ("SELL", "SELL", "red")
-    ]
-
-    for (label, col_name, color) in metrics:
-        with cols[metrics.index((label, col_name, color))]:
-            st.markdown(f"""
-                <div class="metric-card">
-                    <h3 style="color: {color};">{label}</h3>
-                    <h2 style="color: {color};">{stock_data[col_name.upper()]:.0%}</h2>
-                </div>
-            """, unsafe_allow_html=True)
-
 # Cache data for 1 day (86400 seconds)
 @st.cache_data(ttl=86400)
 def load_data():
@@ -64,19 +49,31 @@ def load_data():
     dividends = None
     trading_system = TechnicalIndicatorTrading()
     query1 = f"""
-                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)               
+                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)
                 SELECT * FROM `{dataset_names[ENVIRONMENT]}SHARES`
                 WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
                     AND (SELECT max_date FROM latest_date)
                 ORDER BY date DESC
             """
 
+    # query1onprem = f"""
+    #             WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM {dataset_names[ENVIRONMENT]}SHARES)
+    #             SELECT * FROM {dataset_names[ENVIRONMENT]}SHARES
+    #             WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
+    #                 AND (SELECT max_date FROM latest_date)
+    #             ORDER BY date DESC
+    #         """
+
     # query2 = f"SELECT * FROM bonds"
     # query3 = f"SELECT * FROM indices"
     query4 = f"""
-                SELECT * FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS` 
+                SELECT * FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`
                 WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`)
             """
+    # query4onPrem = f"""
+    #             SELECT * FROM {dataset_names[ENVIRONMENT]}DIVIDENDS
+    #             WHERE CAST(date as DATE) = (SELECT MAX(CAST(date as DATE)) FROM {dataset_names[ENVIRONMENT]}DIVIDENDS)
+    #         """
     # query5 = f"SELECT * FROM capitalizations"
     if ENVIRONMENT=='on-premise':
         shares = conn.execute(query1).df()
@@ -103,7 +100,7 @@ def load_data():
 
 
 # Streamlit app
-st.title(f"Tradvisor {ENVIRONMENT} test")
+st.title(f"Tradvisor {ENVIRONMENT} ")
 # Custom CSS for styling
 st.markdown("""
     <style>
@@ -116,14 +113,29 @@ st.markdown("""
 shares = load_data()
 
 main_container = st.container()
-mt1, mt2 = main_container.tabs([f"Stocks Analysis", "Portfolio"])
-with (mt1):
-    col1, col2 = mt1.columns([2, 1])
-    selected_symbol = col2.selectbox(
-        "Select Stock Symbol",
-        options=shares['SYMBOL'].unique()
-    )
-    historical_data = shares[shares['SYMBOL']==selected_symbol].sort_index()
+
+st.sidebar.header("Choose the symbol")
+selected_symbol = st.sidebar.selectbox("",
+        options=shares['SYMBOL'].unique())
+
+historical_data = shares[shares['SYMBOL']==selected_symbol].sort_index()
+latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
+
+st.sidebar.markdown(f"""
+                        <div class="metric-card">
+                            <h4>{latest_data['NAME']}</h4>
+                            <h4>Price: {latest_data['CLOSE']:.0f} XOF</h4>
+                            <h4>Dividend: {latest_data['DIVIDEND']:.0f} XOF</h4>
+                            <h4>ROI: {latest_data['ROI']:.2%}</h4>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+with (main_container):
+    col1, col2 = main_container.columns([2, 1])
+    # selected_symbol = col2.selectbox(
+    #     "Select Stock Symbol",
+    #     options=shares['SYMBOL'].unique()
+    # )
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=historical_data['DATE'], y=historical_data['CLOSE'], mode='lines', name='Close Price'))
@@ -134,31 +146,21 @@ with (mt1):
         template="plotly_white",
         height=600,
     )
-    mt1.plotly_chart(fig, use_container_width=True)
 
-    latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
-    with(col2):
-        st.markdown(f"""
-                                <div class="metric-card">
-                                    <h4>{latest_data['NAME']}</h4>
-                                    <h4>Price: {latest_data['CLOSE']:.0f} XOF</h4>
-                                    <h4>Dividend: {latest_data['DIVIDEND']:.0f} XOF</h4>
-                                    <h4>ROI: {latest_data['ROI']:.2%}</h4>
-                                </div>
-                            """, unsafe_allow_html=True)
     with col1:
-        st.subheader("Latest Recommendations")
-        # Confidence gauge
-        gauge_fig = create_gauge_chart(latest_data['CONFIDENCE'], "Signal Confidence (%)")
-        st.plotly_chart(gauge_fig, use_container_width=True)
+        col1.subheader("Latest Recommendations")
 
         # Signal probabilities
-        pie_fig = create_signal_pie_chart(latest_data[['BUY', 'KEEP', 'SELL']])
-        st.plotly_chart(pie_fig, use_container_width=True)
+        pie_fig = create_signal_pie_chart(latest_data[['BUY', 'KEEP', 'SELL']].to_dict())
+        col1.plotly_chart(pie_fig, use_container_width=True)
         # display_recommendation_metrics(latest_data)
 
-    latest = shares[shares.index == shares.index.max()]
-    mt1.dataframe(latest.sort_index(ascending=True),use_container_width=True)
-    mt1.dataframe(shares[shares['SYMBOL'] == selected_symbol])
+    with(col2):
+        # Confidence gauge
+        gauge_fig = create_gauge_chart(latest_data['CONFIDENCE'], "Signal Confidence (%)")
+        col2.plotly_chart(gauge_fig, use_container_width=True)
+    main_container.plotly_chart(fig, use_container_width=True)
+
+    main_container.dataframe(shares[shares['SYMBOL'] == selected_symbol])
 
 

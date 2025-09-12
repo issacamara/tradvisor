@@ -4,17 +4,18 @@ import plotly.graph_objects as go
 def create_gauge_chart(value, title, max_val=100):
     """Create a gauge chart for confidence"""
 
+    value_pct = value *100
     # Determine color based on value
-    if value >= 80:
+    if value_pct >= 80:
         color = "#00ff00"  # Green
-    elif value >= 60:
+    elif value_pct >= 60:
         color = "#ffff00"  # Yellow
     else:
         color = "#ff6b6b"  # Red
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
-        value=value,
+        value=value_pct,
         domain={'x': [0, 1], 'y': [0, 1]},
         title={'text': title, 'font': {'size': 20}},
         gauge={
@@ -50,8 +51,8 @@ def create_signal_pie_chart(probabilities):
 
     colors = {
         'BUY': '#00ff00',
-        'SELL': '#ff6b6b',
-        'KEEP': '#ffa500'
+        'KEEP': '#ffa500',
+        'SELL': '#ff6b6b'
     }
 
     fig = go.Figure(data=[go.Pie(
@@ -65,11 +66,11 @@ def create_signal_pie_chart(probabilities):
     )])
 
     fig.update_layout(
-        title="Signal Probability Distribution",
-        title_x=0.5,
+        title="Signal Probability",
+        title_x=0.3,
         height=400,
         margin=dict(l=20, r=20, t=60, b=20),
-        showlegend=True,
+        showlegend=False,
         legend=dict(
             orientation="h",
             yanchor="bottom",
