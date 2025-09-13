@@ -62,7 +62,7 @@ def create_signal_pie_chart(probabilities):
     )])
 
     fig.update_layout(
-        title=f'Trading *****',
+        title=f'',
 
         title_font_size=16,
         height=400,

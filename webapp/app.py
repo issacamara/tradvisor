@@ -34,38 +34,40 @@ def getBigQueryClient():
 # Cache data for 1 day (86400 seconds)
 @st.cache_data(ttl=86400)
 def load_data():
-    shares = None
-    dividends = None
+    # shares = None
+    # dividends = None
     trading_system = TechnicalIndicatorTrading()
-    # query1 = f"""
-    #             WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)
-    #             SELECT * FROM `{dataset_names[ENVIRONMENT]}SHARES`
-    #             WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
-    #                 AND (SELECT max_date FROM latest_date)
-    #             ORDER BY date DESC
-    #         """
-
-    query1onprem = f"""
-                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM {dataset_names[ENVIRONMENT]}SHARES)
-                SELECT * FROM {dataset_names[ENVIRONMENT]}SHARES
+    query1 = f"""
+                WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{dataset_names[ENVIRONMENT]}SHARES`)
+                SELECT * FROM `{dataset_names[ENVIRONMENT]}SHARES`
                 WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
                     AND (SELECT max_date FROM latest_date)
                 ORDER BY date DESC
             """
-    query1 = query1onprem
 
-    # query2 = f"SELECT * FROM bonds"
-    # query3 = f"SELECT * FROM indices"
-    # query4 = f"""
-    #             SELECT * FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`
-    #             WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`)
-    #         """
-    query4onPrem = f"""
-                SELECT * FROM {dataset_names[ENVIRONMENT]}DIVIDENDS
-                WHERE CAST(date as DATE) = (SELECT MAX(CAST(date as DATE)) FROM {dataset_names[ENVIRONMENT]}DIVIDENDS)
+
+
+    query2 = f"SELECT * FROM bonds"
+    query3 = f"SELECT * FROM indices"
+    query4 = f"""
+                SELECT * FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`
+                WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{dataset_names[ENVIRONMENT]}DIVIDENDS`)
             """
-    query4 = query4onPrem
-    # query5 = f"SELECT * FROM capitalizations"
+    query5 = f"SELECT * FROM capitalizations"
+
+    if ENVIRONMENT == 'on-premise':
+        query1 = f"""
+                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM {dataset_names[ENVIRONMENT]}SHARES)
+                    SELECT * FROM {dataset_names[ENVIRONMENT]}SHARES
+                    WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
+                        AND (SELECT max_date FROM latest_date)
+                    ORDER BY date DESC
+                """
+        query4 = f"""
+                        SELECT * FROM {dataset_names[ENVIRONMENT]}DIVIDENDS
+                        WHERE CAST(date as DATE) = (SELECT MAX(CAST(date as DATE)) FROM {dataset_names[ENVIRONMENT]}DIVIDENDS)
+                    """
+
     if ENVIRONMENT == 'on-premise':
         shares = conn.execute(query1).df()
         dividends = conn.execute(query4).df()
@@ -135,25 +137,25 @@ def top10_weekly_performers(df):
     })
 
     # Flatten column names
-    weekly_stats.columns = ['START_PRICE', 'END_PRICE', 'NAME', 'LATEST_VOLUME']
+    weekly_stats.columns = ['START_PRICE', 'PRICE', 'NAME', 'LATEST_VOLUME']
     weekly_stats = weekly_stats.reset_index()
 
     # Vectorized calculation of weekly returns
     with np.errstate(divide='ignore', invalid='ignore'):  # Handle potential division by zero
-        weekly_returns = ((weekly_stats['END_PRICE'] - weekly_stats['START_PRICE']) /
+        weekly_returns = ((weekly_stats['PRICE'] - weekly_stats['START_PRICE']) /
                           weekly_stats['START_PRICE'])
 
-    weekly_stats['WEEKLY_VARIATION'] = weekly_returns
+    weekly_stats['GROWTH'] = weekly_returns
 
     # Remove invalid returns (inf, -inf, nan)
-    weekly_stats = weekly_stats[np.isfinite(weekly_stats['WEEKLY_VARIATION'])]
+    weekly_stats = weekly_stats[np.isfinite(weekly_stats['GROWTH'])]
 
     if weekly_stats.empty:
         return pd.DataFrame(
-            columns=['SYMBOL', 'NAME', 'START_PRICE', 'END_PRICE', 'WEEKLY_VARIATION', 'LATEST_VOLUME'])
+            columns=['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME'])
 
     # Use numpy argsort for faster top-k selection
-    returns = weekly_stats['WEEKLY_VARIATION'].values
+    returns = weekly_stats['GROWTH'].values
     if len(returns) <= 10:
         top_10_indices = np.argsort(-returns)
     else:
@@ -161,9 +163,10 @@ def top10_weekly_performers(df):
         top_10_indices = top_10_indices[np.argsort(-returns[top_10_indices])]
 
     result = weekly_stats.iloc[top_10_indices][
-        ['SYMBOL', 'NAME', 'START_PRICE', 'END_PRICE', 'WEEKLY_VARIATION', 'LATEST_VOLUME']].copy()
+        ['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME']].copy()
 
     return result.reset_index(drop=True)
+
 
 # Page config
 st.set_page_config(
@@ -246,13 +249,13 @@ st.sidebar.markdown(f"""
 with (main_container):
     # Component - Stock chart
 
-    st.markdown("### Stock Price History")
+    st.markdown(f"""<h3 style='text-align: center; color: black;'>{selected_symbol} Price </h4>""", unsafe_allow_html=True)
 
     fig_price = px.line(
         historical_data,
         x='DATE',
         y='CLOSE',
-        title=f'{selected_symbol} Stock Price Over Time',
+        title=f' ',
         template='plotly_white'
     )
 
@@ -268,7 +271,6 @@ with (main_container):
     )
     st.plotly_chart(fig_price, use_container_width=True)
 
-
     col2, col1 = main_container.columns([1, 1])
 
     with col1:
@@ -282,7 +284,6 @@ with (main_container):
         # display_recommendation_metrics(latest_data)
 
     with(col2):
-
         # Component - Confidence Gauge
         st.markdown("<h4 style='text-align: center;'>Confidence Level</h2>", unsafe_allow_html=True)
 
@@ -292,14 +293,15 @@ with (main_container):
         # with col_gauge2:
         st.plotly_chart(gauge_fig, use_container_width=True)
         st.markdown(f'<div class="conf_class" style="text-align: center; font-size: 1.2rem;">conf_text</div>',
-                        unsafe_allow_html=True)
+                    unsafe_allow_html=True)
 
     # Components - Performance Tables
     st.markdown("---")
     col_table1, col_table2 = st.columns(2)
     with col_table1:
-        st.markdown("### Top 10 Profitable Stocks")
-        top_roi = top10_by_roi(shares).style.format({'ROI': '{:.2%}'})
+        # st.markdown("### :green[Top 10 Profitable Stocks]")
+        st.markdown("<h4 style='text-align: center; color: green;'>Top 10 Profitable Stocks</h4>", unsafe_allow_html=True)
+        top_roi = top10_by_roi(shares).style.format({'ROI': '{:.2%}', 'CLOSE': '{:.0f}', 'VOLUME': '{:.0f}'})
 
         st.dataframe(
             top_roi,
@@ -313,9 +315,11 @@ with (main_container):
             }
         )
     with col_table2:
-        st.markdown("### Top 10 Weekly Performers")
+        st.markdown("<h4 style='text-align: center; color: green;'>Top 10 Weekly Performers</h4>", unsafe_allow_html=True)
+
         # Apply percentage formatting using pandas styling
-        top_weekly = top10_weekly_performers(shares).style.format({'WEEKLY_VARIATION': '{:.2%}'})
+        top_weekly = top10_weekly_performers(shares).style.format({'GROWTH': '{:.2%}', 'PRICE': '{:.0f}',
+                                                                   'LATEST_VOLUME': '{:.0f}'})
 
         # Format the dataframe for display
         # top_roi_display = top_roi[['Symbol', 'Current Price', 'ROI (%)', 'YTD Return (%)', 'Market Cap']].copy()
