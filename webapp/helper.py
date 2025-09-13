@@ -38,7 +38,7 @@ def create_gauge_chart(value, title, max_val=100):
     ))
 
     fig.update_layout(
-        height=300,
+        height=250,
         margin=dict(l=20, r=20, t=60, b=20),
         paper_bgcolor="white"
     )
@@ -49,36 +49,63 @@ def create_gauge_chart(value, title, max_val=100):
 def create_signal_pie_chart(probabilities):
     """Create pie chart for signal probabilities"""
 
-    colors = {
-        'BUY': '#00ff00',
-        'KEEP': '#ffa500',
-        'SELL': '#ff6b6b'
-    }
+    # Create pie chart data
+    labels = ['Buy', 'Hold', 'Sell']
+    values = [probabilities['BUY'] * 100, probabilities['KEEP'] * 100, probabilities['SELL'] * 100]
+    colors = ['#16a34a', '#f59e0b', '#dc2626']
 
     fig = go.Figure(data=[go.Pie(
-        labels=list(probabilities.keys()),
-        values=list(probabilities.values()),
-        hole=0.4,
-        marker_colors=[colors[label] for label in probabilities.keys()],
-        textinfo='label+percent',
-        textposition='outside',
-        textfont_size=14
+        labels=labels,
+        values=values,
+        hole=0.5,
+        marker=dict(colors=colors)
     )])
 
     fig.update_layout(
-        title="Signal Probability",
-        title_x=0.3,
+        title=f'Trading *****',
+
+        title_font_size=16,
         height=400,
-        margin=dict(l=20, r=20, t=60, b=20),
-        showlegend=False,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        showlegend=True,
+        legend=dict(orientation="v", x=1.05, y=0.5)
     )
+
+    fig.update_traces(
+        textinfo='percent+label',
+        textfont_size=12,
+        hovertemplate='<b>%{label}</b><br>%{percent}<br>Value: %{value:.1f}%<extra></extra>'
+    )
+    #######################################################@
+    # colors = {
+    #     'BUY': '#00ff00',
+    #     'KEEP': '#ffa500',
+    #     'SELL': '#ff6b6b'
+    # }
+    #
+    # fig = go.Figure(data=[go.Pie(
+    #     labels=list(probabilities.keys()),
+    #     values=list(probabilities.values()),
+    #     hole=0.4,
+    #     marker_colors=[colors[label] for label in probabilities.keys()],
+    #     textinfo='label+percent',
+    #     textposition='outside',
+    #     textfont_size=14
+    # )])
+    #
+    # fig.update_layout(
+    #     title="Signal Probability",
+    #     title_x=0.3,
+    #     height=400,
+    #     margin=dict(l=20, r=20, t=60, b=20),
+    #     showlegend=False,
+    #     legend=dict(
+    #         orientation="h",
+    #         yanchor="bottom",
+    #         y=1.02,
+    #         xanchor="right",
+    #         x=1
+    #     )
+    # )
 
     return fig
 

@@ -373,7 +373,7 @@ class TechnicalIndicatorTrading:
                                    'MA_SIGNAL', 'EMA_SIGNAL', 'RSI_SIGNAL', 'MACD_SIGNAL_IND', 'BB_SIGNAL',
                                    'STOCH_SIGNAL', 'CMF_SIGNAL', 'CCI_SIGNAL', 'PSAR_SIGNAL', 'VWAP_SIGNAL',
                                    'WEIGHTED_BUY_SCORE', 'WEIGHTED_SELL_SCORE', 'WEIGHTED_HOLD_SCORE',
-                                   'APPLIED_WEIGHTS'], axis=1)
+                                   'APPLIED_WEIGHTS', 'TYPICAL_PRICE', 'TP_VOLUME'], axis=1)
 
     def _generate_individual_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate individual buy/sell/hold signals for each indicator"""
