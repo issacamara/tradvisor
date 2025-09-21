@@ -6,7 +6,7 @@ WORKDIR tradvisor/
 
 
 #RUN git clone https://github.com/issacamara/tradvisor.git .
-COPY database/ database/
+#COPY database/ database/
 #COPY webapp/requirements.txt .
 COPY webapp/ webapp/
 #RUN mkdir -p webapp/.streamlit
@@ -29,4 +29,4 @@ ENV PORT=8501
 EXPOSE 8501
 
 #ENTRYPOINT ["streamlit", "run", "webapp/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
-CMD streamlit run webapp/app.py --server.port=$PORT --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false
+CMD streamlit run webapp/main.py --server.port=$PORT --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false

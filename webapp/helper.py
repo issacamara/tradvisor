@@ -1,5 +1,6 @@
 import plotly.graph_objects as go
-
+import json, os
+from google.cloud import bigquery
 
 def create_gauge_chart(value, title, max_val=100):
     """Create a gauge chart for confidence"""
@@ -130,3 +131,17 @@ def create_stock_chart(data, symbol):
         height=400
     )
     return fig
+
+def getBigQueryClient():
+    """Initialize BigQuery client with credentials"""
+    # credentials = service_account.Credentials.from_service_account_info(
+    #     st.secrets["gcp_service_account"]
+    # )
+    # return bigquery.Client(credentials=credentials)
+    if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
+        creds_dict = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+        with open("key.json", "w") as f:
+            json.dump(creds_dict, f)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "key.json"
+
+    return bigquery.Client()

@@ -9,7 +9,7 @@ variable "service_name" {
 resource "google_cloud_run_v2_service" "tradvisor_service" {
   name     = var.service_name
   location = var.region
-  depends_on = [google_project_service.apis]
+  depends_on = [google_project_service.apis, google_secret_manager_secret.tradvisor_sa_key_secret]
   client   = "terraform"
   deletion_protection=false
   template {
@@ -20,7 +20,7 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
     scaling {
       # Scale to zero when no requests
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = 1
     }
     containers {
       image = var.docker_image

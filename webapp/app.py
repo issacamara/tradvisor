@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from streamlit import sidebar
 
-from trading2 import TechnicalIndicatorTrading
+from trading import TechnicalIndicatorTrading
 from google.cloud import bigquery
 from helper import create_gauge_chart, create_signal_pie_chart, create_stock_chart
 import json
@@ -321,11 +321,6 @@ with (main_container):
         top_weekly = top10_weekly_performers(shares).style.format({'GROWTH': '{:.2%}', 'PRICE': '{:.0f}',
                                                                    'LATEST_VOLUME': '{:.0f}'})
 
-        # Format the dataframe for display
-        # top_roi_display = top_roi[['Symbol', 'Current Price', 'ROI (%)', 'YTD Return (%)', 'Market Cap']].copy()
-        # top_roi_display['Current Price'] = top_roi_display['Current Price'].apply(lambda x: f"${x:.2f}")
-        # top_roi_display['ROI (%)'] = top_roi_display['ROI (%)'].apply(lambda x: f"{x:.2f}%")
-        # top_roi_display['YTD Return (%)'] = top_roi_display['YTD Return (%)'].apply(lambda x: f"{x:.2f}%")
 
         st.dataframe(
             top_weekly,
