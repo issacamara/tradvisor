@@ -11,6 +11,9 @@ from email.mime.multipart import MIMEMultipart
 import os
 import streamlit as st
 
+secrets_json_str = os.getenv('TRADVISOR_GMAIL_ACC_SECRET')
+os.environ['SMTP_USERNAME'] = secrets_json_str['SMTP_USERNAME']
+os.environ['SMTP_PASSWORD'] = secrets_json_str['SMTP_PASSWORD']
 
 class EmailManager:
     """Email manager for password reset functionality"""
