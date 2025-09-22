@@ -38,6 +38,17 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
             }
           }
         }
+
+      env {
+        name = "TRADVISOR_GMAIL_ACC_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.tradvisor_gmail_acc.id
+            version = "latest"
+          }
+        }
+      }
+
       # Resource limits
       resources {
         cpu_idle = true

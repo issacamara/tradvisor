@@ -49,6 +49,5 @@ jobs:
           gcloud run deploy tradvisor \
             --image $IMAGE_NAME \
             --platform managed \
-#            --set-secrets="TRADVISOR_GMAIL_ACC_SECRET=tradvisor_gmail_acc:latest" \
             --region ${{ secrets.GCP_REGION }} \
             --allow-unauthenticated
