@@ -23,6 +23,14 @@ resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
   depends_on = [google_service_account.tradvisor_sa]
 }
 
+resource "google_secret_manager_secret" "tradvisor_gmail_acc" {
+  secret_id = "tradvisor_gmail_acc"
+  replication {
+    auto {}
+  }
+  depends_on = [google_service_account.tradvisor_sa]
+}
+
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
   depends_on = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
   secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
