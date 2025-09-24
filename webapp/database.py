@@ -383,10 +383,11 @@ else:
             """Reset password using valid token"""
             try:
                 # Find user with valid token
+                utc_now = datetime.utcnow()
                 query = f"""
                 SELECT email
                 FROM `{self.project_id}.{self.dataset_id}.{self.table_id}` 
-                WHERE reset_token = @token AND reset_token_expires > @now
+                WHERE reset_token = @token AND reset_token_expires > @utc_now
                 LIMIT 1
                 """
 

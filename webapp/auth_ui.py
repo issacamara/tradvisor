@@ -203,6 +203,7 @@ class AuthUI:
                 return
 
             reset_token = self.db.create_reset_token(email)
+            # print("R=", reset_token)
             if reset_token:
                 if self.email.send_reset_email(email, reset_token):
                     st.success("Password reset email sent! Check your inbox.")

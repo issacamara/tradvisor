@@ -41,14 +41,14 @@ class EmailManager:
             <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
                 <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
                     <div style="text-align: center; margin-bottom: 40px;">
-                        <h1 style="color: #2E86AB; margin: 0; font-size: 28px;">ðŸ“ˆ Trading Dashboard</h1>
+                        <h1 style="color: #2E86AB; margin: 0; font-size: 28px;">Tradvisor</h1>
                         <p style="color: #666; margin-top: 10px;">Password Reset Request</p>
                     </div>
 
                     <h2 style="color: #333; margin-bottom: 20px;">Hello!</h2>
 
                     <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">
-                        You have requested a password reset for your Technical Trading Dashboard account.
+                        You have requested a password reset for your Tradvisor account.
                     </p>
 
                     <p style="color: #555; line-height: 1.6; margin-bottom: 30px;">
@@ -63,7 +63,7 @@ class EmailManager:
 
                     <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0;">
                         <p style="margin: 0; color: #856404;">
-                            â° <strong>Important:</strong> This link will expire in 1 hour for security reasons.
+                            <strong>Important:</strong> This link will expire in 1 hour for security reasons.
                         </p>
                     </div>
 
@@ -74,7 +74,7 @@ class EmailManager:
                     <div style="border-top: 1px solid #eee; margin-top: 40px; padding-top: 20px; text-align: center;">
                         <p style="color: #999; font-size: 14px; margin: 0;">
                             Best regards,<br>
-                            <strong>Technical Trading Dashboard Team</strong>
+                            <strong>Tradvisor Team</strong>
                         </p>
                     </div>
                 </div>
