@@ -203,9 +203,17 @@ class AuthUI:
                 return
 
             reset_token = self.db.create_reset_token(email)
-            # print("R=", reset_token)
+
             if reset_token:
-                if self.email.send_reset_email(email, reset_token):
+                base_url = st.context.headers.get("host")
+                if base_url:
+                    # Add the protocol (Cloud Run uses HTTPS)
+                    base_url = f"https://{base_url}"
+                else:
+                    # Fallback for local development
+                    base_url = "http://localhost:8501"
+
+                if self.email.send_reset_email(email, reset_token, base_url):
                     st.success("Password reset email sent! Check your inbox.")
                 else:
                     st.error("Failed to send reset email. Please try again later.")

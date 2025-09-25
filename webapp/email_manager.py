@@ -34,7 +34,7 @@ class EmailManager:
 
             reset_url = f"{base_url}/?reset_token={reset_token}"
 
-            subject = "Password Reset - Technical Trading Dashboard"
+            subject = "Password Reset - Tradvisor"
 
             html_body = f"""
             <html>
@@ -57,7 +57,7 @@ class EmailManager:
 
                     <div style="text-align: center; margin: 30px 0;">
                         <a href="{reset_url}" style="background-color: #4CAF50; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-                            ðŸ”„ Reset Password
+                            Reset Password
                         </a>
                     </div>
 
