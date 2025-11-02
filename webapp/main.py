@@ -145,6 +145,61 @@ def top10_weekly_performers(df):
     return result.reset_index(drop=True)
 
 
+# Cache data for 1 day (86400 seconds)
+@st.cache_data(ttl=86400)
+def bottom10_weekly_performers(df):
+    # Convert dates once and find date range
+    dates = pd.to_datetime(df['DATE'].values)
+    latest_date = dates.max()
+    week_ago = latest_date - pd.Timedelta(days=7)
+
+    # Filter for weekly data using boolean indexing
+    weekly_mask = dates >= week_ago
+    weekly_data = df[weekly_mask].copy()
+    weekly_data['DATE'] = dates[weekly_mask]
+
+    # Sort by SYMBOL and DATE for efficient groupby operations
+    weekly_data = weekly_data.sort_values(['SYMBOL', 'DATE'])
+
+    # Use groupby with agg for vectorized operations
+    weekly_stats = weekly_data.groupby('SYMBOL').agg({
+        'CLOSE': ['first', 'last'],
+        'NAME': 'last',
+        'VOLUME': 'last'
+    })
+
+    # Flatten column names
+    weekly_stats.columns = ['START_PRICE', 'PRICE', 'NAME', 'LATEST_VOLUME']
+    weekly_stats = weekly_stats.reset_index()
+
+    # Vectorized calculation of weekly returns
+    with np.errstate(divide='ignore', invalid='ignore'):  # Handle potential division by zero
+        weekly_returns = ((weekly_stats['PRICE'] - weekly_stats['START_PRICE']) /
+                          weekly_stats['START_PRICE'])
+
+    weekly_stats['GROWTH'] = weekly_returns
+
+    # Remove invalid returns (inf, -inf, nan)
+    weekly_stats = weekly_stats[np.isfinite(weekly_stats['GROWTH'])]
+
+    if weekly_stats.empty:
+        return pd.DataFrame(
+            columns=['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME'])
+
+    # Use numpy argsort for faster top-k selection
+    returns = weekly_stats['GROWTH'].values
+    if len(returns) <= 10:
+        bottom_10_indices = np.argsort(-returns)
+    else:
+        bottom_10_indices = np.argpartition(returns, 10)[:10]
+        bottom_10_indices = bottom_10_indices[np.argsort(returns[bottom_10_indices])]
+
+    result = weekly_stats.iloc[bottom_10_indices][
+        ['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME']].copy()
+
+    return result.reset_index(drop=True)
+
+
 def apply_custom_css():
     """Apply custom CSS styling"""
     st.markdown("""
@@ -301,7 +356,7 @@ def show_main_dashboard(components, user):
 
         # Components - Performance Tables
         st.markdown("---")
-        col_table1, col_table2 = st.columns(2)
+        col_table1, col_table2, col_table3 = st.columns(3)
         with col_table1:
             # st.markdown("### :green[Top 10 Profitable Stocks]")
             st.markdown("<h4 style='text-align: center; color: green;'>Top 10 Profitable Stocks</h4>",
@@ -333,6 +388,19 @@ def show_main_dashboard(components, user):
                 hide_index=True
             )
 
+        with col_table3:
+            st.markdown("<h4 style='text-align: center; color: green;'>Bottom 10 Weekly Performers</h4>",
+                        unsafe_allow_html=True)
+
+            # Apply percentage formatting using pandas styling
+            bottom_weekly = bottom10_weekly_performers(shares).style.format({'GROWTH': '{:.2%}', 'PRICE': '{:.0f}',
+                                                                       'LATEST_VOLUME': '{:.0f}'})
+
+            st.dataframe(
+                bottom_weekly,
+                use_container_width=True,
+                hide_index=True
+            )
         # main_container.dataframe(top_roi)
         # main_container.dataframe(top_weekly)
 
