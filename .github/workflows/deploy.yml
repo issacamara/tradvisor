@@ -16,6 +16,10 @@ on:
           - dev
           - prod
 
+# Prevent workflow from running on forks
+permissions:
+  contents: read
+
 jobs:
   # ============================================
   # Job 0: Determine environment
@@ -32,7 +36,6 @@ jobs:
       artifact_registry: ${{ steps.set-env.outputs.artifact_registry }}
       image_name: ${{ steps.set-env.outputs.image_name }}
       image_tag: ${{ steps.set-env.outputs.image_tag }}
-      auth_disabled: ${{ steps.set-env.outputs.auth_disabled }}
     
     steps:
       - name: Determine environment
@@ -44,14 +47,12 @@ jobs:
             echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
             echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
             echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
-            echo "auth_disabled=false" >> $GITHUB_OUTPUT
             echo "::notice::Using PROD environment"
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
             echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
             echo "workload_identity_provider=${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
             echo "service_account=${{ secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
-            echo "auth_disabled=true" >> $GITHUB_OUTPUT
             echo "::notice::Using DEV environment"
           fi
           
@@ -88,14 +89,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Authenticate to Google Cloud
-        if: needs.setup.outputs.auth_disabled != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
           service_account: ${{ needs.setup.outputs.service_account }}
 
       - name: Authenticate to Artifact Registry
-        if: needs.setup.outputs.auth_disabled != 'true'
         run: |
           gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
 
@@ -104,7 +103,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ needs.setup.outputs.auth_disabled != 'true' }}
+          push: true
           tags: |
             ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}
             ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:latest
@@ -138,7 +137,6 @@ jobs:
           terraform_version: "1.6.0"
 
       - name: Authenticate to Google Cloud
-        if: needs.setup.outputs.auth_disabled != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
@@ -159,7 +157,6 @@ jobs:
             -var="docker_image=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
-            -var="auth_disabled=${{ needs.setup.outputs.auth_disabled }}" \
             -var="environment=${{ needs.setup.outputs.environment }}" \
             -out=tfplan
 
