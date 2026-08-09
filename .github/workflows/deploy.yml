@@ -16,25 +16,61 @@ on:
           - dev
           - prod
 
-# Set environment variables based on branch or input
-env:
-  ENVIRONMENT: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/production' && 'prod' || 'dev') }}
-  # Environment-specific configuration
-  PROJECT_ID: ${{ env.ENVIRONMENT == 'prod' && secrets.PROD_GCP_PROJECT_ID || secrets.DEV_GCP_PROJECT_ID }}
-  WORKLOAD_IDENTITY_PROVIDER: ${{ env.ENVIRONMENT == 'prod' && secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
-  SERVICE_ACCOUNT: ${{ env.ENVIRONMENT == 'prod' && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
-  REGION: ${{ secrets.GCP_REGION }}
-  ARTIFACT_REGISTRY: tradvisor
-  IMAGE_NAME: tradvisor
-  IMAGE_TAG: ${{ github.sha }}
-
 jobs:
+  # ============================================
+  # Job 0: Determine environment
+  # ============================================
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      project_id: ${{ steps.set-env.outputs.project_id }}
+      workload_identity_provider: ${{ steps.set-env.outputs.workload_identity_provider }}
+      service_account: ${{ steps.set-env.outputs.service_account }}
+      region: ${{ steps.set-env.outputs.region }}
+      artifact_registry: ${{ steps.set-env.outputs.artifact_registry }}
+      image_name: ${{ steps.set-env.outputs.image_name }}
+      image_tag: ${{ steps.set-env.outputs.image_tag }}
+      auth_disabled: ${{ steps.set-env.outputs.auth_disabled }}
+    
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          # Determine environment from branch or input
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
+            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
+            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
+            echo "auth_disabled=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/production" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
+            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
+            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
+            echo "auth_disabled=false" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
+            echo "workload_identity_provider=${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
+            echo "service_account=${{ secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
+            echo "auth_disabled=true" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "region=${{ secrets.GCP_REGION }}" >> $GITHUB_OUTPUT
+          echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
+          echo "image_name=tradvisor" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
   # ============================================
   # Job 1: Build and push Docker image to GAR
   # ============================================
   build:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    needs: setup
 
     outputs:
       image-url: ${{ steps.build.outputs.image-url }}
@@ -49,12 +85,12 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
+          service_account: ${{ needs.setup.outputs.service_account }}
 
       - name: Authenticate to Artifact Registry
         run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
 
       - name: Build and push Docker image
         id: build
@@ -63,17 +99,16 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.ENVIRONMENT }}
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:latest
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.environment }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
       - name: Output image URL
-        id: output
         run: |
-          echo "image-url=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
+          echo "image-url=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT
 
   # ============================================
   # Job 2: Run Terraform to create infrastructure
@@ -81,7 +116,7 @@ jobs:
   terraform:
     name: Terraform Infrastructure
     runs-on: ubuntu-latest
-    needs: build
+    needs: [setup, build]
     
     outputs:
       service_url: ${{ steps.apply.outputs.service_url }}
@@ -98,8 +133,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
+          service_account: ${{ needs.setup.outputs.service_account }}
 
       - name: Terraform Init
         working-directory: ./terraform
@@ -110,18 +145,15 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan \
-            -var="project_id=${{ env.PROJECT_ID }}" \
-            -var="region=${{ env.REGION }}" \
-            -var="service_name=tradvisor-${{ env.ENVIRONMENT }}" \
-            -var="docker_image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
+            -var="project_id=${{ needs.setup.outputs.project_id }}" \
+            -var="region=${{ needs.setup.outputs.region }}" \
+            -var="service_name=tradvisor-${{ needs.setup.outputs.environment }}" \
+            -var="docker_image=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
-            -var="auth_disabled=${{ env.ENVIRONMENT == 'prod' && 'false' || 'true' }}" \
-            -var="environment=${{ env.ENVIRONMENT }}" \
+            -var="auth_disabled=${{ needs.setup.outputs.auth_disabled }}" \
+            -var="environment=${{ needs.setup.outputs.environment }}" \
             -out=tfplan
-        env:
-          TF_VAR_project_id: ${{ env.PROJECT_ID }}
-          TF_VAR_region: ${{ env.REGION }}
 
       - name: Terraform Apply
         id: apply
@@ -160,10 +192,3 @@ jobs:
             echo "⚠️ Service returned status: $response"
             # Don't fail the workflow, just warn
           fi
-
-      - name: Get Cloud Run service details
-        run: |
-          gcloud run services describe tradvisor-${{ env.ENVIRONMENT }} \
-            --project=${{ env.PROJECT_ID }} \
-            --region=${{ env.REGION }} \
-            --format="table(status.url,status.conditions.type,status.conditions.status)"
