@@ -20,6 +20,17 @@ resource "google_bigquery_dataset" "stocks" {
 }
 
 # =====================================================
+# Artifact Registry Repository
+# =====================================================
+resource "google_artifact_registry_repository" "tradvisor" {
+  location      = var.region
+  repository_id = "tradvisor"
+  description   = "Docker images for TRADVISOR application"
+  format        = "DOCKER"
+  depends_on    = [google_project_service.apis]
+}
+
+# =====================================================
 # Table: financials
 # Annual financial statements from RichBourse
 # =====================================================

@@ -20,7 +20,7 @@ variable "apis" {
   type        = list(string)
   default = ["cloudresourcemanager.googleapis.com", "run.googleapis.com", "cloudfunctions.googleapis.com", "cloudbuild.googleapis.com",
               "bigquery.googleapis.com", "workflows.googleapis.com", "cloudscheduler.googleapis.com",
-              "run.googleapis.com", "iam.googleapis.com","secretmanager.googleapis.com"]
+              "run.googleapis.com", "iam.googleapis.com","secretmanager.googleapis.com", "artifactregistry.googleapis.com"]
 }
 
 variable "jobs" {
