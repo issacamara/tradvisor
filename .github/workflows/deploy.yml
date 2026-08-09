@@ -45,12 +45,14 @@ jobs:
             echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
             echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
             echo "auth_disabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::Using PROD environment"
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
             echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
             echo "workload_identity_provider=${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
             echo "service_account=${{ secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
             echo "auth_disabled=true" >> $GITHUB_OUTPUT
+            echo "::notice::Using DEV environment"
           fi
           
           # These outputs are always set
@@ -58,6 +60,14 @@ jobs:
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Debug outputs
+        run: |
+          echo "Environment: ${{ steps.set-env.outputs.environment }}"
+          echo "Project ID: ${{ steps.set-env.outputs.project_id }}"
+          echo "Workload Identity Provider: ${{ steps.set-env.outputs.workload_identity_provider }}"
+          echo "Service Account: ${{ steps.set-env.outputs.service_account }}"
+          echo "Region: ${{ steps.set-env.outputs.region }}"
 
   # ============================================
   # Job 1: Build and push Docker image to GAR
