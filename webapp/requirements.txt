@@ -6,7 +6,6 @@ cachetools==5.5.0
 certifi==2024.8.30
 charset-normalizer==3.3.2
 click==8.1.7
-duckdb==1.1.0
 db-dtypes
 frozendict==2.4.6
 gitdb==4.0.11

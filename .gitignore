@@ -1,2 +1,18 @@
 /.venv/
 /.idea/
+
+# Terraform
+terraform/*.tfvars
+terraform/.terraform/
+.continue/prompts/new-prompt.md
+scripts/__pycache__/helper.cpython-312.pyc
+terraform/.terraform.lock.hcl
+terraform/scrape_bonds.zip
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/tfplan
+.vscode/extensions.json
+SUMMARY.md
+IMPLEMENTATION_PLAN.md
+brvm_minimal_schema_and_checklist.md
+webapp/__pycache__/main.cpython-312.pyc

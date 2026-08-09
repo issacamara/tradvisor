@@ -2,6 +2,7 @@ import os, io
 import shutil
 from fileinput import filename
 import duckdb
+import re
 
 from google.cloud import bigquery
 import pandas as pd
@@ -13,6 +14,82 @@ from datetime import datetime
 
 from google.cloud import storage
 from google.auth import default
+from curl_cffi import requests as curl_requests
+
+
+def get_symbols_from_richbourse(url):
+    """Fetch all available symbols from RichBourse dropdown.
+    
+    Parameters:
+    - url: The RichBourse page URL with the symbol dropdown (e.g., ratings or financials page)
+    
+    Returns:
+    - List of symbol strings
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+    
+    session = curl_requests.Session()
+    response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
+    
+    if response.status_code != 200:
+        raise ValueError(f"Failed to fetch page: {response.status_code}")
+    
+    soup = BeautifulSoup(response.content, 'html.parser')
+    select = soup.find('select', {'id': 'symbole'})
+    
+    if not select:
+        raise ValueError("Could not find symbol dropdown")
+    
+    symbols = []
+    for option in select.find_all('option'):
+        value = option.get('value', '').strip()
+        if value:
+            symbols.append(value)
+    
+    return symbols
+
+
+def table_exists(table_name='ratings'):
+    """Check if the BigQuery table exists.
+    
+    Parameters:
+    - table_name: Name of the table to check (default: 'ratings')
+    
+    Returns:
+    - True if table exists, False otherwise
+    """
+    from google.cloud import bigquery
+    from google.auth import default
+    
+    credentials, project_id = default()
+    client = bigquery.Client(credentials=credentials, project=project_id)
+    
+    try:
+        dataset_ref = client.dataset('stocks')
+        table_ref = dataset_ref.table(table_name)
+        client.get_table(table_ref)
+        return True
+    except Exception:
+        return False
+
+
+def parse_french_date(date_text):
+    """Parse French date like 'Juillet 2025' to just the year.
+    
+    Parameters:
+    - date_text: French date string (e.g., "Juillet 2025", "Décembre 2024")
+    
+    Returns:
+    - Integer year or None if not found
+    """
+    year_match = re.search(r'(\d{4})', date_text)
+    if year_match:
+        return int(year_match.group(1))
+    return None
 
 def get_project_number(project_id):
     client = resourcemanager_v3.ProjectsClient()
@@ -138,6 +215,65 @@ def insert_into_bigquery(df, project_id, dataset, table):
     table_id = f"{project_id}.{dataset}.{table}"
     job = client.load_table_from_dataframe(df, table_id)
     job.result()  # Wait for the job to complete
+
+# Define a function to upsert data into BigQuery (INSERT OR UPDATE)
+def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
+    """Upsert data into BigQuery using MERGE statement.
+    
+    Parameters:
+    - df: DataFrame with data to upsert
+    - project_id: GCP project ID
+    - dataset: BigQuery dataset name
+    - table: BigQuery table name
+    - primary_keys: List of column names that form the primary key (e.g., ['symbol', 'rating_year'])
+    """
+    client = bigquery.Client(project=project_id)
+    table_id = f"{project_id}.{dataset}.{table}"
+    
+    # Create a temporary table
+    temp_table_id = f"{table_id}_temp"
+    job = client.load_table_from_dataframe(df, temp_table_id)
+    job.result()
+    
+    # Build the MERGE statement with proper type casting for date columns
+    primary_key_conditions = ' AND '.join([f"target.{pk} = source.{pk}" for pk in primary_keys])
+    update_columns = [col for col in df.columns if col not in primary_keys]
+    
+    # For columns that might be dates, cast them properly
+    def get_cast_expression(col):
+        col_lower = col.lower()
+        
+        # Check if column is a datetime (using more specific suffixes/names instead of a broad 'at' check)
+        if col_lower.endswith('_at') or 'time' in col_lower:
+            # collected_at is in format 'YYYY-MM-DD HH:MM:SS' - use PARSE_TIMESTAMP
+            return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
+        # Check if column is a date (announcement_date)
+        elif 'date' in col_lower:
+            return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
+        return f"source.{col}"
+
+    
+    update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
+    
+    # For INSERT, also cast date columns
+    insert_values = ', '.join([get_cast_expression(col) for col in df.columns])
+    
+    merge_query = f"""
+    MERGE `{table_id}` target
+    USING `{temp_table_id}` source
+    ON {primary_key_conditions}
+    WHEN MATCHED THEN
+      UPDATE SET {update_set}
+    WHEN NOT MATCHED THEN
+      INSERT ({', '.join(df.columns)})
+      VALUES ({insert_values})
+    """
+    
+    # Execute the merge
+    client.query(merge_query).result()
+    
+    # Delete the temporary table
+    client.delete_table(temp_table_id, not_found_ok=True)
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):

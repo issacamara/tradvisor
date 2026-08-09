@@ -11,9 +11,19 @@ from email.mime.multipart import MIMEMultipart
 import os, json
 import streamlit as st
 
-secrets_json_str = json.loads(os.getenv('TRADVISOR_GMAIL_ACC_SECRET'))
-os.environ['SMTP_USERNAME'] = secrets_json_str['SMTP_USERNAME']
-os.environ['SMTP_PASSWORD'] = secrets_json_str['SMTP_PASSWORD']
+# Handle missing or invalid secret
+secrets_str = os.getenv('TRADVISOR_GMAIL_ACC_SECRET')
+if secrets_str:
+    try:
+        secrets_json_str = json.loads(secrets_str)
+        os.environ['SMTP_USERNAME'] = secrets_json_str.get('SMTP_USERNAME', '')
+        os.environ['SMTP_PASSWORD'] = secrets_json_str.get('SMTP_PASSWORD', '')
+    except json.JSONDecodeError:
+        os.environ['SMTP_USERNAME'] = ''
+        os.environ['SMTP_PASSWORD'] = ''
+else:
+    os.environ['SMTP_USERNAME'] = ''
+    os.environ['SMTP_PASSWORD'] = ''
 
 class EmailManager:
     """Email manager for password reset functionality"""
@@ -25,8 +35,19 @@ class EmailManager:
         self.smtp_password = os.getenv("SMTP_PASSWORD")
         self.from_email = os.getenv("FROM_EMAIL", self.smtp_username)
 
-    def send_reset_email(self, to_email: str, reset_token: str, base_url: str = "http://localhost:8501") -> bool:
+    def send_reset_email(self, to_email: str, reset_token: str, base_url: str = None) -> bool:
         """Send password reset email"""
+        # Use environment-specific base URL if not provided
+        if base_url is None:
+            base_url = os.environ.get('BASE_URL', '')
+            if not base_url:
+                # Fallback: construct from PROJECT_ID environment variable
+                project_id = os.environ.get('PROJECT_ID', '')
+                if project_id:
+                    base_url = f"https://tradvisor-{project_id}.europe-central2.run.app"
+                else:
+                    base_url = "https://tradvisor-prod.europe-central2.run.app"
+        
         try:
             if not self.smtp_username or not self.smtp_password:
                 st.error("Email service not configured. Please contact administrator.")

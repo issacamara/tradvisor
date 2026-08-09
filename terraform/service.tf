@@ -9,7 +9,11 @@ variable "service_name" {
 resource "google_cloud_run_v2_service" "tradvisor_service" {
   name     = var.service_name
   location = var.region
-  depends_on = [google_project_service.apis, google_secret_manager_secret.tradvisor_sa_key_secret]
+  depends_on = [
+    google_project_service.apis,
+    google_secret_manager_secret.tradvisor_gmail_acc,
+    google_secret_manager_secret_version.gmail_acc_secret_version
+  ]
   client   = "terraform"
   deletion_protection=false
   template {
@@ -29,15 +33,24 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
         name  = "PROJECT_ID"
         value = var.project_id
       }
+
       env {
-          name = "GOOGLE_APPLICATION_CREDENTIALS_JSON"
-          value_source {
-            secret_key_ref {
-              secret = google_secret_manager_secret.tradvisor_sa_key_secret.id
-              version  = "latest"
-            }
-          }
-        }
+        name  = "AUTH_DISABLED"
+        value = var.auth_disabled
+      }
+
+      env {
+        name  = "ENVIRONMENT"
+        value = var.environment
+      }
+
+      env {
+        name  = "BASE_URL"
+        value = google_cloud_run_v2_service.tradvisor_service.status[0].url
+      }
+
+      # Note: GOOGLE_APPLICATION_CREDENTIALS is not needed in Cloud Run
+      # The service account attached to the container is used automatically
 
       env {
         name = "TRADVISOR_GMAIL_ACC_SECRET"

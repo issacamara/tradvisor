@@ -31,10 +31,32 @@ resource "google_secret_manager_secret" "tradvisor_gmail_acc" {
   depends_on = [google_service_account.tradvisor_sa]
 }
 
+resource "google_secret_manager_secret" "openrouter_api_key" {
+  secret_id = "openrouter_api_key"
+  replication {
+    auto {}
+  }
+  depends_on = [google_service_account.tradvisor_sa]
+}
+
+# Placeholder secret version for OpenRouter API key (needs actual key)
+resource "google_secret_manager_secret_version" "openrouter_api_key_version" {
+  depends_on = [google_secret_manager_secret.openrouter_api_key]
+  secret      = google_secret_manager_secret.openrouter_api_key.name
+  secret_data = var.openrouter_api_key  # Set this in terraform.tfvars
+}
+
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
   depends_on = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
   secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
   secret_data = base64decode(google_service_account_key.tradvisor_sa_key.private_key)
+}
+
+# Placeholder secret version for gmail account (needs actual credentials)
+resource "google_secret_manager_secret_version" "gmail_acc_secret_version" {
+  depends_on = [google_secret_manager_secret.tradvisor_gmail_acc]
+  secret      = google_secret_manager_secret.tradvisor_gmail_acc.name
+  secret_data = jsonencode(var.tradvisor_gmail_acc)
 }
 
 # resource "null_resource" "sa_key_file" {
@@ -66,7 +88,8 @@ resource "google_project_iam_binding" "build_sa_roles" {
   role       = "roles/cloudbuild.builds.builder"
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
-    "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com",
+    "serviceAccount:${data.google_project.project.number}@cloudbuild.gserviceaccount.com"
   ]
 }
 
@@ -138,8 +161,33 @@ resource "google_project_iam_binding" "sms_accessor" {
   depends_on = [google_service_account.brvm_dashboard_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+#   "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+}
+
+# Grant secret accessor at secret level for SA key
+resource "google_secret_manager_secret_iam_binding" "sa_key_secret_accessor" {
+  project  = var.project_id
+  secret_id = "tradvisor_sa_key"
+  role     = "roles/secretmanager.secretAccessor"
+  members  = ["serviceAccount:${google_service_account.tradvisor_sa.email}"]
+}
+
+# Grant secret accessor at secret level for gmail account
+resource "google_secret_manager_secret_iam_binding" "gmail_secret_accessor" {
+  project  = var.project_id
+  secret_id = "tradvisor_gmail_acc"
+  role     = "roles/secretmanager.secretAccessor"
+  members  = ["serviceAccount:${google_service_account.tradvisor_sa.email}"]
+}
+
+# Grant secret accessor for OpenRouter API key
+resource "google_secret_manager_secret_iam_binding" "openrouter_api_key_accessor" {
+  project    = var.project_id
+  secret_id  = "openrouter_api_key"
+  role       = "roles/secretmanager.secretAccessor"
+  members    = ["serviceAccount:${google_service_account.tradvisor_sa.email}"]
+  depends_on = [google_secret_manager_secret.openrouter_api_key, google_secret_manager_secret_version.openrouter_api_key_version]
 }
 
 

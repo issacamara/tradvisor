@@ -5,6 +5,7 @@ Authentication UI Components for Trading Dashboard
 Handles login, registration, and password reset interfaces
 """
 
+import os
 import streamlit as st
 import time
 from typing import Dict
@@ -210,8 +211,13 @@ class AuthUI:
                     # Add the protocol (Cloud Run uses HTTPS)
                     base_url = f"https://{base_url}"
                 else:
-                    # Fallback for local development
-                    base_url = "http://localhost:8501"
+                    # Fallback: construct from PROJECT_ID environment variable
+                    import os
+                    project_id = os.environ.get('PROJECT_ID', '')
+                    if project_id:
+                        base_url = f"https://tradvisor-{project_id}.europe-central2.run.app"
+                    else:
+                        base_url = "https://tradvisor-prod.europe-central2.run.app"
 
                 if self.email.send_reset_email(email, reset_token, base_url):
                     st.success("Password reset email sent! Check your inbox.")

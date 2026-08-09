@@ -1,64 +1,77 @@
-import requests
 import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
-from datetime import datetime
+from curl_cffi import requests
 from bs4 import BeautifulSoup
+from datetime import datetime
 import functions_framework
 import os
 
-def scrape_brvm_capitalizations(url):
+def scrape(url):
     params = {
         "hl": "en"  # language
     }
-
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     }
-
-    page = requests.get(url=url, params=params, headers=headers,
-                        timeout=30, verify=False)
+    session = requests.Session()
+    page = session.get(url=url, params=params, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
     soup = BeautifulSoup(page.content, 'html.parser')
     # Find the table in the HTML (assuming there's only one table)
     table = soup.find('table', {"class": "table table-hover table-striped sticky-enabled"})
     # Extract the headers from the table
     # Extract the header
-    headers = []
-    header_row = table.find('thead').find_all('th')
-    for th in header_row:
-        headers.append(th.get_text().strip().replace(' ', "_").upper())
-
-
+    headers = ["SYMBOL","NAME","PRICE","INTEREST_RATE","ISSUE_DATE","MATURITY_DATE"]
+    # header_row = table.find('thead').find_all('th')
+    # for th in header_row:
+    #     headers.append(th.get_text().strip().replace(' ', "_").upper())
     # Extract the rows from the table
     rows = []
     for tr in table.find('tbody').find_all('tr'):
         cells = tr.find_all(['td', 'th'])
-        row = [cell.text.strip() for cell in cells]
-        rows.append(row)
+        t_row = [cell.text.strip() for cell in cells]
+        try:
+            tmp_list = str(t_row[1]).split(" ")
+            name = ' '.join(tmp_list[:-2])
+            interest_rate = float(tmp_list[-2].replace(',', '.').strip('%'))/100
+            maturity_date = "31/12/"+tmp_list[-1].split("-")[1]
+            price = t_row[4]
+            symbol = t_row[0]
+            issue_date = t_row[2]
+            row = [symbol]+[name]+[price]+[interest_rate]+[issue_date]+[maturity_date]
+            rows.append(row)
+        except:
+            print("Issue with row:", t_row)
+            continue
+    return headers, rows
+
+
+def scrape_brvm_bonds(url):
+    headers, rows = scrape(url)
 
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
-    df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
-    df['NUMBER_OF_SHARES'] = df['NUMBER_OF_SHARES'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['DAILY_PRICE'] = df['DAILY_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['FLOATING_CAPITALIZATION'] = df['FLOATING_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['GLOBAL_CAPITALIZATION'] = df['GLOBAL_CAPITALIZATION'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['GLOBAL_CAPITALIZATION_(%)'] = df['GLOBAL_CAPITALIZATION_(%)'].str.replace(' ', '').str.replace(',', '.').astype(float)
+    # df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
+    # Convert dates to string format for BigQuery compatibility (YYYY-MM-DD)
+    df['MATURITY_DATE'] = pd.to_datetime(df['MATURITY_DATE']).dt.strftime('%Y-%m-%d')
+    df['ISSUE_DATE'] = pd.to_datetime(df['ISSUE_DATE']).dt.strftime('%Y-%m-%d')
+    df['PRICE'] = df['PRICE'].str.replace(' ', '').astype(float)
+    # df['INTEREST'] = df['INTEREST'].str.replace(' ', '').str.replace(',','.').astype(float)
     df['DATE'] = datetime.now().strftime('%Y-%m-%d')
+
     # Display the DataFrame
     return df
-
-# Load configuration from YAML file
 
 @functions_framework.http
 def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
-    df = scrape_brvm_capitalizations(config['url']['capitalizations'])
-    return save_dataframe_as_csv(df, 'CAPITALIZATIONS', config)
+    df = scrape_brvm_bonds(config['url']['bonds'])
+    return save_dataframe_as_csv(df, 'BONDS', config)
 
-env = 'gcp'
-if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-    pass
-else:
+
+
+
+
+if __name__ == "__main__":
     print(entry_point())
