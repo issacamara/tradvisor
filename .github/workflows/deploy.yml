@@ -189,7 +189,10 @@ jobs:
       - name: Terraform Init
         working-directory: ./terraform
         run: |
-          terraform init -upgrade
+          terraform init \
+          -backend-config="bucket=${{ needs.setup.outputs.project_id }}-tfstate" \
+          -backend-config="prefix=state/${{ needs.setup.outputs.environment }}" \
+          -upgrade
 
       - name: Terraform Plan
         working-directory: ./terraform
