@@ -39,13 +39,7 @@ jobs:
         id: set-env
         run: |
           # Determine environment from branch or input
-          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-            echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
-            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
-            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
-            echo "auth_disabled=false" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/production" ]; then
+          if [ "${{ github.event.inputs.environment }}" == "prod" ] || [ "${{ github.ref }}" == "refs/heads/production" ]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
             echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
             echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
@@ -59,6 +53,7 @@ jobs:
             echo "auth_disabled=true" >> $GITHUB_OUTPUT
           fi
           
+          # These outputs are always set
           echo "region=${{ secrets.GCP_REGION }}" >> $GITHUB_OUTPUT
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
