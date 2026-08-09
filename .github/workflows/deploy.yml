@@ -88,12 +88,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Authenticate to Google Cloud
+        if: needs.setup.outputs.auth_disabled != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
           service_account: ${{ needs.setup.outputs.service_account }}
 
       - name: Authenticate to Artifact Registry
+        if: needs.setup.outputs.auth_disabled != 'true'
         run: |
           gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
 
@@ -102,7 +104,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ needs.setup.outputs.auth_disabled != 'true' }}
           tags: |
             ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}
             ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:latest
@@ -136,6 +138,7 @@ jobs:
           terraform_version: "1.6.0"
 
       - name: Authenticate to Google Cloud
+        if: needs.setup.outputs.auth_disabled != 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
