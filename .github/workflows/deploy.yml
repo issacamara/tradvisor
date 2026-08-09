@@ -125,7 +125,7 @@ jobs:
             gcloud artifacts repositories create tradvisor \
               --location=europe-central2 \
               --description="Docker images for TRADVISOR application" \
-              --format="docker"
+              --repository-format="DOCKER"
           fi
 
       - name: Build and push Docker image
