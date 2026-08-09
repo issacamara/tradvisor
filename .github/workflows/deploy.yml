@@ -16,12 +16,10 @@ on:
           - dev
           - prod
 
-# Prevent workflow from running on forks
 # Required permissions for Workload Identity Federation
 permissions:
   contents: read
   id-token: write  # Required for WIF to request OIDC tokens
-  pull-request: read
 
 jobs:
   # ============================================
