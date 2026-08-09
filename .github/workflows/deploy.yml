@@ -46,13 +46,11 @@ jobs:
           # Determine environment from branch or input
           if [ "${{ github.event.inputs.environment }}" == "prod" ] || [ "${{ github.ref }}" == "refs/heads/production" ]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
-            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
-            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
+            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
+            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
             echo "::notice::Using PROD environment"
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID }}" >> $GITHUB_OUTPUT
             echo "workload_identity_provider=${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
             echo "service_account=${{ secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
             echo "::notice::Using DEV environment"
@@ -60,6 +58,16 @@ jobs:
           
           # These outputs are always set (with fallback)
           echo "region=${{ secrets.GCP_REGION || 'europe-central2' }}" >> $GITHUB_OUTPUT
+          echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
+          echo "image_name=tradvisor" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          
+          # Fallback for project_id (critical for docker tags)
+          if [ "${{ github.event.inputs.environment }}" == "prod" ] || [ "${{ github.ref }}" == "refs/heads/production" ]; then
+            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID || 'prod-tradvisor' }}" >> $GITHUB_OUTPUT
+          else
+            echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID || 'dev-tradvisor' }}" >> $GITHUB_OUTPUT
+          fi
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
