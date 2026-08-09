@@ -27,6 +27,7 @@ jobs:
   setup:
     name: Setup Environment
     runs-on: ubuntu-latest
+    if: github.repository == 'issacamara/tradvisor'
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
       project_id: ${{ steps.set-env.outputs.project_id }}
