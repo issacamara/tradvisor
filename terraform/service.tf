@@ -46,7 +46,7 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
 
       env {
         name  = "BASE_URL"
-        value = google_cloud_run_v2_service.tradvisor_service.status[0].url
+        value = "https://${var.service_name}-${var.project_id}.${var.region}.run.app"
       }
 
       # Note: GOOGLE_APPLICATION_CREDENTIALS is not needed in Cloud Run
