@@ -190,7 +190,7 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform init \
-          -backend-config="bucket=${{ needs.setup.outputs.project_id }}-tfstate" \
+          -backend-config="bucket=${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_GCP_PROJECT_ID || secrets.DEV_GCP_PROJECT_ID }}-tfstate" \
           -backend-config="prefix=state/${{ needs.setup.outputs.environment }}" \
           -upgrade
 
