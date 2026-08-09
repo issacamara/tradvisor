@@ -121,8 +121,8 @@ jobs:
 
       - name: Create Artifact Registry repository if not exists
         run: |
-          if ! gcloud artifact-registry repositories describe tradvisor --location=europe-central2 --quiet 2>/dev/null; then
-            gcloud artifact-registry repositories create tradvisor \
+          if ! gcloud artifacts repositories describe tradvisor --location=europe-central2 --quiet 2>/dev/null; then
+            gcloud artifacts repositories create tradvisor \
               --location=europe-central2 \
               --description="Docker images for TRADVISOR application" \
               --format="docker"
