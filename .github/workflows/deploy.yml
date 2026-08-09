@@ -98,11 +98,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Debug - Show WIF Provider
+      - name: Debug - Show all outputs
         run: |
+          echo "environment: '${{ needs.setup.outputs.environment }}'"
+          echo "project_id: '${{ needs.setup.outputs.project_id }}'"
+          echo "region: '${{ needs.setup.outputs.region }}'"
+          echo "artifact_registry: '${{ needs.setup.outputs.artifact_registry }}'"
+          echo "image_name: '${{ needs.setup.outputs.image_name }}'"
+          echo "image_tag: '${{ needs.setup.outputs.image_tag }}'"
           echo "workload_identity_provider: '${{ needs.setup.outputs.workload_identity_provider }}'"
           echo "service_account: '${{ needs.setup.outputs.service_account }}'"
-          echo "project_id: '${{ needs.setup.outputs.project_id }}'"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -112,11 +117,7 @@ jobs:
 
       - name: Authenticate to Artifact Registry
         run: |
-          REGION="${{ needs.setup.outputs.region }}"
-          if [ -z "$REGION" ]; then
-            REGION="europe-central2"
-          fi
-          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
 
       - name: Build and push Docker image
         id: build
@@ -125,16 +126,16 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:latest
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.environment }}
+            europe-central2-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}
+            europe-central2-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:latest
+            europe-central2-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.environment || 'prod' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
       - name: Output image URL
         run: |
-          echo "image-url=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT
+          echo "image-url=europe-central2-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" >> $GITHUB_OUTPUT
 
   # ============================================
   # Job 2: Run Terraform to create infrastructure
@@ -177,13 +178,13 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan \
-            -var="project_id=${{ needs.setup.outputs.project_id }}" \
-            -var="region=${{ needs.setup.outputs.region }}" \
-            -var="service_name=tradvisor-${{ needs.setup.outputs.environment }}" \
-            -var="docker_image=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/${{ needs.setup.outputs.artifact_registry }}/${{ needs.setup.outputs.image_name }}:${{ needs.setup.outputs.image_tag }}" \
+            -var="project_id=${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}" \
+            -var="region=${{ needs.setup.outputs.region || 'europe-central2' }}" \
+            -var="service_name=tradvisor-${{ needs.setup.outputs.environment || 'prod' }}" \
+            -var="docker_image=europe-central2-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
-            -var="environment=${{ needs.setup.outputs.environment }}" \
+            -var="environment=${{ needs.setup.outputs.environment || 'prod' }}" \
             -out=tfplan
 
       - name: Terraform Apply
