@@ -58,8 +58,8 @@ jobs:
             echo "::notice::Using DEV environment"
           fi
           
-          # These outputs are always set
-          echo "region=${{ secrets.GCP_REGION }}" >> $GITHUB_OUTPUT
+          # These outputs are always set (with fallback)
+          echo "region=${{ secrets.GCP_REGION || 'europe-central2' }}" >> $GITHUB_OUTPUT
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -104,7 +104,11 @@ jobs:
 
       - name: Authenticate to Artifact Registry
         run: |
-          gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
+          REGION="${{ needs.setup.outputs.region }}"
+          if [ -z "$REGION" ]; then
+            REGION="europe-central2"
+          fi
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
       - name: Build and push Docker image
         id: build
