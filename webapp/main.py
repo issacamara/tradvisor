@@ -109,9 +109,10 @@ def main():
 
     # ============================================================
     # Authentication setting - controlled by environment variable
-    # Set AUTH_DISABLED=true in Cloud Run for development only
+    # Set AUTH_DISABLED=false to enable authentication
+    # Currently disabled for quick testing - will re-enable with new auth page
     # ============================================================
-    AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'false').lower() == 'true'
+    AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'true').lower() == 'true'
 
     if AUTH_DISABLED:
         # Bypass authentication - show dashboard directly
