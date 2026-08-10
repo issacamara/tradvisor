@@ -88,12 +88,6 @@ resource "google_cloud_run_v2_service_iam_member" "noauth" {
   member   = "allUsers"
 }
 
-# Export service URL for GitHub Actions verification job
-output "service_url" {
-  description = "The public URL of the Cloud Run service"
-  value       = google_cloud_run_v2_service.tradvisor_service.uri
-}
-
 # Secret Manager resource
 resource "google_secret_manager_secret" "bigquery_creds" {
   secret_id = "brvm-dashboard-bigquery-creds"
