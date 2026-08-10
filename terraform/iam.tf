@@ -82,7 +82,7 @@ resource "google_service_account" "brvm_dashboard_sa" {
 }
 
 
-resource "google_project_iam_binding" "build_sa_roles" {
+resource "google_project_iam_member" "build_sa_roles" {
   depends_on = [google_service_account.tradvisor_sa]
   project    = var.project_id
   role       = "roles/cloudbuild.builds.builder"
@@ -93,7 +93,7 @@ resource "google_project_iam_binding" "build_sa_roles" {
   ]
 }
 
-resource "google_project_iam_binding" "function_invoker" {
+resource "google_project_iam_member" "function_invoker" {
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/cloudfunctions.invoker"
@@ -103,7 +103,7 @@ resource "google_project_iam_binding" "function_invoker" {
   ]
 }
 
-resource "google_project_iam_binding" "all_buckets_viewer" {
+resource "google_project_iam_member" "all_buckets_viewer" {
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/storage.objectViewer"
@@ -113,7 +113,7 @@ resource "google_project_iam_binding" "all_buckets_viewer" {
   ]
 }
 
-resource "google_project_iam_binding" "log_writer" {
+resource "google_project_iam_member" "log_writer" {
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/logging.logWriter"
@@ -124,7 +124,7 @@ resource "google_project_iam_binding" "log_writer" {
 }
 
 # Grant the necessary roles to the service account
-resource "google_project_iam_binding" "cloud_run_sa_invoker" {
+resource "google_project_iam_member" "cloud_run_sa_invoker" {
   project    = var.project_id
   role       = "roles/run.invoker"
   depends_on = [google_service_account.tradvisor_sa]
@@ -134,7 +134,7 @@ resource "google_project_iam_binding" "cloud_run_sa_invoker" {
   ]
 }
 
-resource "google_project_iam_binding" "workflow_executor" {
+resource "google_project_iam_member" "workflow_executor" {
   project    = var.project_id
   role       = "roles/workflows.invoker"
   depends_on = [google_service_account.tradvisor_sa]
@@ -145,7 +145,7 @@ resource "google_project_iam_binding" "workflow_executor" {
 }
 
 
-resource "google_project_iam_binding" "sa_user" {
+resource "google_project_iam_member" "sa_user" {
   project    = var.project_id
   role       = "roles/iam.serviceAccountUser"
   depends_on = [google_service_account.tradvisor_sa]
@@ -155,7 +155,7 @@ resource "google_project_iam_binding" "sa_user" {
   ]
 }
 
-resource "google_project_iam_binding" "sms_accessor" {
+resource "google_project_iam_member" "sms_accessor" {
   project    = var.project_id
   role       = "roles/secretmanager.secretAccessor"
   depends_on = [google_service_account.brvm_dashboard_sa]
@@ -191,7 +191,7 @@ resource "google_secret_manager_secret_iam_binding" "openrouter_api_key_accessor
 }
 
 
-resource "google_project_iam_binding" "bq_viewer" {
+resource "google_project_iam_member" "bq_viewer" {
   project    = var.project_id
   role       = "roles/bigquery.dataViewer"
   depends_on = [google_service_account.tradvisor_sa]
@@ -201,7 +201,7 @@ resource "google_project_iam_binding" "bq_viewer" {
   ]
 }
 
-resource "google_project_iam_binding" "bq_data_editor" {
+resource "google_project_iam_member" "bq_data_editor" {
   project    = var.project_id
   role       = "roles/bigquery.dataEditor"
   depends_on = [google_service_account.tradvisor_sa]
@@ -211,7 +211,7 @@ resource "google_project_iam_binding" "bq_data_editor" {
   ]
 }
 
-resource "google_project_iam_binding" "bq_job_user" {
+resource "google_project_iam_member" "bq_job_user" {
   project    = var.project_id
   role       = "roles/bigquery.jobUser"
   depends_on = [google_service_account.tradvisor_sa]
@@ -221,7 +221,7 @@ resource "google_project_iam_binding" "bq_job_user" {
   ]
 }
 
-resource "google_project_iam_binding" "run_admin" {
+resource "google_project_iam_member" "run_admin" {
   project    = var.project_id
   role       = "roles/run.admin"
   depends_on = [google_service_account.tradvisor_sa]
@@ -231,7 +231,7 @@ resource "google_project_iam_binding" "run_admin" {
   ]
 }
 
-resource "google_project_iam_binding" "storage_admin" {
+resource "google_project_iam_member" "storage_admin" {
   project    = var.project_id
   role       = "roles/storage.admin"
   depends_on = [google_service_account.tradvisor_sa]
