@@ -10,6 +10,11 @@ terraform {
   }
 }
 
+import {
+  to = google_artifact_registry_repository.tradvisor
+  id = "projects/${var.project_id}/locations/${var.region}/repositories/tradvisor"
+}
+
 provider "google" {
   project = var.project_id
   region  = var.region
