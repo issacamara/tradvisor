@@ -117,13 +117,13 @@ jobs:
 
       - name: Authenticate to Artifact Registry
         run: |
-          gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Create Artifact Registry repository if not exists
         run: |
-          if ! gcloud artifacts repositories describe tradvisor --location=${{ needs.setup.outputs.region }} --quiet 2>/dev/null; then
+          if ! gcloud artifacts repositories describe tradvisor --location=${{ secrets.GCP_REGION }} --quiet 2>/dev/null; then
             gcloud artifacts repositories create tradvisor \
-              --location=${{ needs.setup.outputs.region }} \
+              --location=${{ secrets.GCP_REGION }} \
               --description="Docker images for TRADVISOR application" \
               --repository-format="DOCKER"
           fi
@@ -135,16 +135,16 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:latest
-            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.environment || 'prod' }}
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:latest
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.environment || 'prod' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
       - name: Output image URL
         run: |
-          echo "image-url=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" >> $GITHUB_OUTPUT
+          echo "image-url=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" >> $GITHUB_OUTPUT
 
   # ============================================
   # Job 2: Run Terraform to create infrastructure
@@ -199,9 +199,9 @@ jobs:
         run: |
           terraform plan \
             -var="project_id=${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}" \
-            -var="region=${{ needs.setup.outputs.region || 'europe-central2' }}" \
+            -var="region=${{ secrets.GCP_REGION || 'europe-central2' }}" \
             -var="service_name=tradvisor-${{ needs.setup.outputs.environment || 'prod' }}" \
-            -var="docker_image=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" \
+            -var="docker_image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
             -var="environment=${{ needs.setup.outputs.environment || 'prod' }}" \
