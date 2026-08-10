@@ -141,7 +141,8 @@ jobs:
           REGION="${REGION:-europe-central2}"
           PROJECT_ID="${{ needs.setup.outputs.project_id }}"
           PROJECT_ID="${PROJECT_ID:-prod-tradvisor}"
-          echo "image-url=${REGION}-docker.pkg.dev/${PROJECT_ID}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT  # ============================================
+          echo "image-url=${REGION}-docker.pkg.dev/${PROJECT_ID}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT  
+  # ============================================
   # Job 2: Run Terraform to create infrastructure
   # ============================================
   terraform:
