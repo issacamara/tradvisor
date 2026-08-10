@@ -79,14 +79,7 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
   }
 }
 
-# Allow unauthenticated public access
-resource "google_cloud_run_v2_service_iam_member" "noauth" {
-  project  = google_cloud_run_v2_service.tradvisor_service.project
-  location = google_cloud_run_v2_service.tradvisor_service.location
-  name     = google_cloud_run_v2_service.tradvisor_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
+
 
 # Secret Manager resource
 resource "google_secret_manager_secret" "bigquery_creds" {

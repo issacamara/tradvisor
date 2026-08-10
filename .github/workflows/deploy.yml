@@ -172,6 +172,9 @@ jobs:
       - name: Terraform Init
         working-directory: ./terraform
         run: |
+          PROJECT_ID="${{ needs.setup.outputs.project_id }}"
+          PROJECT_ID="${PROJECT_ID:-prod-tradvisor}"
+                    
           terraform init \
             -backend-config="bucket=${{ needs.setup.outputs.project_id }}-tfstate" \
             -backend-config="prefix=state/${{ needs.setup.outputs.environment }}" \
