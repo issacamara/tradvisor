@@ -42,21 +42,37 @@ jobs:
       - name: Determine environment
         id: set-env
         run: |
-          if [ "${{ github.event.inputs.environment }}" == "prod" ] || [ "${{ github.ref }}" == "refs/heads/production" ]; then
-            echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "workload_identity_provider=${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
-            echo "service_account=${{ secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
-            echo "project_id=${{ secrets.PROD_GCP_PROJECT_ID || 'prod-tradvisor' }}" >> $GITHUB_OUTPUT
-            echo "::notice::Using PROD environment"
-          else
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "workload_identity_provider=${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}" >> $GITHUB_OUTPUT
-            echo "service_account=${{ secrets.DEV_SERVICE_ACCOUNT }}" >> $GITHUB_OUTPUT
-            echo "project_id=${{ secrets.DEV_GCP_PROJECT_ID || 'dev-tradvisor' }}" >> $GITHUB_OUTPUT
-            echo "::notice::Using DEV environment"
-          fi
+          ENV_INPUT="${{ github.event.inputs.environment }}"
+          REF="${{ github.ref }}"
           
-          echo "region=${{ secrets.GCP_REGION || 'europe-central2' }}" >> $GITHUB_OUTPUT
+          if [ "$ENV_INPUT" == "prod" ] || [ "$REF" == "refs/heads/production" ]; then
+            ENV="prod"
+            WIF="${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}"
+            SA="${{ secrets.PROD_SERVICE_ACCOUNT }}"
+            PROJECT_ID="${{ secrets.PROD_GCP_PROJECT_ID }}"
+            
+            [ -z "$WIF" ] && WIF="${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}"
+            [ -z "$SA" ] && SA="${{ secrets.DEV_SERVICE_ACCOUNT }}"
+            [ -z "$PROJECT_ID" ] && PROJECT_ID="prod-tradvisor"
+            echo "::notice::Using PROD environment ($PROJECT_ID)"
+          else
+            ENV="dev"
+            WIF="${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}"
+            SA="${{ secrets.DEV_SERVICE_ACCOUNT }}"
+            PROJECT_ID="${{ secrets.DEV_GCP_PROJECT_ID }}"
+            
+            [ -z "$PROJECT_ID" ] && PROJECT_ID="dev-tradvisor"
+            echo "::notice::Using DEV environment ($PROJECT_ID)"
+          fi
+
+          REGION="${{ secrets.GCP_REGION }}"
+          [ -z "$REGION" ] && REGION="europe-central2"
+
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "workload_identity_provider=$WIF" >> $GITHUB_OUTPUT
+          echo "service_account=$SA" >> $GITHUB_OUTPUT
+          echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+          echo "region=$REGION" >> $GITHUB_OUTPUT
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -82,18 +98,18 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
+          service_account: ${{ needs.setup.outputs.service_account }}
 
       - name: Authenticate to Artifact Registry
         run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION || 'europe-central2' }}-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ needs.setup.outputs.region }}-docker.pkg.dev --quiet
 
       - name: Create Artifact Registry repository if not exists
         run: |
-          if ! gcloud artifacts repositories describe tradvisor --location=${{ secrets.GCP_REGION || 'europe-central2' }} --quiet 2>/dev/null; then
+          if ! gcloud artifacts repositories describe tradvisor --location=${{ needs.setup.outputs.region }} --quiet 2>/dev/null; then
             gcloud artifacts repositories create tradvisor \
-              --location=${{ secrets.GCP_REGION || 'europe-central2' }} \
+              --location=${{ needs.setup.outputs.region }} \
               --description="Docker images for TRADVISOR application" \
               --repository-format="DOCKER"
           fi
@@ -105,9 +121,9 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.GCP_REGION || 'europe-central2' }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}
-            ${{ secrets.GCP_REGION || 'europe-central2' }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:latest
-            ${{ secrets.GCP_REGION || 'europe-central2' }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.environment }}
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:latest
+            ${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.environment }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -115,8 +131,7 @@ jobs:
       - name: Output image URL
         id: output-image
         run: |
-          echo "image-url=${{ secrets.GCP_REGION || 'europe-central2' }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT
-
+          echo "image-url=${{ needs.setup.outputs.region }}-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag }}" >> $GITHUB_OUTPUT
   # ============================================
   # Job 2: Run Terraform to create infrastructure
   # ============================================
