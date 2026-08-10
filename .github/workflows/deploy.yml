@@ -100,8 +100,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ needs.setup.outputs.workload_identity_provider }}
-          service_account: ${{ needs.setup.outputs.service_account }}
+          workload_identity_provider: ${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
 
       - name: Authenticate to Artifact Registry
         run: |
