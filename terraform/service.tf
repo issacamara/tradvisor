@@ -2,7 +2,7 @@
 variable "service_name" {
   description = "Name of the Cloud Run service"
   type        = string
-  default     = var.project_id
+  default     = "prod-tradvisor"
 }
 
 # Deploy the Cloud Run service
