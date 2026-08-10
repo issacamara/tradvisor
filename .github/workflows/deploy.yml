@@ -200,7 +200,6 @@ jobs:
           terraform plan \
             -var="project_id=${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}" \
             -var="region=${{ secrets.GCP_REGION || 'europe-central2' }}" \
-            -var="service_name=tradvisor-${{ needs.setup.outputs.environment || 'prod' }}" \
             -var="docker_image=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ needs.setup.outputs.project_id || 'prod-tradvisor' }}/tradvisor/tradvisor:${{ needs.setup.outputs.image_tag || github.sha }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
