@@ -176,7 +176,7 @@ jobs:
           PROJECT_ID="${PROJECT_ID:-prod-tradvisor}"
                     
           terraform init \
-            -backend-config="bucket=${{PROJECT_ID}}-tfstate" \
+            -backend-config="bucket=${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_GCP_PROJECT_ID || secrets.DEV_GCP_PROJECT_ID }}-tfstate" \
             -backend-config="prefix=state/${{ needs.setup.outputs.environment }}" \
             -upgrade
 
