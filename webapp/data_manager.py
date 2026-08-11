@@ -15,12 +15,31 @@ from helper import getBigQueryClient
 project_id = os.environ.get('PROJECT_ID')
 
 
+def get_bigquery_client_safe():
+    """Get BigQuery client with error handling for local development"""
+    try:
+        return getBigQueryClient()
+    except Exception as e:
+        st.error(f"BigQuery connection error: {str(e)}")
+        st.info("Note: Data loading requires GCP credentials. Run with `gcloud auth application-default login` locally, or deploy to Cloud Run for production.")
+        return None
+
+
 class DataManager:
     """Manages stock data fetching and technical indicator calculations"""
 
     @staticmethod
     @st.cache_data(ttl=86400)
     def load_data():
+        # Check for project_id
+        if not project_id:
+            st.error("PROJECT_ID environment variable not set")
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+        
         shares = None
         dividends = None
         financials = None
@@ -50,12 +69,14 @@ class DataManager:
                     WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.ratings`)
                 """
         
-        client = getBigQueryClient()
-
-        shares = client.query(query1).to_dataframe()
-        dividends = client.query(query4).to_dataframe()
-        financials = client.query(query6).to_dataframe()
-        ratings = client.query(query7).to_dataframe()
+        try:
+            shares = client.query(query1).to_dataframe()
+            dividends = client.query(query4).to_dataframe()
+            financials = client.query(query6).to_dataframe()
+            ratings = client.query(query7).to_dataframe()
+        except Exception as e:
+            st.error(f"Error querying BigQuery: {str(e)}")
+            return pd.DataFrame()
 
         result = shares.merge(dividends[["SYMBOL", "DIVIDEND", "PAYMENT_DATE"]], on='SYMBOL', how='left')
         
@@ -91,9 +112,19 @@ class DataManager:
     @st.cache_data(ttl=86400)
     def load_financials():
         """Load financial statements data"""
+        if not project_id:
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+            
         query = f"SELECT * FROM `{project_id}.stocks.financials` ORDER BY symbol, fiscal_year DESC"
-        client = getBigQueryClient()
-        financials = client.query(query).to_dataframe()
+        try:
+            financials = client.query(query).to_dataframe()
+        except Exception as e:
+            st.error(f"Error loading financials: {str(e)}")
+            return pd.DataFrame()
         
         return financials
     
@@ -101,8 +132,18 @@ class DataManager:
     @st.cache_data(ttl=86400)
     def load_ratings():
         """Load ratings data"""
+        if not project_id:
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+            
         query = f"SELECT * FROM `{project_id}.stocks.ratings` ORDER BY symbol, rating_year DESC"
-        client = getBigQueryClient()
-        ratings = client.query(query).to_dataframe()
+        try:
+            ratings = client.query(query).to_dataframe()
+        except Exception as e:
+            st.error(f"Error loading ratings: {str(e)}")
+            return pd.DataFrame()
         
         return ratings

@@ -67,10 +67,10 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
 
       startup_probe {
         http_get {
-          path = "/"
+          path = "/_stcore/health"
           port = 8501
         }
-        initial_delay_seconds = 10
+        initial_delay_seconds = 15
         timeout_seconds       = 3
         period_seconds        = 5
         failure_threshold     = 3

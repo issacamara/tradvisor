@@ -78,7 +78,7 @@ def show():
             client = getBigQueryClient()
             st.metric("BigQuery", "Connected", delta="OK")
         except Exception as e:
-            st.metric("BigQuery", "Disconnected", delta="Error")
+            st.metric("BigQuery", "Not Available", delta="Check credentials")
     
     # Data Source Settings
     st.markdown("---")

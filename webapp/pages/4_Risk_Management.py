@@ -269,6 +269,11 @@ def show():
         st.error(f"Error loading data: {e}")
         return
     
+    # Handle empty data
+    if shares.empty:
+        st.warning("No stock data available. Please check BigQuery connection.")
+        return
+    
     # Sidebar inputs
     st.sidebar.markdown("### Risk Parameters")
     

@@ -10,9 +10,9 @@ import os
 
 import streamlit as st
 
-# Import core modules
-from database import DatabaseManager
-from email_manager import EmailManager
+# Import core modules (lazy loaded to avoid BigQuery errors locally)
+# from database import DatabaseManager
+# from email_manager import EmailManager
 
 
 
@@ -60,27 +60,13 @@ def apply_global_css():
     """, unsafe_allow_html=True)
 
 
-@st.cache_resource
-def init_components():
-    """Initialize all dashboard components"""
-    db_manager = DatabaseManager()
-    email_manager = EmailManager()
-    return {
-        'db': db_manager,
-        'email': email_manager,
-    }
-
-
 def main():
     """Main application entry point"""
 
     # Apply global CSS
     apply_global_css()
 
-    # Initialize components
-    components = init_components()
-
-    # Show user profile in sidebar
+    # Show branding in sidebar
     with st.sidebar:
         st.markdown("---")
         st.subheader("TRADVISOR")

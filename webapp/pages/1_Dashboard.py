@@ -153,8 +153,24 @@ def show():
         st.error(f"Error loading data: {e}")
         return
     
+    # Handle empty data
+    if shares.empty:
+        st.warning("No stock data available. Please check BigQuery connection.")
+        st.info("The dashboard requires data to be loaded from BigQuery. Make sure:")
+        st.info("1. PROJECT_ID environment variable is set")
+        st.info("2. BigQuery credentials are configured")
+        st.info("3. The stocks.shares table has data")
+        return
+    
     # Sidebar - Stock selector
     st.sidebar.markdown('<div class="sidebar-header">Choose the stock</div>', unsafe_allow_html=True)
+    
+    # Check if SYMBOL column exists
+    if 'SYMBOL' not in shares.columns:
+        st.error("Data loaded but missing SYMBOL column")
+        st.write("Available columns:", list(shares.columns))
+        return
+    
     selected_symbol = st.sidebar.selectbox(
         "Select Stock",
         options=sorted(shares['SYMBOL'].unique()),

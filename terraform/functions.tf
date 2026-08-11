@@ -47,7 +47,7 @@ resource "google_cloudfunctions2_function" "scrape_financials" {
   }
   service_config {
     max_instance_count    = 1
-    available_memory      = "512Mi"
+    available_memory      = "1024Mi"  # Increased from 512Mi for PDF processing
     timeout_seconds       = 540  # Increased for PDF processing
     service_account_email = google_service_account.tradvisor_sa.email
     environment_variables = {
@@ -173,7 +173,7 @@ resource "google_cloudfunctions2_function" "scrape_financials_init" {
   }
   service_config {
     max_instance_count    = 1
-    available_memory      = "512Mi"
+    available_memory      = "1024Mi"  # Increased from 512Mi for PDF processing
     timeout_seconds       = 540  # Increased for PDF processing
     service_account_email = google_service_account.tradvisor_sa.email
     environment_variables = {

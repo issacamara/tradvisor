@@ -158,6 +158,11 @@ def show():
         st.error(f"Error loading data: {e}")
         return
     
+    # Handle empty data
+    if shares.empty:
+        st.warning("No stock data available. Please check BigQuery connection.")
+        return
+    
     # Stock selector
     col_select, _ = st.columns([1, 2])
     with col_select:
