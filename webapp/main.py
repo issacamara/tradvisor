@@ -72,16 +72,46 @@ def apply_global_css():
 
 def main():
     """Main application entry point"""
-
+    import sys
+    import os
+    print("[DEBUG] main() function started", file=sys.stderr, flush=True)
+    
     # Apply global CSS
     apply_global_css()
+
+    # Check authentication
+    if not st.session_state.get('authenticated', False):
+        st.title("TRADVISOR - Login Required")
+        st.warning("Please log in to access the dashboard")
+        
+        with st.form("login_form"):
+            st.subheader("Quick Login (Demo)")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            
+            if st.form_submit_button("Login", type="primary"):
+                # Demo: accept any login for now
+                st.session_state.authenticated = True
+                st.session_state.user = {"email": email, "created_at": "2024-01-01"}
+                st.rerun()
+        
+        st.markdown("---")
+        st.caption("Contact admin for access")
+        return
 
     # Show branding in sidebar
     with st.sidebar:
         st.markdown("---")
         st.subheader("TRADVISOR")
-        st.markdown("**BRVM Trading Dashboard 3**")
+        st.markdown("**BRVM Trading Dashboard**")
+        st.markdown(f"Environment: **{os.environ.get('ENVIRONMENT', 'prod')}**")
+        st.markdown(f"Project: **{os.environ.get('PROJECT_ID', 'N/A')}**")
         st.markdown("---")
+        
+        # Logout button
+        if st.button("Logout"):
+            st.session_state.authenticated = False
+            st.rerun()
 
     # The actual dashboard content is in the pages/ directory
     # Streamlit automatically handles page routing
