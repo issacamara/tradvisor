@@ -261,4 +261,3 @@ def show():
     # Footer
     st.markdown("---")
     st.markdown("**Data Source:** BRVM | **Powered by:** Bayesian Ensemble Technical Analysis")
-"

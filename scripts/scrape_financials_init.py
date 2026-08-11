@@ -157,8 +157,39 @@ def is_data_incomplete(data):
     return any(data.get(field) is None for field in financial_fields)
 
 
+def extract_text_from_pdf(pdf_content):
+    """Extract text from PDF using pdfplumber (falls back to pypdf).
+    
+    Args:
+        pdf_content: The PDF file content as bytes
+    
+    Returns:
+        Extracted text as string, or None if extraction fails
+    """
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        return text if text.strip() else None
+    except Exception as e:
+        print(f"    pdfplumber failed: {e}")
+    
+    # Fallback to pypdf
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_content))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        return text if text.strip() else None
+    except Exception as e:
+        print(f"    pypdf failed: {e}")
+    
+    return None
+
+
 def extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
     """Extract financial data from PDF using OpenRouter API with retry on better models.
+    
+    First extracts text from PDF to avoid hitting image limits (50 max).
     
     Args:
         pdf_content: The PDF file content as bytes
@@ -168,10 +199,16 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
     Returns:
         Dictionary with extracted financial data or None if all attempts fail
     """
-    import base64
+    # First, try to extract text from PDF to avoid image limit issues
+    print("    Extracting text from PDF...")
+    pdf_text = extract_text_from_pdf(pdf_content)
     
-    # Convert PDF to base64
-    pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+    use_text_mode = pdf_text and len(pdf_text) > 100  # Use text if we got meaningful content
+    
+    if use_text_mode:
+        print(f"    Using text extraction ({len(pdf_text)} chars)")
+    else:
+        print("    Text extraction failed or too short, falling back to PDF file (may hit image limit)")
     
     prompt = """You are a financial statement extraction engine specialized in BRVM and OHADA-style annual reports, often written in French.
 
@@ -288,6 +325,27 @@ Return only this JSON object:
         
         print(f"    Trying model: {model_name}")
         
+        if use_text_mode:
+            # Send text instead of PDF to avoid image limit
+            content = [
+                {"type": "text", "text": prompt},
+                {"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}
+            ]
+        else:
+            # Fall back to PDF file (may hit image limit)
+            import base64
+            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+            content = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": "document.pdf",
+                        "file_data": f"data:application/pdf;base64,{pdf_base64}"
+                    }
+                }
+            ]
+        
         payload = {
             "models": models,
             "provider": {
@@ -296,16 +354,7 @@ Return only this JSON object:
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "file",
-                            "file": {
-                                "filename": "document.pdf",
-                                "file_data": f"data:application/pdf;base64,{pdf_base64}"
-                            }
-                        }
-                    ]
+                    "content": content
                 }
             ]
         }

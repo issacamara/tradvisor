@@ -13,7 +13,7 @@ import streamlit as st
 # Import core modules
 from database import DatabaseManager
 from email_manager import EmailManager
-from auth_ui import AuthUI
+
 
 
 def apply_global_css():
@@ -65,33 +65,12 @@ def init_components():
     """Initialize all dashboard components"""
     db_manager = DatabaseManager()
     email_manager = EmailManager()
-    auth_ui = AuthUI(db_manager, email_manager)
-
     return {
         'db': db_manager,
         'email': email_manager,
-        'auth_ui': auth_ui,
     }
 
 
-def show_authentication_flow(components):
-    """Handle authentication flow"""
-    auth_ui = components['auth_ui']
-
-    if st.session_state.get('show_register', False):
-        auth_ui.show_register_page()
-    else:
-        auth_ui.show_login_page()
-
-
-def show_main_dashboard(components, user):
-    """Show the main trading dashboard (redirects to pages)"""
-    auth_ui = components['auth_ui']
-    # Show user profile in sidebar
-    auth_ui.show_user_profile(user)
-
-    # The actual dashboard content is in the pages/ directory
-    # Streamlit automatically handles page routing
 def main():
     """Main application entry point"""
 
@@ -101,34 +80,20 @@ def main():
     # Initialize components
     components = init_components()
 
-    # Initialize session state
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'user' not in st.session_state:
-        st.session_state.user = None
+    # Show user profile in sidebar
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("TRADVISOR")
+        st.markdown("**BRVM Trading Dashboard**")
+        st.markdown("---")
 
-    # ============================================================
-    # Authentication setting - controlled by environment variable
-    # Set AUTH_DISABLED=false to enable authentication
-    # Currently disabled for quick testing - will re-enable with new auth page
-    # ============================================================
-    AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'true').lower() == 'true'
-
-    if AUTH_DISABLED:
-        # Bypass authentication - show dashboard directly
-        # Create a dummy user for testing
-        if not st.session_state.user:
-            st.session_state.user = {'email': 'test@tradvisor.com', 'name': 'Test User'}
-        st.session_state.authenticated = True
-        show_main_dashboard(components, st.session_state.user)
-    elif st.session_state.authenticated and st.session_state.user:
-        show_main_dashboard(components, st.session_state.user)
-    else:
-        show_authentication_flow(components)
+    # The actual dashboard content is in the pages/ directory
+    # Streamlit automatically handles page routing
 
     # Footer
-    if st.session_state.authenticated:
-        st.markdown("---")
-        st.markdown("**Data Source:** BRVM | **Powered by:** Bayesian Ensemble Technical Analysis")
+    st.markdown("---")
+    st.markdown("**Data Source:** BRVM | **Powered by:** Bayesian Ensemble Technical Analysis")
+
+
 if __name__ == "__main__":
     main()
