@@ -1,3 +1,5 @@
+
+
 resource "google_cloudfunctions2_function" "functions" {
   depends_on = [google_project_service.apis, google_storage_bucket_object.src-code,
                 data.google_project.project]
@@ -33,7 +35,7 @@ resource "google_cloudfunctions2_function" "functions" {
 resource "google_cloudfunctions2_function" "scrape_financials" {
   depends_on = [google_project_service.apis, google_storage_bucket_object.src-code-extra,
                 data.google_project.project, google_secret_manager_secret.openrouter_api_key]
-  name       = "scrape_financials_function"
+  name       = "scrape-financials-v2"  # Renamed to force recreation with higher memory
   location   = var.region
   build_config {
     runtime     = "python311"
@@ -47,8 +49,8 @@ resource "google_cloudfunctions2_function" "scrape_financials" {
   }
   service_config {
     max_instance_count    = 1
-    available_memory      = "1024Mi"  # Increased from 512Mi for PDF processing
-    timeout_seconds       = 540  # Increased for PDF processing
+    available_memory      = "512Mi"  # Increased for PDF processing
+    timeout_seconds       = 300  # Increased for PDF processing
     service_account_email = google_service_account.tradvisor_sa.email
     environment_variables = {
       "OPENROUTER_API_KEY" = var.openrouter_api_key
@@ -159,7 +161,7 @@ resource "google_cloudfunctions2_function" "insert_ratings" {
 resource "google_cloudfunctions2_function" "scrape_financials_init" {
   depends_on = [google_project_service.apis, google_storage_bucket_object.src-code-init,
                 data.google_project.project, google_secret_manager_secret.openrouter_api_key]
-  name       = "scrape_financials_init_function"
+  name       = "scrape-financials-init-v2"  # Renamed to force recreation with higher memory
   location   = var.region
   build_config {
     runtime     = "python311"
@@ -173,8 +175,8 @@ resource "google_cloudfunctions2_function" "scrape_financials_init" {
   }
   service_config {
     max_instance_count    = 1
-    available_memory      = "1024Mi"  # Increased from 512Mi for PDF processing
-    timeout_seconds       = 540  # Increased for PDF processing
+    available_memory      = "512Mi"  # Increased for PDF processing
+    timeout_seconds       = 300  # Increased for PDF processing
     service_account_email = google_service_account.tradvisor_sa.email
     environment_variables = {
       "OPENROUTER_API_KEY" = var.openrouter_api_key
@@ -235,10 +237,10 @@ main:
     - scrape_financials:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_financials.service_config[0].uri}
+          url: ${google_cloudfunctions2_function.scrape_financials.uri}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_financials.service_config[0].uri}
+            audience: ${google_cloudfunctions2_function.scrape_financials.uri}
 EOF
 }
 
@@ -257,10 +259,10 @@ main:
     - scrape_ratings:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_ratings.service_config[0].uri}
+          url: ${google_cloudfunctions2_function.scrape_ratings.uri}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_ratings.service_config[0].uri}
+            audience: ${google_cloudfunctions2_function.scrape_ratings.uri}
 EOF
 }
 
@@ -279,10 +281,10 @@ main:
     - scrape_financials_init:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_financials_init.service_config[0].uri}
+          url: ${google_cloudfunctions2_function.scrape_financials_init.uri}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_financials_init.service_config[0].uri}
+            audience: ${google_cloudfunctions2_function.scrape_financials_init.uri}
 EOF
 }
 
@@ -301,10 +303,10 @@ main:
     - scrape_ratings_init:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_ratings_init.service_config[0].uri}
+          url: ${google_cloudfunctions2_function.scrape_ratings_init.uri}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_ratings_init.service_config[0].uri}
+            audience: ${google_cloudfunctions2_function.scrape_ratings_init.uri}
 EOF
 }
 

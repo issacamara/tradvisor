@@ -497,8 +497,13 @@ def scrape_financials(url, openrouter_api_key=None):
                 if not openrouter_api_key:
                     raise Exception("OPENROUTER_API_KEY environment variable not set")
                 
-                financial_data = extract_financials_from_pdf(pdf_response.content, openrouter_api_key)
-
+                # Extract financial data from PDF
+                pdf_content = pdf_response.content
+                financial_data = extract_financials_from_pdf(pdf_content, openrouter_api_key)
+                
+                # CRITICAL: Delete PDF content from memory immediately after processing
+                del pdf_content
+                
                 if not financial_data:
                     raise Exception("Failed to extract financial data from PDF - all AI models failed")
                 
@@ -521,8 +526,7 @@ def scrape_financials(url, openrouter_api_key=None):
                 })
                 print(f"    Extracted: revenue={financial_data.get('revenue')}, net_income={financial_data.get('net_income')}")
                 
-                # Free PDF memory
-                del pdf_response
+                # Free financial data memory
                 del financial_data
                 
                 # Close session to free memory
