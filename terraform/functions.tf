@@ -237,10 +237,10 @@ main:
     - scrape_financials:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_financials.uri}
+          url: ${google_cloudfunctions2_function.scrape_financials.url}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_financials.uri}
+            audience: ${google_cloudfunctions2_function.scrape_financials.url}
 EOF
 }
 
@@ -259,10 +259,10 @@ main:
     - scrape_ratings:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_ratings.uri}
+          url: ${google_cloudfunctions2_function.scrape_ratings.url}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_ratings.uri}
+            audience: ${google_cloudfunctions2_function.scrape_ratings.url}
 EOF
 }
 
@@ -281,10 +281,10 @@ main:
     - scrape_financials_init:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_financials_init.uri}
+          url: ${google_cloudfunctions2_function.scrape_financials_init.url}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_financials_init.uri}
+            audience: ${google_cloudfunctions2_function.scrape_financials_init.url}
 EOF
 }
 
@@ -303,10 +303,10 @@ main:
     - scrape_ratings_init:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.scrape_ratings_init.uri}
+          url: ${google_cloudfunctions2_function.scrape_ratings_init.url}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.scrape_ratings_init.uri}
+            audience: ${google_cloudfunctions2_function.scrape_ratings_init.url}
 EOF
 }
 
