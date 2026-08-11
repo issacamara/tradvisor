@@ -20,6 +20,13 @@ resource "google_cloudfunctions2_function" "functions" {
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
   }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code[each.key].md5hash
+    ]
+  }
 }
 
 # Separate resource for scrape_financials (needs OpenRouter API key)
@@ -47,6 +54,13 @@ resource "google_cloudfunctions2_function" "scrape_financials" {
       "OPENROUTER_API_KEY" = var.openrouter_api_key
     }
   }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-extra["scrape_financials"].md5hash
+    ]
+  }
 }
 
 
@@ -72,6 +86,13 @@ resource "google_cloudfunctions2_function" "insert_financials" {
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
   }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-extra["insert_financials"].md5hash
+    ]
+  }
 }
 
 resource "google_cloudfunctions2_function" "scrape_ratings" {
@@ -95,6 +116,13 @@ resource "google_cloudfunctions2_function" "scrape_ratings" {
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
   }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-extra["scrape_ratings"].md5hash
+    ]
+  }
 }
 
 resource "google_cloudfunctions2_function" "insert_ratings" {
@@ -117,6 +145,13 @@ resource "google_cloudfunctions2_function" "insert_ratings" {
     available_memory      = "512Mi"
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
+  }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-extra["insert_ratings"].md5hash
+    ]
   }
 }
 
@@ -145,6 +180,13 @@ resource "google_cloudfunctions2_function" "scrape_financials_init" {
       "OPENROUTER_API_KEY" = var.openrouter_api_key
     }
   }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-init["scrape_financials_init"].md5hash
+    ]
+  }
 }
 
 # Initialization function for ratings (collects all available)
@@ -168,6 +210,13 @@ resource "google_cloudfunctions2_function" "scrape_ratings_init" {
     available_memory      = "512Mi"
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
+  }
+  
+  # Force recreation when source code changes
+  lifecycle {
+    replace_triggered_by = [
+      google_storage_bucket_object.src-code-init["scrape_ratings_init"].md5hash
+    ]
   }
 }
 

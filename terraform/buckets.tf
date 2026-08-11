@@ -21,6 +21,11 @@ data "archive_file" "assets" {
     content  = file("../scripts/${each.key}.py")
     filename = "main.py"
   }
+  
+  # Force recreation when source files change
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Additional functions (financials and ratings)
@@ -54,6 +59,11 @@ data "archive_file" "assets_extra" {
     content  = file("../scripts/scrape_ratings_init.py")
     filename = "scrape_ratings_init.py"
   }
+  
+  # Force recreation when source files change
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Initialization functions
@@ -77,6 +87,11 @@ data "archive_file" "assets_init" {
   source {
     content  = file("../scripts/${each.key}.py")
     filename = "main.py"
+  }
+  
+  # Force recreation when source files change
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
