@@ -143,15 +143,44 @@ def show():
     # Page header
     st.markdown('<div class="main-header">Trading Dashboard</div>', unsafe_allow_html=True)
     
+    # DEBUG: Check environment
+    import os
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔧 Debug Info")
+    st.sidebar.write(f"PROJECT_ID: {os.environ.get('PROJECT_ID', 'NOT SET')}")
+    st.sidebar.write(f"Environment: {os.environ.get('ENVIRONMENT', 'NOT SET')}")
+    
     # Load data
     try:
+        st.sidebar.info("Loading DataManager...")
         dm = DataManager()
+        st.sidebar.success("DataManager initialized")
+        
+        st.sidebar.info("Loading shares data...")
         shares = dm.load_data()
+        st.sidebar.success(f"Shares loaded: {len(shares)} rows")
+        
+        st.sidebar.info("Loading financials...")
         financials_df = dm.load_financials()
+        st.sidebar.success(f"Financials loaded: {len(financials_df)} rows")
+        
+        st.sidebar.info("Loading ratings...")
         ratings_df = dm.load_ratings()
+        st.sidebar.success(f"Ratings loaded: {len(ratings_df)} rows")
+        
     except Exception as e:
         st.error(f"Error loading data: {e}")
+        import traceback
+        st.error(traceback.format_exc())
         return
+    
+    # DEBUG: Show columns
+    st.sidebar.markdown("### 📊 Data Columns")
+    st.sidebar.write("Shares columns:", list(shares.columns))
+    if not financials_df.empty:
+        st.sidebar.write("Financials columns:", list(financials_df.columns))
+    if not ratings_df.empty:
+        st.sidebar.write("Ratings columns:", list(ratings_df.columns))
     
     # Handle empty data
     if shares.empty:

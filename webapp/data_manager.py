@@ -76,12 +76,26 @@ class DataManager:
                 """
         
         try:
+            st.info(f"Executing query1 (shares): {query1[:200]}...")
             shares = client.query(query1).to_dataframe()
+            st.success(f"Shares query returned: {len(shares)} rows")
+            
+            st.info(f"Executing query4 (dividends): {query4[:200]}...")
             dividends = client.query(query4).to_dataframe()
+            st.success(f"Dividends query returned: {len(dividends)} rows")
+            
+            st.info(f"Executing query6 (financials)")
             financials = client.query(query6).to_dataframe()
+            st.success(f"Financials query returned: {len(financials)} rows")
+            
+            st.info(f"Executing query7 (ratings)")
             ratings = client.query(query7).to_dataframe()
+            st.success(f"Ratings query returned: {len(ratings)} rows")
+            
         except Exception as e:
             st.error(f"Error querying BigQuery: {str(e)}")
+            import traceback
+            st.error(traceback.format_exc())
             return pd.DataFrame()
 
         result = shares.merge(dividends[["SYMBOL", "DIVIDEND", "PAYMENT_DATE"]], on='SYMBOL', how='left')
