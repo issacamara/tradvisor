@@ -184,8 +184,8 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan \
-            -var="project_id=${{ needs.setup.outputs.project_id }}" \
-            -var="region=${{ secrets.GCP_REGION || 'europe-central2' }}" \
+            -var="project_id=${{ needs.setup.outputs.environment == 'prod' && secrets.PROD_GCP_PROJECT_ID || secrets.DEV_GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION }}" \
             -var="docker_image=${{ needs.build.outputs.image-url }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
