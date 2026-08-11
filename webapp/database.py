@@ -22,11 +22,10 @@ class DatabaseManager:
 
     def __init__(self):
         try:
-            # Load BigQuery credentials
+            # Load BigQuery credentials - get at runtime
             self.project_id = os.environ.get('PROJECT_ID')
             self.environment = 'gcp'
             self.client = getBigQueryClient()
-            self.project_id = os.environ.get('PROJECT_ID')
             self.dataset_id = "trading_dashboard"
             self.table_id = "users"
 

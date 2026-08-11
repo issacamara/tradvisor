@@ -12,7 +12,9 @@ from trading import TechnicalIndicatorTrading
 from helper import getBigQueryClient
 
 
-project_id = os.environ.get('PROJECT_ID')
+def get_project_id():
+    """Get project ID dynamically at runtime"""
+    return os.environ.get('PROJECT_ID')
 
 
 def get_bigquery_client_safe():
@@ -29,8 +31,11 @@ class DataManager:
     """Manages stock data fetching and technical indicator calculations"""
 
     @staticmethod
-    @st.cache_data(ttl=86400)
+    @st.cache_data(ttl=3600)
     def load_data():
+        # Get project_id at runtime
+        project_id = get_project_id()
+        
         # Check for project_id
         if not project_id:
             st.error("PROJECT_ID environment variable not set")
@@ -47,10 +52,11 @@ class DataManager:
         trading_system = TechnicalIndicatorTrading()
         
         # Use lowercase table names (BigQuery defaults to lowercase)
+        # Fixed: BigQuery uses DATE_SUB instead of - INTERVAL
         query1 = f"""
                     WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.shares`)
                     SELECT * FROM `{project_id}.stocks.shares`
-                    WHERE CAST(date AS DATE) BETWEEN (SELECT max_date FROM latest_date) - INTERVAL '90' DAY
+                    WHERE CAST(date AS DATE) BETWEEN DATE_SUB((SELECT max_date FROM latest_date), INTERVAL 90 DAY)
                         AND (SELECT max_date FROM latest_date)
                     ORDER BY date DESC
                 """
@@ -109,9 +115,11 @@ class DataManager:
         return result
     
     @staticmethod
-    @st.cache_data(ttl=86400)
+    @st.cache_data(ttl=3600)
     def load_financials():
         """Load financial statements data"""
+        project_id = get_project_id()
+        
         if not project_id:
             return pd.DataFrame()
         
@@ -129,9 +137,11 @@ class DataManager:
         return financials
     
     @staticmethod
-    @st.cache_data(ttl=86400)
+    @st.cache_data(ttl=3600)
     def load_ratings():
         """Load ratings data"""
+        project_id = get_project_id()
+        
         if not project_id:
             return pd.DataFrame()
         

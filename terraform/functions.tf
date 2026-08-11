@@ -35,7 +35,7 @@ resource "google_cloudfunctions2_function" "functions" {
 resource "google_cloudfunctions2_function" "scrape_financials" {
   depends_on = [google_project_service.apis, google_storage_bucket_object.src-code-extra,
                 data.google_project.project, google_secret_manager_secret.openrouter_api_key]
-  name       = "scrape-financials-v2"  # Renamed to force recreation with higher memory
+  name       = "scrape-financials"  # Renamed to force recreation with higher memory
   location   = var.region
   build_config {
     runtime     = "python311"
@@ -161,7 +161,7 @@ resource "google_cloudfunctions2_function" "insert_ratings" {
 resource "google_cloudfunctions2_function" "scrape_financials_init" {
   depends_on = [google_project_service.apis, google_storage_bucket_object.src-code-init,
                 data.google_project.project, google_secret_manager_secret.openrouter_api_key]
-  name       = "scrape-financials-init-v2"  # Renamed to force recreation with higher memory
+  name       = "scrape-financials-init"  # Renamed to force recreation with higher memory
   location   = var.region
   build_config {
     runtime     = "python311"
