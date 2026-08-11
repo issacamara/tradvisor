@@ -133,6 +133,21 @@ def create_stock_chart(data, symbol):
 
 def getBigQueryClient():
     """Initialize BigQuery client with credentials"""
+    import os
+    import sys
+    
+    print(f"[DEBUG] getBigQueryClient() called", file=sys.stderr, flush=True)
+    print(f"[DEBUG] GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'NOT SET')}", file=sys.stderr, flush=True)
+    
     # In Cloud Run, use default credentials from service account
     # No need to set explicit credentials - Cloud Run provides them automatically
-    return bigquery.Client()
+    try:
+        client = bigquery.Client()
+        print(f"[DEBUG] BigQuery client created successfully", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Project: {client.project}", file=sys.stderr, flush=True)
+        return client
+    except Exception as e:
+        print(f"[DEBUG] BigQuery client creation FAILED: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        raise

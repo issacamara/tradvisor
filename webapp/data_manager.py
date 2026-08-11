@@ -76,25 +76,29 @@ class DataManager:
                 """
         
         try:
-            st.info(f"Executing query1 (shares): {query1[:200]}...")
+            import sys
+            print(f"[DEBUG] Executing shares query...", file=sys.stderr, flush=True)
             shares = client.query(query1).to_dataframe()
-            st.success(f"Shares query returned: {len(shares)} rows")
+            print(f"[DEBUG] Shares query returned: {len(shares)} rows", file=sys.stderr, flush=True)
             
-            st.info(f"Executing query4 (dividends): {query4[:200]}...")
+            print(f"[DEBUG] Executing dividends query...", file=sys.stderr, flush=True)
             dividends = client.query(query4).to_dataframe()
-            st.success(f"Dividends query returned: {len(dividends)} rows")
+            print(f"[DEBUG] Dividends query returned: {len(dividends)} rows", file=sys.stderr, flush=True)
             
-            st.info(f"Executing query6 (financials)")
+            print(f"[DEBUG] Executing financials query...", file=sys.stderr, flush=True)
             financials = client.query(query6).to_dataframe()
-            st.success(f"Financials query returned: {len(financials)} rows")
+            print(f"[DEBUG] Financials query returned: {len(financials)} rows", file=sys.stderr, flush=True)
             
-            st.info(f"Executing query7 (ratings)")
+            print(f"[DEBUG] Executing ratings query...", file=sys.stderr, flush=True)
             ratings = client.query(query7).to_dataframe()
-            st.success(f"Ratings query returned: {len(ratings)} rows")
+            print(f"[DEBUG] Ratings query returned: {len(ratings)} rows", file=sys.stderr, flush=True)
             
         except Exception as e:
-            st.error(f"Error querying BigQuery: {str(e)}")
+            import sys
+            print(f"[DEBUG] ERROR querying BigQuery: {str(e)}", file=sys.stderr, flush=True)
             import traceback
+            traceback.print_exc(file=sys.stderr)
+            st.error(f"Error querying BigQuery: {str(e)}")
             st.error(traceback.format_exc())
             return pd.DataFrame()
 

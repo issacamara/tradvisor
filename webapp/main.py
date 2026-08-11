@@ -8,13 +8,17 @@ Authentication is handled at this level, and pages are rendered via Streamlit's 
 
 import os
 import sys
+import logging
 
-# ULTRA EARLY DEBUG
-print(f"[DEBUG] main.py starting...")
-print(f"[DEBUG] PROJECT_ID: {os.environ.get('PROJECT_ID', 'NOT SET')}")
-print(f"[DEBUG] Python: {sys.version}")
+# ULTRA EARLY DEBUG - stderr goes to Cloud Run logs
+print(f"[DEBUG] main.py starting...", file=sys.stderr, flush=True)
+print(f"[DEBUG] PROJECT_ID: {os.environ.get('PROJECT_ID', 'NOT SET')}", file=sys.stderr, flush=True)
+print(f"[DEBUG] Python: {sys.version}", file=sys.stderr, flush=True)
 
 import streamlit as st
+
+# Also set up logging to stderr
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 # Import core modules (lazy loaded to avoid BigQuery errors locally)
 # from database import DatabaseManager
@@ -76,7 +80,7 @@ def main():
     with st.sidebar:
         st.markdown("---")
         st.subheader("TRADVISOR")
-        st.markdown("**BRVM Trading Dashboard**")
+        st.markdown("**BRVM Trading Dashboard 3**")
         st.markdown("---")
 
     # The actual dashboard content is in the pages/ directory

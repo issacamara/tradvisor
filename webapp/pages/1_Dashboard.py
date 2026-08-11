@@ -3,9 +3,10 @@ Page 1: Dashboard Overview
 Displays stock overview, trading signals, and top performers
 """
 
-# DEBUG: Immediate import check
+# DEBUG: Immediate import check - stderr for Cloud Run logs
 import os
-print(f"[DEBUG] 1_Dashboard.py loaded, PROJECT_ID={os.environ.get('PROJECT_ID', 'NOT SET')}")
+import sys
+print(f"[DEBUG] 1_Dashboard.py loaded, PROJECT_ID={os.environ.get('PROJECT_ID', 'NOT SET')}", file=sys.stderr, flush=True)
 
 import streamlit as st
 import pandas as pd
@@ -144,6 +145,9 @@ def show():
     """Render the Dashboard page"""
     # ULTRA EARLY DEBUG - should show even if imports fail
     import os
+    import sys
+    print(f"[DEBUG] show() function called", file=sys.stderr, flush=True)
+    
     st.markdown("### 🚨 DEBUG: Page loaded!")
     st.write(f"PROJECT_ID env: {os.environ.get('PROJECT_ID', 'NOT SET')}")
     st.write(f"Python path check...")
