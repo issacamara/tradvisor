@@ -320,3 +320,7 @@ def show():
     # Footer
     st.markdown("---")
     st.markdown("**Data Source:** BRVM | **Powered by:** Bayesian Ensemble Technical Analysis")
+
+
+# Call show() function to render the page when Streamlit loads this file
+show()

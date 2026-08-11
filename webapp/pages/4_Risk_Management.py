@@ -461,3 +461,7 @@ def show():
     # Footer
     st.markdown("---")
     st.caption("Risk management calculations are for educational purposes. Always consider your personal risk tolerance.")
+
+
+# Call show() function to render the page when Streamlit loads this file
+show()

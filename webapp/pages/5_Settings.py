@@ -213,3 +213,7 @@ def show():
     # Footer
     st.markdown("---")
     st.caption("Settings are configured via environment variables. See README for deployment instructions.")
+
+
+# Call show() function to render the page when Streamlit loads this file
+show()

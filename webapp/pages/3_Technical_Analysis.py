@@ -272,3 +272,7 @@ def show():
     # Footer
     st.markdown("---")
     st.caption("Technical indicators calculated using TA-Lib. Weights adapt to market conditions.")
+
+
+# Call show() function to render the page when Streamlit loads this file
+show()

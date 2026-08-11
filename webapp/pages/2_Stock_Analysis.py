@@ -366,3 +366,7 @@ def show():
     # Footer
     st.markdown("---")
     st.caption("Scoring based on IMPLEMENTATION_PLAN.md criteria")
+
+
+# Call show() function to render the page when Streamlit loads this file
+show()
