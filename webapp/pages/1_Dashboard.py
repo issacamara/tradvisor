@@ -3,6 +3,10 @@ Page 1: Dashboard Overview
 Displays stock overview, trading signals, and top performers
 """
 
+# DEBUG: Immediate import check
+import os
+print(f"[DEBUG] 1_Dashboard.py loaded, PROJECT_ID={os.environ.get('PROJECT_ID', 'NOT SET')}")
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -138,6 +142,12 @@ def bottom10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
 
 def show():
     """Render the Dashboard page"""
+    # ULTRA EARLY DEBUG - should show even if imports fail
+    import os
+    st.markdown("### 🚨 DEBUG: Page loaded!")
+    st.write(f"PROJECT_ID env: {os.environ.get('PROJECT_ID', 'NOT SET')}")
+    st.write(f"Python path check...")
+    
     apply_page_css()
     
     # Page header

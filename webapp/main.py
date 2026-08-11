@@ -7,6 +7,12 @@ Authentication is handled at this level, and pages are rendered via Streamlit's 
 """
 
 import os
+import sys
+
+# ULTRA EARLY DEBUG
+print(f"[DEBUG] main.py starting...")
+print(f"[DEBUG] PROJECT_ID: {os.environ.get('PROJECT_ID', 'NOT SET')}")
+print(f"[DEBUG] Python: {sys.version}")
 
 import streamlit as st
 
