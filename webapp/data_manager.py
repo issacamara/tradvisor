@@ -54,8 +54,8 @@ class DataManager:
         # Use correct table names (SHARES uppercase, others lowercase)
         # Fixed: BigQuery uses DATE_SUB instead of - INTERVAL
         query1 = f"""
-                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.SHARES`)
-                    SELECT * FROM `{project_id}.stocks.SHARES`
+                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.shares`)
+                    SELECT * FROM `{project_id}.stocks.shares`
                     WHERE CAST(date AS DATE) BETWEEN DATE_SUB((SELECT max_date FROM latest_date), INTERVAL 90 DAY)
                         AND (SELECT max_date FROM latest_date)
                     ORDER BY date DESC
