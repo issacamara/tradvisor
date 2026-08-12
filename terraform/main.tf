@@ -28,8 +28,6 @@ resource "google_bigquery_dataset" "stocks" {
 }
 
 # =====================================================
-# Artifact Registry Repository
-# =====================================================
 resource "google_artifact_registry_repository" "tradvisor" {
   location      = var.region
   repository_id = "tradvisor"
@@ -181,6 +179,52 @@ resource "google_bigquery_table" "ratings" {
   }
 
   description = "Financial ratings collected from RichBourse"
+}
+
+# =====================================================
+# Table: dividends
+# Dividend payments from BRVM
+# =====================================================
+resource "google_bigquery_table" "dividends" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.stocks.dataset_id
+  table_id   = "DIVIDENDS"
+
+  deletion_protection = true
+
+  schema = jsonencode([
+    {
+      name        = "symbol"
+      type        = "STRING"
+      mode        = "NULLABLE"
+      description = "Stock symbol (e.g., NTLC, ORGT)"
+    },
+    {
+      name        = "dividend"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Dividend amount in XOF"
+    },
+    {
+      name        = "payment_date"
+      type        = "DATE"
+      mode        = "NULLABLE"
+      description = "Date when dividend was paid"
+    },
+    {
+      name        = "date"
+      type        = "DATE"
+      mode        = "NULLABLE"
+      description = "Date when data was collected"
+    }
+  ])
+
+  labels = {
+    source = "brvm"
+    type   = "fundamental"
+  }
+
+  description = "Dividend payments collected from RichBourse"
 }
 
 # Note: ratings table uses rating_year (INTEGER) instead of rating_date

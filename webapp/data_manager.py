@@ -51,28 +51,28 @@ class DataManager:
         ratings = None
         trading_system = TechnicalIndicatorTrading()
         
-        # Use lowercase table names (BigQuery defaults to lowercase)
+        # Use correct table names (SHARES, DIVIDENDS, FINANCIALS, RATINGS)
         # Fixed: BigQuery uses DATE_SUB instead of - INTERVAL
         query1 = f"""
-                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.shares`)
-                    SELECT * FROM `{project_id}.stocks.shares`
+                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.SHARES`)
+                    SELECT * FROM `{project_id}.stocks.SHARES`
                     WHERE CAST(date AS DATE) BETWEEN DATE_SUB((SELECT max_date FROM latest_date), INTERVAL 90 DAY)
                         AND (SELECT max_date FROM latest_date)
                     ORDER BY date DESC
                 """
 
         query4 = f"""
-                    SELECT * FROM `{project_id}.stocks.dividends`
-                    WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{project_id}.stocks.dividends`)
+                    SELECT * FROM `{project_id}.stocks.DIVIDENDS`
+                    WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{project_id}.stocks.DIVIDENDS`)
                 """
         
         # Load financials table
-        query6 = f"SELECT * FROM `{project_id}.stocks.financials`"
+        query6 = f"SELECT * FROM `{project_id}.stocks.FINANCIALS`"
         
         # Load ratings table (latest year)
         query7 = f"""
-                    SELECT * FROM `{project_id}.stocks.ratings`
-                    WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.ratings`)
+                    SELECT * FROM `{project_id}.stocks.RATINGS`
+                    WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.RATINGS`)
                 """
         
         try:
