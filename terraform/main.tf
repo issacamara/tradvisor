@@ -28,6 +28,76 @@ resource "google_bigquery_dataset" "stocks" {
 }
 
 # =====================================================
+# Table: SHARES
+# Daily stock prices from BRVM
+# =====================================================
+resource "google_bigquery_table" "shares" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.stocks.dataset_id
+  table_id   = "shares"
+
+  deletion_protection = true
+
+  schema = jsonencode([
+    {
+      name        = "SYMBOL"
+      type        = "STRING"
+      mode        = "REQUIRED"
+      description = "Stock symbol (e.g., NTLC, ORGT)"
+    },
+    {
+      name        = "NAME"
+      type        = "STRING"
+      mode        = "NULLABLE"
+      description = "Company name"
+    },
+    {
+      name        = "OPEN"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Opening price in XOF"
+    },
+    {
+      name        = "HIGH"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Highest price in XOF"
+    },
+    {
+      name        = "LOW"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Lowest price in XOF"
+    },
+    {
+      name        = "CLOSE"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Closing price in XOF"
+    },
+    {
+      name        = "VOLUME"
+      type        = "FLOAT"
+      mode        = "NULLABLE"
+      description = "Trading volume"
+    },
+    {
+      name        = "DATE"
+      type        = "DATE"
+      mode        = "NULLABLE"
+      description = "Trading date"
+    }
+  ])
+
+  labels = {
+    source = "brvm"
+    type   = "market_data"
+  }
+
+  description = "Daily stock prices collected from BRVM"
+}
+
+# =====================================================
 resource "google_artifact_registry_repository" "tradvisor" {
   location      = var.region
   repository_id = "tradvisor"
@@ -188,7 +258,7 @@ resource "google_bigquery_table" "ratings" {
 resource "google_bigquery_table" "dividends" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.stocks.dataset_id
-  table_id   = "DIVIDENDS"
+  table_id   = "dividends"
 
   deletion_protection = true
 

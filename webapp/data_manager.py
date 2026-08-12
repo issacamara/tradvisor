@@ -51,7 +51,7 @@ class DataManager:
         ratings = None
         trading_system = TechnicalIndicatorTrading()
         
-        # Use correct table names (SHARES, DIVIDENDS, FINANCIALS, RATINGS)
+        # Use correct table names (SHARES uppercase, others lowercase)
         # Fixed: BigQuery uses DATE_SUB instead of - INTERVAL
         query1 = f"""
                     WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.SHARES`)
@@ -62,17 +62,17 @@ class DataManager:
                 """
 
         query4 = f"""
-                    SELECT * FROM `{project_id}.stocks.DIVIDENDS`
-                    WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{project_id}.stocks.DIVIDENDS`)
+                    SELECT * FROM `{project_id}.stocks.dividends`
+                    WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{project_id}.stocks.dividends`)
                 """
         
         # Load financials table
-        query6 = f"SELECT * FROM `{project_id}.stocks.FINANCIALS`"
+        query6 = f"SELECT * FROM `{project_id}.stocks.financials`"
         
         # Load ratings table (latest year)
         query7 = f"""
-                    SELECT * FROM `{project_id}.stocks.RATINGS`
-                    WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.RATINGS`)
+                    SELECT * FROM `{project_id}.stocks.ratings`
+                    WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.ratings`)
                 """
         
         try:
