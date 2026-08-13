@@ -11,8 +11,8 @@ variable "region" {
 variable "functions" {
   description = "List of function names"
   type        = list(string)
-  default = ["scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-              "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
+  default = ["scrape_shares", "scrape_dividends",
+              "insert_shares", "insert_dividends"]
 }
 
 variable "apis" {
@@ -21,21 +21,6 @@ variable "apis" {
   default = ["cloudresourcemanager.googleapis.com", "run.googleapis.com", "cloudfunctions.googleapis.com", "cloudbuild.googleapis.com",
               "bigquery.googleapis.com", "workflows.googleapis.com", "cloudscheduler.googleapis.com",
               "run.googleapis.com", "iam.googleapis.com","secretmanager.googleapis.com", "artifactregistry.googleapis.com"]
-}
-
-variable "jobs" {
-  type = map(object({
-    name     = string
-    schedule = string
-  }))
-  default = {
-    job1 = { name = "shares", schedule = "0 20 * * 1-5" }
-    # job2 = { name = "bonds", schedule = "0 20 1 * *" }  # Disabled
-    job3 = { name = "dividends", schedule = "0 20 1 * *" }
-    job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
-    job5 = { name = "financials", schedule = "0 6 1 * *" }    # First day of month at 6am
-    job6 = { name = "ratings", schedule = "0 6 5 * *" }        # Fifth day of month at 6am
-  }
 }
 
 variable "docker_image" {
