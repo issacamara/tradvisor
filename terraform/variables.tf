@@ -3,24 +3,39 @@ variable "project_id" {
   type        = string
   default     = "prod-tradvisor"
 }
+
 variable "region" {
   description = "Region of the project"
   type        = string
   default     = "europe-central2"
 }
+
 variable "functions" {
   description = "List of function names"
   type        = list(string)
-  default = ["scrape_shares", "scrape_dividends",
-              "insert_shares", "insert_dividends"]
+  default = [
+    "scrape_shares",
+    "scrape_dividends",
+    "insert_shares",
+    "insert_dividends"
+  ]
 }
 
 variable "apis" {
   description = "List of apis"
   type        = list(string)
-  default = ["cloudresourcemanager.googleapis.com", "run.googleapis.com", "cloudfunctions.googleapis.com", "cloudbuild.googleapis.com",
-              "bigquery.googleapis.com", "workflows.googleapis.com", "cloudscheduler.googleapis.com",
-              "run.googleapis.com", "iam.googleapis.com","secretmanager.googleapis.com", "artifactregistry.googleapis.com"]
+  default = [
+    "cloudresourcemanager.googleapis.com",
+    "run.googleapis.com",
+    "cloudfunctions.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "bigquery.googleapis.com",
+    "workflows.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "iam.googleapis.com",
+    "secretmanager.googleapis.com",
+    "artifactregistry.googleapis.com"
+  ]
 }
 
 variable "docker_image" {
@@ -35,7 +50,7 @@ variable "tradvisor_gmail_acc" {
     SMTP_USERNAME = string
     SMTP_PASSWORD = string
   })
-  sensitive   = true
+  sensitive = true
 }
 
 variable "openrouter_api_key" {

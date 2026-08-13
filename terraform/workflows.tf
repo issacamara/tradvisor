@@ -1,14 +1,13 @@
 # =====================================================
-# Workflows - Created sequentially (not via loops)
+# Workflows
 # =====================================================
 
-# Workflow for shares (scrape_shares + insert_shares)
 resource "google_workflows_workflow" "workflow_shares" {
-  depends_on  = [google_cloudfunctions2_function.functions, google_project_service.apis]
-  name        = "shares-wf"
-  region      = var.region
-  description = "A workflow to scrape and insert shares data"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.functions, google_project_service.apis]
+  name            = "shares-wf"
+  region          = var.region
+  description     = "A workflow to scrape and insert shares data"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -30,13 +29,12 @@ main:
 EOF
 }
 
-# Workflow for dividends (scrape_dividends + insert_dividends)
 resource "google_workflows_workflow" "workflow_dividends" {
-  depends_on  = [google_cloudfunctions2_function.functions, google_project_service.apis]
-  name        = "dividends-wf"
-  region      = var.region
-  description = "A workflow to scrape and insert dividends data"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.functions, google_project_service.apis]
+  name            = "dividends-wf"
+  region          = var.region
+  description     = "A workflow to scrape and insert dividends data"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -58,13 +56,12 @@ main:
 EOF
 }
 
-# Workflow for financials (monthly)
 resource "google_workflows_workflow" "workflow_financials" {
-  depends_on  = [google_cloudfunctions2_function.scrape_financials, google_project_service.apis]
-  name        = "financials-wf"
-  region      = var.region
-  description = "A workflow to scrape and upsert financials to BigQuery"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.scrape_financials, google_project_service.apis]
+  name            = "financials-wf"
+  region          = var.region
+  description     = "A workflow to scrape and upsert financials to BigQuery"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -79,13 +76,12 @@ main:
 EOF
 }
 
-# Workflow for ratings (monthly)
 resource "google_workflows_workflow" "workflow_ratings" {
-  depends_on  = [google_cloudfunctions2_function.scrape_ratings, google_project_service.apis]
-  name        = "ratings-wf"
-  region      = var.region
-  description = "A workflow to scrape and upsert ratings to BigQuery"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.scrape_ratings, google_project_service.apis]
+  name            = "ratings-wf"
+  region          = var.region
+  description     = "A workflow to scrape and upsert ratings to BigQuery"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -100,13 +96,12 @@ main:
 EOF
 }
 
-# Workflow for financials initialization (one-time - 5 years)
 resource "google_workflows_workflow" "workflow_financials_init" {
-  depends_on  = [google_cloudfunctions2_function.scrape_financials_init, google_project_service.apis]
-  name        = "financials-init-wf"
-  region      = var.region
-  description = "A workflow to initialize financials with 5 years of data"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.scrape_financials_init, google_project_service.apis]
+  name            = "financials-init-wf"
+  region          = var.region
+  description     = "A workflow to initialize financials with 5 years of data"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -121,13 +116,12 @@ main:
 EOF
 }
 
-# Workflow for ratings initialization (one-time - all available years)
 resource "google_workflows_workflow" "workflow_ratings_init" {
-  depends_on  = [google_cloudfunctions2_function.scrape_ratings_init, google_project_service.apis]
-  name        = "ratings-init-wf"
-  region      = var.region
-  description = "A workflow to initialize ratings with all available data"
-  project     = var.project_id
+  depends_on      = [google_cloudfunctions2_function.scrape_ratings_init, google_project_service.apis]
+  name            = "ratings-init-wf"
+  region          = var.region
+  description     = "A workflow to initialize ratings with all available data"
+  project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
@@ -143,12 +137,11 @@ EOF
 }
 
 # =====================================================
-# Cloud Scheduler Jobs - Created sequentially
+# Cloud Scheduler Jobs
 # =====================================================
 
-# Job for shares (daily - weekdays at 8pm)
 resource "google_cloud_scheduler_job" "job_shares" {
-  depends_on = [google_workflows_workflow.workflow_shares, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_shares, google_project_service.apis]
   name        = "shares-job"
   description = "Daily trigger for shares"
   schedule    = "0 20 * * 1-5"
@@ -163,9 +156,8 @@ resource "google_cloud_scheduler_job" "job_shares" {
   }
 }
 
-# Job for dividends (monthly)
 resource "google_cloud_scheduler_job" "job_dividends" {
-  depends_on = [google_workflows_workflow.workflow_dividends, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_dividends, google_project_service.apis]
   name        = "dividends-job"
   description = "Monthly trigger for dividends"
   schedule    = "0 20 1 * *"
@@ -180,9 +172,8 @@ resource "google_cloud_scheduler_job" "job_dividends" {
   }
 }
 
-# Job for financials (monthly - 1st of month at 6am)
 resource "google_cloud_scheduler_job" "job_financials" {
-  depends_on = [google_workflows_workflow.workflow_financials, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_financials, google_project_service.apis]
   name        = "financials-job"
   description = "Monthly trigger for financials"
   schedule    = "0 6 1 * *"
@@ -197,9 +188,8 @@ resource "google_cloud_scheduler_job" "job_financials" {
   }
 }
 
-# Job for ratings (monthly - 5th of month at 6am)
 resource "google_cloud_scheduler_job" "job_ratings" {
-  depends_on = [google_workflows_workflow.workflow_ratings, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_ratings, google_project_service.apis]
   name        = "ratings-job"
   description = "Monthly trigger for ratings"
   schedule    = "0 6 5 * *"
@@ -214,9 +204,8 @@ resource "google_cloud_scheduler_job" "job_ratings" {
   }
 }
 
-# Job for financials initialization (one-time - January 1st)
 resource "google_cloud_scheduler_job" "job_financials_init" {
-  depends_on = [google_workflows_workflow.workflow_financials_init, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_financials_init, google_project_service.apis]
   name        = "financials-init-job"
   description = "One-time initialization for financials (5 years). Disable after first run."
   schedule    = "0 6 1 1 *"
@@ -231,9 +220,8 @@ resource "google_cloud_scheduler_job" "job_financials_init" {
   }
 }
 
-# Job for ratings initialization (one-time - January 2nd)
 resource "google_cloud_scheduler_job" "job_ratings_init" {
-  depends_on = [google_workflows_workflow.workflow_ratings_init, google_project_service.apis]
+  depends_on  = [google_workflows_workflow.workflow_ratings_init, google_project_service.apis]
   name        = "ratings-init-job"
   description = "One-time initialization for ratings. Disable after first run."
   schedule    = "0 6 2 1 *"

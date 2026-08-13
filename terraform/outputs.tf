@@ -1,3 +1,7 @@
+output "service_url" {
+  value = google_cloud_run_v2_service.tradvisor_service.uri
+}
+
 output "function_uri" {
   value = [for f in google_cloudfunctions2_function.functions : f.service_config[0].uri]
 }
