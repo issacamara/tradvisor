@@ -105,7 +105,7 @@ resource "google_storage_bucket" "bucket" {
   force_destroy               = true
 }
 
-resource "google_storage_bucket_object" "src-code" {
+resource "google_storage_bucket_object" "src_code" {
   for_each   = toset(var.functions)
   depends_on = [data.archive_file.assets, google_storage_bucket.bucket]
   name       = "src/${each.key}-${data.archive_file.assets[each.key].output_sha256}.zip"
@@ -113,7 +113,7 @@ resource "google_storage_bucket_object" "src-code" {
   source     = data.archive_file.assets[each.key].output_path
 }
 
-resource "google_storage_bucket_object" "src-code-extra" {
+resource "google_storage_bucket_object" "src_code_extra" {
   for_each   = toset(["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"])
   depends_on = [data.archive_file.assets_extra, google_storage_bucket.bucket]
   name       = "src/${each.key}-${data.archive_file.assets_extra[each.key].output_sha256}.zip"
@@ -121,7 +121,7 @@ resource "google_storage_bucket_object" "src-code-extra" {
   source     = data.archive_file.assets_extra[each.key].output_path
 }
 
-resource "google_storage_bucket_object" "src-code-init" {
+resource "google_storage_bucket_object" "src_code_init" {
   for_each   = toset(["scrape_financials_init", "scrape_ratings_init"])
   depends_on = [data.archive_file.assets_init, google_storage_bucket.bucket]
   name       = "src/${each.key}-${data.archive_file.assets_init[each.key].output_sha256}.zip"
