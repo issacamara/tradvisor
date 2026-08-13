@@ -19,7 +19,6 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
   template {
     timeout = "300s"
 
-    # Service account to use
     service_account = google_service_account.tradvisor_sa.email
 
     scaling {
@@ -56,7 +55,6 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
         }
       }
 
-      # Resource limits
       resources {
         cpu_idle = true
         limits = {
@@ -79,8 +77,6 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
   }
 }
 
-
-
 # Secret Manager resource
 resource "google_secret_manager_secret" "bigquery_creds" {
   secret_id = "brvm-dashboard-bigquery-creds"
@@ -88,7 +84,7 @@ resource "google_secret_manager_secret" "bigquery_creds" {
   replication {
     user_managed {
       replicas {
-        location = "europe-central2"
+        location = var.region
       }
     }
   }

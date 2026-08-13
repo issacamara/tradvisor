@@ -1,11 +1,11 @@
-# Service Account for App & Functions
+# Create a service account for the function
 resource "google_service_account" "tradvisor_sa" {
   account_id   = "tradvisor-sa-${data.google_project.project.number}"
   depends_on   = [data.google_project.project]
   display_name = "Service Account for tradvisor application"
 }
 
-# Service Account Key
+# Create a key for the service account
 resource "google_service_account_key" "tradvisor_sa_key" {
   service_account_id = google_service_account.tradvisor_sa.name
   keepers = {
@@ -16,20 +16,26 @@ resource "google_service_account_key" "tradvisor_sa_key" {
 
 # Secret Manager Secrets
 resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
-  secret_id  = "tradvisor_sa_key"
-  replication { auto {} }
+  secret_id = "tradvisor_sa_key"
+  replication {
+    auto {}
+  }
   depends_on = [google_service_account.tradvisor_sa]
 }
 
 resource "google_secret_manager_secret" "tradvisor_gmail_acc" {
-  secret_id  = "tradvisor_gmail_acc"
-  replication { auto {} }
+  secret_id = "tradvisor_gmail_acc"
+  replication {
+    auto {}
+  }
   depends_on = [google_service_account.tradvisor_sa]
 }
 
 resource "google_secret_manager_secret" "openrouter_api_key" {
-  secret_id  = "openrouter_api_key"
-  replication { auto {} }
+  secret_id = "openrouter_api_key"
+  replication {
+    auto {}
+  }
   depends_on = [google_service_account.tradvisor_sa]
 }
 
@@ -52,7 +58,7 @@ resource "google_secret_manager_secret_version" "gmail_acc_secret_version" {
   secret_data = jsonencode(var.tradvisor_gmail_acc)
 }
 
-# Service Account for Cloud Run
+# Create a service account for the Cloud Run service
 resource "google_service_account" "brvm_dashboard_sa" {
   account_id   = "brvm-dashboard-sa"
   display_name = "BRVM Dashboard Service Account"
@@ -60,8 +66,9 @@ resource "google_service_account" "brvm_dashboard_sa" {
 }
 
 # =====================================================
-# IAM Roles & Members
+# IAM Members
 # =====================================================
+
 resource "google_project_iam_member" "build_sa_roles_tradvisor" {
   depends_on = [google_service_account.tradvisor_sa]
   project    = var.project_id
