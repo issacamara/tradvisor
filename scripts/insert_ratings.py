@@ -39,7 +39,7 @@ def entry_point(request=None):
     # Cleanup old ratings (keep only latest 2 years)
     cleanup_old_ratings()
 
-    asset = "RATINGS"
+    asset = "ratings"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

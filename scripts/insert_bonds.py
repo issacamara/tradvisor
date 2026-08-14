@@ -19,7 +19,7 @@ def entry_point(request=None):
 
     # Determine the environment
 
-    asset = "BONDS"
+    asset = "bonds"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

@@ -161,7 +161,7 @@ def entry_point(request=None):
         config = yaml.safe_load(file)
 
     df = scrape_dividends(config["url"]["dividends"])
-    return save_dataframe_as_csv(df, "DIVIDENDS", config)
+    return save_dataframe_as_csv(df, "dividends", config)
 
 
 # Local testing

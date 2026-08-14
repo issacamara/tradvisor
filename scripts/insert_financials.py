@@ -36,7 +36,7 @@ def entry_point(request=None):
     # Cleanup old financials (keep only latest 5 years)
     cleanup_old_financials()
 
-    asset = "FINANCIALS"
+    asset = "financials"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

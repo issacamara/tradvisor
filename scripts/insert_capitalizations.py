@@ -12,7 +12,7 @@ def entry_point(request=None):
 
     # Determine the environment
 
-    asset = "CAPITALIZATIONS"
+    asset = "capitalizations"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

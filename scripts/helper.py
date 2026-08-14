@@ -107,7 +107,7 @@ def save_dataframe_as_csv(df, fin_asset, conf):
       If None, the file will be saved locally.
     """
     today = datetime.now().strftime('%Y-%m-%d')
-    filename = f'{fin_asset}-{today}.csv'
+    filename = f'{fin_asset.lower()}-{today}.csv'
     if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
         # Save the file to a temporary location
         csv_string = df.to_csv(index=False, sep="|")

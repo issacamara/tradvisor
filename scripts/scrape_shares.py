@@ -60,7 +60,7 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     df = scrape_brvm_shares(config['url']['shares'])
-    return save_dataframe_as_csv(df, 'SHARES', config)
+    return save_dataframe_as_csv(df, 'shares', config)
 
 env = 'gcp'
 if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):

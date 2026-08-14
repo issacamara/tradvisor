@@ -50,7 +50,7 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     df = scrape_brvm_indices(config['url']['indices'])
-    return save_dataframe_as_csv(df, 'INDICES', config)
+    return save_dataframe_as_csv(df, 'indices', config)
 
 env = 'gcp'
 if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):

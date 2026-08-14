@@ -63,7 +63,7 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     df = scrape_brvm_bonds(config['url']['bonds'])
-    return save_dataframe_as_csv(df, 'BONDS', config)
+    return save_dataframe_as_csv(df, 'bonds', config)
 
 if __name__ == "__main__":
     print(entry_point())

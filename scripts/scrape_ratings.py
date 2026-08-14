@@ -216,7 +216,7 @@ def entry_point(request=None):
     print("======================\n")
     
     # Save to CSV (for archival)
-    result = save_dataframe_as_csv(df, 'RATINGS', config)
+    result = save_dataframe_as_csv(df, 'ratings', config)
     
     return result
 
