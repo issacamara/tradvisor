@@ -74,10 +74,25 @@ class DataManager:
         
         try:
             shares = client.query(query).to_dataframe()
+            
+            # Debug output
+            import sys
+            print(f"[DEBUG] Raw shares from BigQuery: {len(shares)} rows", file=sys.stderr, flush=True)
+            print(f"[DEBUG] Raw columns: {list(shares.columns)}", file=sys.stderr, flush=True)
+            
+            if shares.empty:
+                st.warning("No shares data found in BigQuery. The table may be empty.")
+                return shares
+            
+            # Convert column names to lowercase
             shares.columns = shares.columns.str.lower()
+            print(f"[DEBUG] Converted columns: {list(shares.columns)}", file=sys.stderr, flush=True)
+            
             return shares
         except Exception as e:
             st.error(f"Error loading shares: {str(e)}")
+            import traceback
+            st.error(traceback.format_exc())
             return pd.DataFrame()
 
     @staticmethod
@@ -257,7 +272,36 @@ class DataManager:
         
         # Generate technical indicators and signals
         trading_system = TechnicalIndicatorTrading()
-        result = trading_system.generate_signals(result, adaptive_weights=True)
+        
+        # Debug: Check data before generating signals
+        import sys
+        print(f"[DEBUG] Data before generate_signals: {result.shape} rows", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Columns: {list(result.columns)}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Unique symbols: {result['symbol'].nunique()}", file=sys.stderr, flush=True)
+        
+        # Check if we have enough data per symbol
+        symbol_counts = result.groupby('symbol').size()
+        print(f"[DEBUG] Rows per symbol: {symbol_counts.to_dict()}", file=sys.stderr, flush=True)
+        
+        # Check required columns
+        required = ['symbol', 'open', 'high', 'low', 'close', 'volume', 'date']
+        missing = [col for col in required if col not in result.columns]
+        if missing:
+            st.error(f"Missing required columns: {missing}")
+            return pd.DataFrame()
+        
+        # Check if we have enough data (need 30+ rows per symbol)
+        min_rows = symbol_counts.min()
+        if min_rows < 30:
+            st.warning(f"Insufficient data: minimum {min_rows} rows per symbol (need 30+)")
+            st.info("Consider increasing the days parameter in load_shares()")
+        
+        try:
+            result = trading_system.generate_signals(result, adaptive_weights=True)
+        except ValueError as e:
+            st.error(f"Error generating signals: {e}")
+            st.info("This usually means insufficient data per symbol. Try loading more historical data.")
+            return pd.DataFrame()
         
         # Calculate ROI
         result['roi'] = result['dividend'] / result['close']
