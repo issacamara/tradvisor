@@ -261,8 +261,8 @@ def show():
     score = calculate_passive_income_score(
         symbol_financials,
         symbol_ratings,
-        stock_data.get('DIVIDEND', 0),
-        stock_data.get('CLOSE', 0)
+        stock_data.get('dividend', 0),
+        stock_data.get('close', 0)
     )
     
     recommendation, rec_class = get_recommendation(score['total'])
@@ -300,7 +300,7 @@ def show():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        dividend_yield = stock_data.get('dividend', 0) / stock_data.get('close', 1) * 100 if stock_data.get('close', 0) > 0 else 0
+        dividend_yield = stock_data.get('dividend', 0) / max(stock_data.get('close', 1), 1) * 100
         st.metric("Dividend Yield", f"{dividend_yield:.2f}%")
     
     with col2:

@@ -29,10 +29,183 @@ def get_bigquery_client_safe():
 
 class DataManager:
     """Manages stock data fetching and technical indicator calculations"""
+    
+    # Table name constants
+    TABLE_SHARES = "stocks.shares"
+    TABLE_DIVIDENDS = "stocks.dividends"
+    TABLE_FINANCIALS = "stocks.financials"
+    TABLE_RATINGS = "stocks.ratings"
+
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def load_shares(project_id: str = None, days: int = 90) -> pd.DataFrame:
+        """
+        Load shares/price data from BigQuery.
+        
+        Args:
+            project_id: GCP project ID (defaults to env PROJECT_ID)
+            days: Number of days of historical data to load
+            
+        Returns:
+            DataFrame with columns: symbol, date, open, high, low, close, volume
+        """
+        if not project_id:
+            project_id = get_project_id()
+        
+        if not project_id:
+            st.error("PROJECT_ID environment variable not set")
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+        
+        query = f"""
+            WITH latest_date AS (
+                SELECT MAX(CAST(date AS DATE)) AS max_date 
+                FROM `{project_id}.{DataManager.TABLE_SHARES}`
+            )
+            SELECT * FROM `{project_id}.{DataManager.TABLE_SHARES}`
+            WHERE CAST(date AS DATE) BETWEEN 
+                DATE_SUB((SELECT max_date FROM latest_date), INTERVAL {days} DAY)
+                AND (SELECT max_date FROM latest_date)
+            ORDER BY symbol, date DESC
+        """
+        
+        try:
+            shares = client.query(query).to_dataframe()
+            shares.columns = shares.columns.str.lower()
+            return shares
+        except Exception as e:
+            st.error(f"Error loading shares: {str(e)}")
+            return pd.DataFrame()
+
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def load_dividends(project_id: str = None) -> pd.DataFrame:
+        """
+        Load latest dividend data from BigQuery.
+        
+        Args:
+            project_id: GCP project ID (defaults to env PROJECT_ID)
+            
+        Returns:
+            DataFrame with columns: symbol, date, dividend, payment_date
+        """
+        if not project_id:
+            project_id = get_project_id()
+        
+        if not project_id:
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+        
+        query = f"""
+            SELECT * FROM `{project_id}.{DataManager.TABLE_DIVIDENDS}`
+            WHERE DATE(date) = (
+                SELECT MAX(DATE(date)) 
+                FROM `{project_id}.{DataManager.TABLE_DIVIDENDS}`
+            )
+        """
+        
+        try:
+            dividends = client.query(query).to_dataframe()
+            dividends.columns = dividends.columns.str.lower()
+            return dividends
+        except Exception as e:
+            st.error(f"Error loading dividends: {str(e)}")
+            return pd.DataFrame()
+
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def load_financials(project_id: str = None) -> pd.DataFrame:
+        """
+        Load financial statements data from BigQuery.
+        
+        Args:
+            project_id: GCP project ID (defaults to env PROJECT_ID)
+            
+        Returns:
+            DataFrame with columns: symbol, fiscal_year, revenue, net_income, 
+                                   total_debt, cash_and_cash_equivalents, total_equity
+        """
+        if not project_id:
+            project_id = get_project_id()
+        
+        if not project_id:
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+        
+        query = f"SELECT * FROM `{project_id}.{DataManager.TABLE_FINANCIALS}` ORDER BY symbol, fiscal_year DESC"
+        
+        try:
+            financials = client.query(query).to_dataframe()
+            financials.columns = financials.columns.str.lower()
+            return financials
+        except Exception as e:
+            st.error(f"Error loading financials: {str(e)}")
+            return pd.DataFrame()
+
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def load_ratings(project_id: str = None) -> pd.DataFrame:
+        """
+        Load ratings data from BigQuery.
+        
+        Args:
+            project_id: GCP project ID (defaults to env PROJECT_ID)
+            
+        Returns:
+            DataFrame with columns: symbol, rating_year, rating_short_term, rating_long_term
+        """
+        if not project_id:
+            project_id = get_project_id()
+        
+        if not project_id:
+            return pd.DataFrame()
+        
+        client = get_bigquery_client_safe()
+        if client is None:
+            return pd.DataFrame()
+        
+        query = f"""
+            SELECT * FROM `{project_id}.{DataManager.TABLE_RATINGS}`
+            WHERE rating_year = (
+                SELECT MAX(rating_year) 
+                FROM `{project_id}.{DataManager.TABLE_RATINGS}`
+            )
+        """
+        
+        try:
+            ratings = client.query(query).to_dataframe()
+            ratings.columns = ratings.columns.str.lower()
+            return ratings
+        except Exception as e:
+            st.error(f"Error loading ratings: {str(e)}")
+            return pd.DataFrame()
 
     @staticmethod
     @st.cache_data(ttl=3600)
     def load_data():
+        """
+        Load all data sources and merge into a single DataFrame.
+        
+        This is a convenience method that loads:
+        - Shares (price data)
+        - Dividends
+        - Financials (latest fiscal year per symbol)
+        - Ratings (latest year)
+        
+        Then generates technical indicators and trading signals.
+        
+        Returns:
+            DataFrame with all merged data including signals and indicators
+        """
         # Get project_id at runtime
         project_id = get_project_id()
         
@@ -45,78 +218,25 @@ class DataManager:
         if client is None:
             return pd.DataFrame()
         
-        shares = None
-        dividends = None
-        financials = None
-        ratings = None
-        trading_system = TechnicalIndicatorTrading()
+        # Load each data source separately
+        shares = DataManager.load_shares(project_id)
+        dividends = DataManager.load_dividends(project_id)
+        financials = DataManager.load_financials(project_id)
+        ratings = DataManager.load_ratings(project_id)
         
-        # Use correct table names (SHARES uppercase, others lowercase)
-        # Fixed: BigQuery uses DATE_SUB instead of - INTERVAL
-        query1 = f"""
-                    WITH latest_date AS (SELECT MAX(CAST(date AS DATE)) AS max_date FROM `{project_id}.stocks.shares`)
-                    SELECT * FROM `{project_id}.stocks.shares`
-                    WHERE CAST(date AS DATE) BETWEEN DATE_SUB((SELECT max_date FROM latest_date), INTERVAL 90 DAY)
-                        AND (SELECT max_date FROM latest_date)
-                    ORDER BY date DESC
-                """
-
-        query4 = f"""
-                    SELECT * FROM `{project_id}.stocks.dividends`
-                    WHERE DATE(date) = (SELECT MAX(DATE(date)) FROM `{project_id}.stocks.dividends`)
-                """
-        
-        # Load financials table
-        query6 = f"SELECT * FROM `{project_id}.stocks.financials`"
-        
-        # Load ratings table (latest year)
-        query7 = f"""
-                    SELECT * FROM `{project_id}.stocks.ratings`
-                    WHERE rating_year = (SELECT MAX(rating_year) FROM `{project_id}.stocks.ratings`)
-                """
-        
-        try:
-            import sys
-            print(f"[DEBUG] Executing shares query...", file=sys.stderr, flush=True)
-            shares = client.query(query1).to_dataframe()
-            print(f"[DEBUG] Shares original columns: {list(shares.columns)}", file=sys.stderr, flush=True)
-            # Convert column names to lowercase
-            shares.columns = shares.columns.str.lower()
-            print(f"[DEBUG] Shares query returned: {len(shares)} rows, columns: {list(shares.columns)}", file=sys.stderr, flush=True)
-            print(f"[DEBUG] Shares sample data:\n{shares.head(2)}", file=sys.stderr, flush=True)
-            
-            print(f"[DEBUG] Executing dividends query...", file=sys.stderr, flush=True)
-            dividends = client.query(query4).to_dataframe()
-            # Convert column names to lowercase
-            dividends.columns = dividends.columns.str.lower()
-            print(f"[DEBUG] Dividends query returned: {len(dividends)} rows, columns: {list(dividends.columns)}", file=sys.stderr, flush=True)
-            
-            print(f"[DEBUG] Executing financials query...", file=sys.stderr, flush=True)
-            financials = client.query(query6).to_dataframe()
-            # Convert column names to lowercase
-            financials.columns = financials.columns.str.lower()
-            print(f"[DEBUG] Financials query returned: {len(financials)} rows", file=sys.stderr, flush=True)
-            
-            print(f"[DEBUG] Executing ratings query...", file=sys.stderr, flush=True)
-            ratings = client.query(query7).to_dataframe()
-            # Convert column names to lowercase
-            ratings.columns = ratings.columns.str.lower()
-            print(f"[DEBUG] Ratings query returned: {len(ratings)} rows", file=sys.stderr, flush=True)
-            
-        except Exception as e:
-            import sys
-            print(f"[DEBUG] ERROR querying BigQuery: {str(e)}", file=sys.stderr, flush=True)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
-            st.error(f"Error querying BigQuery: {str(e)}")
-            st.error(traceback.format_exc())
+        # Check if shares loaded successfully
+        if shares.empty:
             return pd.DataFrame()
-
-        result = shares.merge(dividends[["symbol", "dividend", "payment_date"]], on='symbol', how='left')
         
-        # Merge financials data
+        # Merge dividends
+        result = shares.merge(
+            dividends[["symbol", "dividend", "payment_date"]], 
+            on='symbol', 
+            how='left'
+        )
+        
+        # Merge financials (latest fiscal year per symbol)
         if financials is not None and not financials.empty:
-            # Get latest fiscal year for each symbol
             latest_financials = financials.loc[financials.groupby('symbol')['fiscal_year'].idxmax()]
             result = result.merge(
                 latest_financials[['symbol', 'revenue', 'net_income', 'total_debt', 
@@ -126,7 +246,7 @@ class DataManager:
                 how='left'
             )
         
-        # Merge ratings data
+        # Merge ratings
         if ratings is not None and not ratings.empty:
             result = result.merge(
                 ratings[['symbol', 'rating_short_term', 'rating_long_term', 'rating_year']],
@@ -135,59 +255,11 @@ class DataManager:
                 how='left'
             )
         
-        print(f"[DEBUG] Result columns before generate_signals: {list(result.columns)}", file=sys.stderr, flush=True)
-        print(f"[DEBUG] Result shape: {result.shape}", file=sys.stderr, flush=True)
-        print(f"[DEBUG] Result sample:\n{result.head(2)}", file=sys.stderr, flush=True)
-        
+        # Generate technical indicators and signals
+        trading_system = TechnicalIndicatorTrading()
         result = trading_system.generate_signals(result, adaptive_weights=True)
+        
+        # Calculate ROI
         result['roi'] = result['dividend'] / result['close']
 
         return result
-    
-    @staticmethod
-    @st.cache_data(ttl=3600)
-    def load_financials():
-        """Load financial statements data"""
-        project_id = get_project_id()
-        
-        if not project_id:
-            return pd.DataFrame()
-        
-        client = get_bigquery_client_safe()
-        if client is None:
-            return pd.DataFrame()
-            
-        query = f"SELECT * FROM `{project_id}.stocks.financials` ORDER BY symbol, fiscal_year DESC"
-        try:
-            financials = client.query(query).to_dataframe()
-            # Convert column names to lowercase
-            financials.columns = financials.columns.str.lower()
-        except Exception as e:
-            st.error(f"Error loading financials: {str(e)}")
-            return pd.DataFrame()
-        
-        return financials
-    
-    @staticmethod
-    @st.cache_data(ttl=3600)
-    def load_ratings():
-        """Load ratings data"""
-        project_id = get_project_id()
-        
-        if not project_id:
-            return pd.DataFrame()
-        
-        client = get_bigquery_client_safe()
-        if client is None:
-            return pd.DataFrame()
-            
-        query = f"SELECT * FROM `{project_id}.stocks.ratings` ORDER BY symbol, rating_year DESC"
-        try:
-            ratings = client.query(query).to_dataframe()
-            # Convert column names to lowercase
-            ratings.columns = ratings.columns.str.lower()
-        except Exception as e:
-            st.error(f"Error loading ratings: {str(e)}")
-            return pd.DataFrame()
-        
-        return ratings

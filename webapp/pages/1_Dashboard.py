@@ -3,11 +3,6 @@ Page 1: Dashboard Overview
 Displays stock overview, trading signals, and top performers
 """
 
-# DEBUG: Immediate import check - stderr for Cloud Run logs
-import os
-import sys
-print(f"[DEBUG] 1_Dashboard.py loaded, PROJECT_ID={os.environ.get('PROJECT_ID', 'NOT SET')}", file=sys.stderr, flush=True)
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -48,7 +43,7 @@ def apply_page_css():
     """, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=3600)
 def top10_by_roi(df: pd.DataFrame) -> pd.DataFrame:
     """Get top 10 stocks by ROI (dividend yield)"""
     dates = pd.to_datetime(df['date'].values)
@@ -63,7 +58,7 @@ def top10_by_roi(df: pd.DataFrame) -> pd.DataFrame:
     return latest.iloc[top_10_indices][['symbol', 'name', 'roi', 'close', 'volume']].copy().reset_index(drop=True)
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=3600)
 def top10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
     """Get top 10 weekly performing stocks"""
     dates = pd.to_datetime(df['date'].values)
@@ -102,7 +97,7 @@ def top10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
     return weekly_stats.iloc[top_10_indices][['symbol', 'name', 'price', 'growth', 'latest_volume']].copy().reset_index(drop=True)
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=3600)
 def bottom10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
     """Get bottom 10 weekly performing stocks"""
     dates = pd.to_datetime(df['date'].values)
@@ -143,58 +138,25 @@ def bottom10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
 
 def show():
     """Render the Dashboard page"""
-    # ULTRA EARLY DEBUG - should show even if imports fail
-    import os
-    import sys
-    print(f"[DEBUG] show() function called", file=sys.stderr, flush=True)
-    
-    st.markdown("### 🚨 DEBUG: Page loaded!")
-    st.write(f"PROJECT_ID env: {os.environ.get('PROJECT_ID', 'NOT SET')}")
-    st.write(f"Python path check...")
-    
     apply_page_css()
     
     # Page header
     st.markdown('<div class="main-header">Trading Dashboard</div>', unsafe_allow_html=True)
     
-    # DEBUG: Check environment
-    import os
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🔧 Debug Info")
-    st.sidebar.write(f"PROJECT_ID: {os.environ.get('PROJECT_ID', 'NOT SET')}")
-    st.sidebar.write(f"Environment: {os.environ.get('ENVIRONMENT', 'NOT SET')}")
-    
-    # Load data
+    # Load data using focused loaders
     try:
-        st.sidebar.info("Loading DataManager...")
-        dm = DataManager()
-        st.sidebar.success("DataManager initialized")
+        # Load shares with dividends merged (for signals and ROI)
+        shares = DataManager.load_data()
         
-        st.sidebar.info("Loading shares data...")
-        shares = dm.load_data()
-        st.sidebar.success(f"Shares loaded: {len(shares)} rows")
+        # Load financials for revenue display
+        financials_df = DataManager.load_financials()
         
-        st.sidebar.info("Loading financials...")
-        financials_df = dm.load_financials()
-        st.sidebar.success(f"Financials loaded: {len(financials_df)} rows")
-        
-        st.sidebar.info("Loading ratings...")
-        ratings_df = dm.load_ratings()
-        st.sidebar.success(f"Ratings loaded: {len(ratings_df)} rows")
+        # Load ratings for credit rating display
+        ratings_df = DataManager.load_ratings()
         
     except Exception as e:
         st.error(f"Error loading data: {e}")
-        import traceback
-        st.error(traceback.format_exc())
         return
-    
-    # DEBUG: Show columns
-    st.sidebar.markdown("### 📊 Data Columns")
-    st.sidebar.write("Shares columns:", list(shares.columns))
-    if not financials_df.empty:
-        st.sidebar.write("Financials columns:", list(financials_df.columns))
-    if not ratings_df.empty:
-        st.sidebar.write("Ratings columns:", list(ratings_df.columns))
     
     # Handle empty data
     if shares.empty:
@@ -221,16 +183,16 @@ def show():
     )
     
     # Get stock data
-    historical_data = shares[shares['symbol'] == selected_symbol].sort_values('date')
-    latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
+    stock_data = shares[shares['symbol'] == selected_symbol].sort_values('date')
+    latest_data = stock_data.iloc[-1]
     
     # Sidebar - Stock info
     st.sidebar.markdown(f"""
         <div class="metric-card">
-            <h4>{latest_data['name']}</h4>
-            <h4>Price: {latest_data['close']:.0f} XOF</h4>
-            <h4>Dividend: {latest_data['dividend']:.0f} XOF</h4>
-            <h4>ROI: {latest_data['roi']:.2%}</h4>
+            <h4>{latest_data.get('name', 'N/A')}</h4>
+            <h4>Price: {latest_data.get('close', 0):.0f} XOF</h4>
+            <h4>Dividend: {latest_data.get('dividend', 0):.0f} XOF</h4>
+            <h4>ROI: {latest_data.get('roi', 0):.2%}</h4>
         </div>
     """, unsafe_allow_html=True)
     
@@ -242,7 +204,7 @@ def show():
         st.markdown(f"### {selected_symbol} Price History", unsafe_allow_html=True)
         
         fig_price = px.line(
-            historical_data,
+            stock_data,
             x='date',
             y='close',
             title='',
@@ -266,12 +228,16 @@ def show():
         
         with col1:
             st.markdown("<h4 style='text-align: center;'>Trading Signal</h4>", unsafe_allow_html=True)
-            pie_fig = create_signal_pie_chart(latest_data[['buy', 'keep', 'sell']].to_dict())
+            pie_fig = create_signal_pie_chart({
+                'buy': latest_data.get('buy', 0),
+                'keep': latest_data.get('keep', 0),
+                'sell': latest_data.get('sell', 0)
+            })
             st.plotly_chart(pie_fig, use_container_width=True)
         
         with col2:
             st.markdown("<h4 style='text-align: center;'>Confidence Level</h4>", unsafe_allow_html=True)
-            gauge_fig = create_gauge_chart(latest_data['confidence'], "")
+            gauge_fig = create_gauge_chart(latest_data.get('confidence', 0), "")
             st.plotly_chart(gauge_fig, use_container_width=True)
         
         # Financial Summary (compact)
