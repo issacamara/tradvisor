@@ -235,45 +235,51 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
     job = client.load_table_from_dataframe(df, temp_table_id)
     job.result()
     
-    # Build the MERGE statement with proper type casting for date columns
-    primary_key_conditions = ' AND '.join([f"target.{pk} = source.{pk}" for pk in primary_keys])
-    update_columns = [col for col in df.columns if col not in primary_keys]
-    
-    # For columns that might be dates, cast them properly
-    def get_cast_expression(col):
-        col_lower = col.lower()
+    try:
+        # Build the MERGE statement with proper type casting for date columns
+        primary_key_conditions = ' AND '.join([f"target.{pk} = source.{pk}" for pk in primary_keys])
+        update_columns = [col for col in df.columns if col not in primary_keys]
         
-        # Check if column is a datetime (using more specific suffixes/names instead of a broad 'at' check)
-        if col_lower.endswith('_at') or 'time' in col_lower:
-            # collected_at is in format 'YYYY-MM-DD HH:MM:SS' - use PARSE_TIMESTAMP
-            return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
-        # Check if column is a date (announcement_date)
-        elif 'date' in col_lower:
-            return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
-        return f"source.{col}"
+        # For columns that might be dates, cast them properly
+        def get_cast_expression(col):
+            col_lower = col.lower()
+            
+            # Check if column is a datetime (using more specific suffixes/names instead of a broad 'at' check)
+            if col_lower.endswith('_at') or 'time' in col_lower:
+                # collected_at is in format 'YYYY-MM-DD HH:MM:SS' - use PARSE_TIMESTAMP
+                return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
+            # Check if column is a date (announcement_date)
+            elif 'date' in col_lower:
+                return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
+            return f"source.{col}"
 
     
-    update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
-    
-    # For INSERT, also cast date columns
-    insert_values = ', '.join([get_cast_expression(col) for col in df.columns])
-    
-    merge_query = f"""
-    MERGE `{table_id}` target
-    USING `{temp_table_id}` source
-    ON {primary_key_conditions}
-    WHEN MATCHED THEN
-      UPDATE SET {update_set}
-    WHEN NOT MATCHED THEN
-      INSERT ({', '.join(df.columns)})
-      VALUES ({insert_values})
-    """
-    
-    # Execute the merge
-    client.query(merge_query).result()
-    
-    # Delete the temporary table
-    client.delete_table(temp_table_id, not_found_ok=True)
+        update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
+        
+        # For INSERT, also cast date columns
+        insert_values = ', '.join([get_cast_expression(col) for col in df.columns])
+        
+        merge_query = f"""
+        MERGE `{table_id}` target
+        USING `{temp_table_id}` source
+        ON {primary_key_conditions}
+        WHEN MATCHED THEN
+          UPDATE SET {update_set}
+        WHEN NOT MATCHED THEN
+          INSERT ({', '.join(df.columns)})
+          VALUES ({insert_values})
+        """
+        
+        # Execute the merge
+        client.query(merge_query).result()
+        
+    finally:
+        # Always delete the temporary table, even if an error occurs
+        try:
+            client.delete_table(temp_table_id, not_found_ok=True)
+            print(f"Deleted temporary table: {temp_table_id}")
+        except Exception as e:
+            print(f"Warning: Failed to delete temporary table {temp_table_id}: {e}")
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
