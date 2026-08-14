@@ -31,10 +31,11 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     table_id = f"{project_id}.{dataset}.{table}"
     
     # Delete old records - keep only last 5 years of data per symbol
-    # This ensures no symbol has more than 5 years of dividend data
+    # Example: If today is 2025-01-01, keep data from 2021 onwards (2021,2022,2023,2024,2025)
+    # Formula: current_year - (years_to_keep - 1) = 2025 - 4 = 2021
     delete_query = f"""
-    DELETE FROM `{table_id}` 
-    WHERE payment_date < DATE_SUB(DATE_TRUNC(CURRENT_DATE(), YEAR), INTERVAL {years_to_keep} YEAR)
+    DELETE FROM `{table_id}`
+    WHERE payment_date < DATE_SUB(DATE_TRUNC(CURRENT_DATE(), YEAR), INTERVAL {years_to_keep - 1} YEAR)
     """
     
     query_job = client.query(delete_query)
@@ -58,12 +59,14 @@ def process_dividends(conf, asset):
             if blob.name.endswith('.csv'):
                 content = blob.download_as_text()
                 df = pd.read_csv(io.StringIO(content), sep='|')
+                rows_count = len(df)  # Get row count before upsert
                 # Upsert with symbol and payment_date as primary keys
                 upsert_into_bigquery(df, project_id, 'stocks', asset, ['symbol', 'payment_date'])
+                print(f"Upserted {rows_count} rows into {asset} table")
                 # Move to archive
                 from helper import move_csv_file_gcp
                 move_csv_file_gcp(bucket_url1, bucket_url2, blob.name)
-        
+
         # Cleanup old records - keep only last 5 years
         cleanup_old_dividends(project_id, 'stocks', asset, years_to_keep=5)
     else:
