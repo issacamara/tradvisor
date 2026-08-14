@@ -236,10 +236,6 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
     job.result()
     
     try:
-        # Build the MERGE statement with proper type casting for date columns
-        primary_key_conditions = ' AND '.join([f"target.{pk} = source.{pk}" for pk in primary_keys])
-        update_columns = [col for col in df.columns if col not in primary_keys]
-        
         # For columns that might be dates, cast them properly
         def get_cast_expression(col):
             col_lower = col.lower()
@@ -248,10 +244,14 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
             if col_lower.endswith('_at') or 'time' in col_lower:
                 # collected_at is in format 'YYYY-MM-DD HH:MM:SS' - use PARSE_TIMESTAMP
                 return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
-            # Check if column is a date (announcement_date)
+            # Check if column is a date (announcement_date, payment_date)
             elif 'date' in col_lower:
                 return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
             return f"source.{col}"
+
+        # Build the MERGE statement with proper type casting for primary keys
+        primary_key_conditions = ' AND '.join([f"target.{pk} = {get_cast_expression(pk)}" for pk in primary_keys])
+        update_columns = [col for col in df.columns if col not in primary_keys]
 
     
         update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
