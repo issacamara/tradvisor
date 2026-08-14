@@ -244,11 +244,13 @@ class DataManager:
             return pd.DataFrame()
         
         # Merge dividends
+        print(f"[DEBUG] Before merge - shares: {shares.shape}, dividends: {dividends.shape}", file=sys.stderr, flush=True)
         result = shares.merge(
             dividends[["symbol", "dividend", "payment_date"]], 
             on='symbol', 
             how='left'
         )
+        print(f"[DEBUG] After dividends merge: {result.shape}", file=sys.stderr, flush=True)
         
         # Merge financials (latest fiscal year per symbol)
         if financials is not None and not financials.empty:

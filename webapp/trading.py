@@ -116,16 +116,20 @@ class TechnicalIndicatorTrading:
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate all technical indicators using ta-lib library"""
+        import sys
         try:
             data = df.copy()
 
             # Ensure proper column names (lowercase)
             data.columns = data.columns.str.lower()
+            
+            print(f"[DEBUG] calculate_indicators input columns: {list(data.columns)}", file=sys.stderr, flush=True)
 
             # Check required columns
             required_cols = ['high', 'low', 'close', 'volume']
             missing_cols = [col for col in required_cols if col not in data.columns]
             if missing_cols:
+                print(f"[DEBUG] Missing columns: {missing_cols}", file=sys.stderr, flush=True)
                 raise ValueError(f"Missing required columns: {missing_cols}")
 
             # Set date as index for VWAP calculation if date column exists
@@ -338,17 +342,21 @@ class TechnicalIndicatorTrading:
         # Process each symbol separately
         for symbol in df_lower['symbol'].unique():
             symbol_data = df_lower[df_lower['symbol'] == symbol].copy().reset_index(drop=True)
+            
+            print(f"[DEBUG] Processing symbol: {symbol}, rows: {len(symbol_data)}", file=sys.stderr, flush=True)
 
             if len(symbol_data) < 30:
-                print(f"Warning: Insufficient data for symbol {symbol} ({len(symbol_data)} rows)")
+                print(f"[DEBUG] Skipping {symbol}: only {len(symbol_data)} rows (need 30+)", file=sys.stderr, flush=True)
                 continue
 
             try:
                 # Calculate technical indicators
                 symbol_data = self.calculate_indicators(symbol_data)
+                print(f"[DEBUG] Indicators calculated for {symbol}", file=sys.stderr, flush=True)
 
                 # Generate individual signals
                 symbol_data = self._generate_individual_signals(symbol_data)
+                print(f"[DEBUG] Signals generated for {symbol}", file=sys.stderr, flush=True)
 
                 # Get adaptive weights if enabled
                 if adaptive_weights:
@@ -358,13 +366,19 @@ class TechnicalIndicatorTrading:
 
                 # Calculate weighted probability
                 symbol_data = self._calculate_weighted_probability(symbol_data, current_weights)
+                print(f"[DEBUG] Weighted probability calculated for {symbol}", file=sys.stderr, flush=True)
 
                 results.append(symbol_data)
+                print(f"[DEBUG] Added {symbol} to results, total results: {len(results)}", file=sys.stderr, flush=True)
 
             except Exception as e:
-                print(f"Error processing symbol {symbol}: {e}")
+                print(f"[DEBUG] Error processing symbol {symbol}: {str(e)}", file=sys.stderr, flush=True)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
                 continue
 
+        print(f"[DEBUG] Final results count: {len(results)}", file=sys.stderr, flush=True)
+        
         if not results:
             raise ValueError("No valid data found for any symbols")
 
