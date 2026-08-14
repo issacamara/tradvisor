@@ -142,10 +142,10 @@ class FundamentalAnalyzer:
         result['passive_income_score'] = 0.0
         
         # Calculate dividend yield if available
-        if 'DIVIDEND' in result.columns and 'CLOSE' in result.columns:
+        if 'dividend' in result.columns and 'close' in result.columns:
             result['dividend_yield'] = np.where(
-                result['CLOSE'] > 0,
-                result['DIVIDEND'] / result['CLOSE'],
+                result['close'] > 0,
+                result['dividend'] / result['close'],
                 0
             )
             
@@ -166,11 +166,11 @@ class FundamentalAnalyzer:
             )
         
         # Add payout ratio assessment if we have net_income and dividends
-        if 'net_income' in result.columns and 'DIVIDEND' in result.columns:
+        if 'net_income' in result.columns and 'dividend' in result.columns:
             # Estimate payout ratio (simplified)
             estimated_payout = np.where(
                 result['net_income'] > 0,
-                (result['DIVIDEND'] * result.get('CLOSE', 1)) / result['net_income'],
+                (result['dividend'] * result.get('close', 1)) / result['net_income'],
                 np.nan
             )
             # Add up to 15 pts for low payout ratio

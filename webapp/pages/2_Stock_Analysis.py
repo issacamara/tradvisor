@@ -240,12 +240,12 @@ def show():
     with col_select:
         selected_symbol = st.selectbox(
             "Select Stock for Analysis",
-            sorted(shares['SYMBOL'].unique()),
+            sorted(shares['symbol'].unique()),
             key="analysis_symbol"
         )
     
     # Get stock data
-    stock_data = shares[shares['SYMBOL'] == selected_symbol].sort_values('DATE').iloc[-1]
+    stock_data = shares[shares['symbol'] == selected_symbol].sort_values('date').iloc[-1]
     symbol_financials = get_financial_summary(financials_df, selected_symbol)
     symbol_ratings = get_rating_summary(ratings_df, selected_symbol)
     
@@ -268,7 +268,7 @@ def show():
     recommendation, rec_class = get_recommendation(score['total'])
     
     # Main content
-    st.markdown(f"## {selected_symbol} - {stock_data.get('NAME', 'N/A')}")
+    st.markdown(f"## {selected_symbol} - {stock_data.get('name', 'N/A')}")
     
     # Score Section
     col_score, col_rec = st.columns([1, 1])
@@ -300,17 +300,17 @@ def show():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        dividend_yield = stock_data.get('DIVIDEND', 0) / stock_data.get('CLOSE', 1) * 100 if stock_data.get('CLOSE', 0) > 0 else 0
+        dividend_yield = stock_data.get('dividend', 0) / stock_data.get('close', 1) * 100 if stock_data.get('close', 0) > 0 else 0
         st.metric("Dividend Yield", f"{dividend_yield:.2f}%")
     
     with col2:
-        st.metric("Dividend", f"{stock_data.get('DIVIDEND', 0):.0f} XOF")
+        st.metric("Dividend", f"{stock_data.get('dividend', 0):.0f} XOF")
     
     with col3:
-        st.metric("Price", f"{stock_data.get('CLOSE', 0):.0f} XOF")
+        st.metric("Price", f"{stock_data.get('close', 0):.0f} XOF")
     
     with col4:
-        st.metric("ROI", f"{stock_data.get('ROI', 0):.2%}")
+        st.metric("ROI", f"{stock_data.get('roi', 0):.2%}")
     
     # Financial Ratios
     st.markdown("---")

@@ -313,25 +313,25 @@ class TechnicalIndicatorTrading:
             adaptive_weights: Whether to adjust weights based on market conditions
         """
         # Ensure required columns exist (case insensitive)
-        df_upper = df.copy()
-        df_upper.columns = df_upper.columns.str.upper()
+        df_lower = df.copy()
+        df_lower.columns = df_lower.columns.str.lower()
 
-        required_cols = ['SYMBOL', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME', 'DATE']
-        missing_cols = [col for col in required_cols if col not in df_upper.columns]
+        required_cols = ['symbol', 'open', 'high', 'low', 'close', 'volume', 'date']
+        missing_cols = [col for col in required_cols if col not in df_lower.columns]
         if missing_cols:
-            raise ValueError(f"Required columns not found: {missing_cols}. Available columns: {list(df_upper.columns)}")
+            raise ValueError(f"Required columns not found: {missing_cols}. Available columns: {list(df_lower.columns)}")
 
         # Convert to numeric and sort
-        numeric_cols = ['OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME']
+        numeric_cols = ['open', 'high', 'low', 'close', 'volume']
         for col in numeric_cols:
-            df_upper[col] = pd.to_numeric(df_upper[col], errors='coerce')
+            df_lower[col] = pd.to_numeric(df_lower[col], errors='coerce')
 
-        df_upper = df_upper.sort_values(['SYMBOL', 'DATE']).reset_index(drop=True)
+        df_lower = df_lower.sort_values(['symbol', 'date']).reset_index(drop=True)
         results = []
 
         # Process each symbol separately
-        for symbol in df_upper['SYMBOL'].unique():
-            symbol_data = df_upper[df_upper['SYMBOL'] == symbol].copy().reset_index(drop=True)
+        for symbol in df_lower['symbol'].unique():
+            symbol_data = df_lower[df_lower['symbol'] == symbol].copy().reset_index(drop=True)
 
             if len(symbol_data) < 30:
                 print(f"Warning: Insufficient data for symbol {symbol} ({len(symbol_data)} rows)")
@@ -364,16 +364,16 @@ class TechnicalIndicatorTrading:
 
         final_results = pd.concat(results, ignore_index=True)
 
-        # Ensure uppercase column names for output
-        final_results.columns = final_results.columns.str.upper()
-        # final_results = final_results.set_index('DATE')
+        # Ensure lowercase column names for output
+        final_results.columns = final_results.columns.str.lower()
+        # final_results = final_results.set_index('date')
         # final_results.index = pd.to_datetime(df.index)
-        return final_results.drop(['MA', 'EMA', 'RSI', 'MACD', 'MACD_SIGNAL', 'MACD_HISTOGRAM', 'BB_UPPER',
-                                   'BB_MIDDLE','BB_LOWER', 'STOCH_K', 'STOCH_D', 'CMF', 'CCI', 'PSAR', 'VWAP',
-                                   'MA_SIGNAL', 'EMA_SIGNAL', 'RSI_SIGNAL', 'MACD_SIGNAL_IND', 'BB_SIGNAL',
-                                   'STOCH_SIGNAL', 'CMF_SIGNAL', 'CCI_SIGNAL', 'PSAR_SIGNAL', 'VWAP_SIGNAL',
-                                   'WEIGHTED_BUY_SCORE', 'WEIGHTED_SELL_SCORE', 'WEIGHTED_HOLD_SCORE',
-                                   'APPLIED_WEIGHTS', 'TYPICAL_PRICE', 'TP_VOLUME'], axis=1)
+        return final_results.drop(['ma', 'ema', 'rsi', 'macd', 'macd_signal', 'macd_histogram', 'bb_upper',
+                                   'bb_middle','bb_lower', 'stoch_k', 'stoch_d', 'cmf', 'cci', 'psar', 'vwap',
+                                   'ma_signal', 'ema_signal', 'rsi_signal', 'macd_signal_ind', 'bb_signal',
+                                   'stoch_signal', 'cmf_signal', 'cci_signal', 'psar_signal', 'vwap_signal',
+                                   'weighted_buy_score', 'weighted_sell_score', 'weighted_hold_score',
+                                   'applied_weights', 'typical_price', 'tp_volume'], axis=1)
 
     def _generate_individual_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate individual buy/sell/hold signals for each indicator"""
@@ -381,7 +381,7 @@ class TechnicalIndicatorTrading:
         # Fill NaN values with neutral values where appropriate
         df = df.fillna(0)
 
-        # Individual signals
+        # Individual signals (lowercase columns)
         df['ma_signal'] = np.where(df['close'] > df['ma'], 1,
                                    np.where(df['close'] < df['ma'], -1, 0))
 
@@ -439,23 +439,23 @@ class TechnicalIndicatorTrading:
         return df
 
     def _calculate_weighted_probability(self, df: pd.DataFrame, weights: Dict[str, float]) -> pd.DataFrame:
-        """Calculate weighted probabilities for BUY, HOLD, SELL decisions"""
+        """Calculate weighted probabilities for buy, hold, sell decisions"""
 
-        # Map indicator names to signal column names
+        # Map indicator names to signal column names (lowercase)
         indicator_mapping = {
-            'MA': 'ma_signal',
-            'EMA': 'ema_signal',
-            'RSI': 'rsi_signal',
-            'MACD': 'macd_signal_ind',
-            'BB': 'bb_signal',
-            'STOCH': 'stoch_signal',
-            'CMF': 'cmf_signal',
-            'CCI': 'cci_signal',
-            'PSAR': 'psar_signal',
-            'VWAP': 'vwap_signal'
+            'ma': 'ma_signal',
+            'ema': 'ema_signal',
+            'rsi': 'rsi_signal',
+            'macd': 'macd_signal_ind',
+            'bb': 'bb_signal',
+            'stoch': 'stoch_signal',
+            'cmf': 'cmf_signal',
+            'cci': 'cci_signal',
+            'psar': 'psar_signal',
+            'vwap': 'vwap_signal'
         }
 
-        # Fill NaN values with 0 (HOLD)
+        # Fill NaN values with 0 (hold)
         for col in indicator_mapping.values():
             if col in df.columns:
                 df[col] = df[col].fillna(0)
@@ -481,9 +481,9 @@ class TechnicalIndicatorTrading:
 
         # Final recommendation based on highest weighted probability
         df['recommendation'] = df.apply(
-            lambda row: 'BUY' if row['buy'] >= max(row['sell'], row['keep'])
-            else 'SELL' if row['sell'] >= row['keep']
-            else 'HOLD', axis=1
+            lambda row: 'buy' if row['buy'] >= max(row['sell'], row['keep'])
+            else 'sell' if row['sell'] >= row['keep']
+            else 'hold', axis=1
         )
 
         # Enhanced confidence score
@@ -528,13 +528,13 @@ def create_sample_data(symbols: List[str] = ['AAPL', 'GOOGL', 'MSFT'], days: int
             volume = int(np.random.lognormal(12, 1))
 
             all_data.append({
-                'SYMBOL': symbol,
-                'DATE': date,
-                'OPEN': round(open_price, 2),
-                'HIGH': round(high, 2),
-                'LOW': round(low, 2),
-                'CLOSE': round(close, 2),
-                'VOLUME': volume
+                'symbol': symbol,
+                'date': date,
+                'open': round(open_price, 2),
+                'high': round(high, 2),
+                'low': round(low, 2),
+                'close': round(close, 2),
+                'volume': volume
             })
 
     return pd.DataFrame(all_data)
@@ -552,7 +552,7 @@ def main():
         # Create sample data
         print("\n1. Creating sample data...")
         sample_data = create_sample_data(['AAPL', 'GOOGL', 'MSFT'], days=60)
-        print(f"Sample data created: {len(sample_data)} rows for {sample_data['SYMBOL'].nunique()} symbols")
+        print(f"Sample data created: {len(sample_data)} rows for {sample_data['symbol'].nunique()} symbols")
 
         # Generate weighted signals
         print("\n2. Calculating weighted technical indicators and signals...")
@@ -564,9 +564,9 @@ def main():
         print("\n3. Weighted Results Summary:")
         print("-" * 35)
 
-        latest_signals = results.groupby('SYMBOL').tail(1)[
-            ['SYMBOL', 'DATE', 'CLOSE', 'BUY', 'SELL',
-             'KEEP', 'RECOMMENDATION', 'CONFIDENCE']
+        latest_signals = results.groupby('symbol').tail(1)[
+            ['symbol', 'date', 'close', 'buy', 'sell',
+             'keep', 'recommendation', 'confidence']
         ]
 
         print("\nLatest Weighted Trading Signals:")

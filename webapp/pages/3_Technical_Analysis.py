@@ -48,7 +48,7 @@ def calculate_indicators_for_stock(df: pd.DataFrame, symbol: str) -> pd.DataFram
     trading_system = TechnicalIndicatorTrading()
     
     # Filter for symbol and get enough historical data
-    symbol_data = df[df['SYMBOL'] == symbol].copy()
+    symbol_data = df[df['symbol'] == symbol].copy()
     
     if len(symbol_data) < 50:
         return pd.DataFrame()
@@ -168,7 +168,7 @@ def show():
     with col_select:
         selected_symbol = st.selectbox(
             "Select Stock for Analysis",
-            sorted(shares['SYMBOL'].unique()),
+            sorted(shares['symbol'].unique()),
             key="tech_symbol"
         )
     
@@ -195,8 +195,8 @@ def show():
         st.metric("Current Price", f"{latest['close']:.0f} XOF")
     with col_conf:
         # Get the confidence from original data
-        stock_signals = shares[shares['SYMBOL'] == selected_symbol].iloc[-1]
-        st.metric("Confidence", f"{stock_signals.get('CONFIDENCE', 0) * 100:.0f}%")
+        stock_signals = shares[shares['symbol'] == selected_symbol].iloc[-1]
+        st.metric("Confidence", f"{stock_signals.get('confidence', 0) * 100:.0f}%")
     
     # Indicator weights
     st.markdown("---")

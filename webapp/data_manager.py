@@ -79,18 +79,26 @@ class DataManager:
             import sys
             print(f"[DEBUG] Executing shares query...", file=sys.stderr, flush=True)
             shares = client.query(query1).to_dataframe()
+            # Convert column names to uppercase
+            shares.columns = shares.columns.str.lower()
             print(f"[DEBUG] Shares query returned: {len(shares)} rows", file=sys.stderr, flush=True)
             
             print(f"[DEBUG] Executing dividends query...", file=sys.stderr, flush=True)
             dividends = client.query(query4).to_dataframe()
-            print(f"[DEBUG] Dividends query returned: {len(dividends)} rows", file=sys.stderr, flush=True)
+            # Convert column names to lowercase
+            dividends.columns = dividends.columns.str.lower()
+            print(f"[DEBUG] Dividends query returned: {len(dividends)} rows, columns: {list(dividends.columns)}", file=sys.stderr, flush=True)
             
             print(f"[DEBUG] Executing financials query...", file=sys.stderr, flush=True)
             financials = client.query(query6).to_dataframe()
+            # Convert column names to lowercase
+            financials.columns = financials.columns.str.lower()
             print(f"[DEBUG] Financials query returned: {len(financials)} rows", file=sys.stderr, flush=True)
             
             print(f"[DEBUG] Executing ratings query...", file=sys.stderr, flush=True)
             ratings = client.query(query7).to_dataframe()
+            # Convert column names to lowercase
+            ratings.columns = ratings.columns.str.lower()
             print(f"[DEBUG] Ratings query returned: {len(ratings)} rows", file=sys.stderr, flush=True)
             
         except Exception as e:
@@ -102,7 +110,7 @@ class DataManager:
             st.error(traceback.format_exc())
             return pd.DataFrame()
 
-        result = shares.merge(dividends[["SYMBOL", "DIVIDEND", "PAYMENT_DATE"]], on='SYMBOL', how='left')
+        result = shares.merge(dividends[["symbol", "dividend", "payment_date"]], on='symbol', how='left')
         
         # Merge financials data
         if financials is not None and not financials.empty:
@@ -111,24 +119,22 @@ class DataManager:
             result = result.merge(
                 latest_financials[['symbol', 'revenue', 'net_income', 'total_debt', 
                                    'cash_and_cash_equivalents', 'total_equity', 'fiscal_year']],
-                left_on='SYMBOL',
+                left_on='symbol',
                 right_on='symbol',
                 how='left'
             )
-            result = result.drop(columns=['symbol'], errors='ignore')
         
         # Merge ratings data
         if ratings is not None and not ratings.empty:
             result = result.merge(
                 ratings[['symbol', 'rating_short_term', 'rating_long_term', 'rating_year']],
-                left_on='SYMBOL',
+                left_on='symbol',
                 right_on='symbol',
                 how='left'
             )
-            result = result.drop(columns=['symbol'], errors='ignore')
         
         result = trading_system.generate_signals(result, adaptive_weights=True)
-        result['ROI'] = result['DIVIDEND'] / result['CLOSE']
+        result['roi'] = result['dividend'] / result['close']
 
         return result
     
@@ -148,6 +154,8 @@ class DataManager:
         query = f"SELECT * FROM `{project_id}.stocks.financials` ORDER BY symbol, fiscal_year DESC"
         try:
             financials = client.query(query).to_dataframe()
+            # Convert column names to lowercase
+            financials.columns = financials.columns.str.lower()
         except Exception as e:
             st.error(f"Error loading financials: {str(e)}")
             return pd.DataFrame()
@@ -170,6 +178,8 @@ class DataManager:
         query = f"SELECT * FROM `{project_id}.stocks.ratings` ORDER BY symbol, rating_year DESC"
         try:
             ratings = client.query(query).to_dataframe()
+            # Convert column names to lowercase
+            ratings.columns = ratings.columns.str.lower()
         except Exception as e:
             st.error(f"Error loading ratings: {str(e)}")
             return pd.DataFrame()

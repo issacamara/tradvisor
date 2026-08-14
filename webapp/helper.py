@@ -51,7 +51,7 @@ def create_signal_pie_chart(probabilities):
 
     # Create pie chart data
     labels = ['Buy', 'Hold', 'Sell']
-    values = [probabilities['BUY'] * 100, probabilities['KEEP'] * 100, probabilities['SELL'] * 100]
+    values = [probabilities['buy'] * 100, probabilities['keep'] * 100, probabilities['sell'] * 100]
     colors = ['#16a34a', '#f59e0b', '#dc2626']
 
     fig = go.Figure(data=[go.Pie(
@@ -115,7 +115,7 @@ def create_stock_chart(data, symbol):
     fig.add_trace(
         go.Scatter(
             x=data.index,
-            y=data['CLOSE'],
+            y=data['close'],
             mode='lines',
             name='Close Price',
             line=dict(color='#1f77b4', width=2)

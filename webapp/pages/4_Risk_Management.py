@@ -50,9 +50,9 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
     if len(df) < period + 1:
         return 0
     
-    high = df['HIGH'].values if 'HIGH' in df.columns else df['high'].values
-    low = df['LOW'].values if 'LOW' in df.columns else df['low'].values
-    close = df['CLOSE'].values if 'CLOSE' in df.columns else df['close'].values
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
     
     # Calculate True Range
     tr1 = high - low
@@ -298,19 +298,19 @@ def show():
     with col_select:
         selected_symbol = st.selectbox(
             "Select Stock",
-            sorted(shares['SYMBOL'].unique()),
+            sorted(shares['symbol'].unique()),
             key="risk_symbol"
         )
     
     # Get stock data
-    stock_data = shares[shares['SYMBOL'] == selected_symbol].sort_values('DATE')
+    stock_data = shares[shares['symbol'] == selected_symbol].sort_values('date')
     
     if len(stock_data) < 30:
         st.warning("Insufficient data for risk analysis")
         return
     
     latest = stock_data.iloc[-1]
-    current_price = latest['CLOSE']
+    current_price = latest['close']
     
     # Calculate ATR
     atr = calculate_atr(stock_data)
@@ -384,7 +384,7 @@ def show():
     
     with col_rs1:
         # Calculate volatility (standard deviation of returns)
-        returns = stock_data['CLOSE'].pct_change().dropna()
+        returns = stock_data['close'].pct_change().dropna()
         volatility = returns.std()
         
         # Get financial data for risk calculation

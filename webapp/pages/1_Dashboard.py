@@ -51,94 +51,94 @@ def apply_page_css():
 @st.cache_data(ttl=86400)
 def top10_by_roi(df: pd.DataFrame) -> pd.DataFrame:
     """Get top 10 stocks by ROI (dividend yield)"""
-    dates = pd.to_datetime(df['DATE'].values)
+    dates = pd.to_datetime(df['date'].values)
     latest_date = dates.max()
     mask = dates == latest_date
     latest = df[mask]
     
-    roi_values = latest['ROI'].values
+    roi_values = latest['roi'].values
     top_10_indices = np.argpartition(-roi_values, 10)[:10]
     top_10_indices = top_10_indices[np.argsort(-roi_values[top_10_indices])]
     
-    return latest.iloc[top_10_indices][['SYMBOL', 'NAME', 'ROI', 'CLOSE', 'VOLUME']].copy().reset_index(drop=True)
+    return latest.iloc[top_10_indices][['symbol', 'name', 'roi', 'close', 'volume']].copy().reset_index(drop=True)
 
 
 @st.cache_data(ttl=86400)
 def top10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
     """Get top 10 weekly performing stocks"""
-    dates = pd.to_datetime(df['DATE'].values)
+    dates = pd.to_datetime(df['date'].values)
     latest_date = dates.max()
     week_ago = latest_date - pd.Timedelta(days=7)
     
     weekly_mask = dates >= week_ago
     weekly_data = df[weekly_mask].copy()
-    weekly_data['DATE'] = dates[weekly_mask]
-    weekly_data = weekly_data.sort_values(['SYMBOL', 'DATE'])
+    weekly_data['date'] = dates[weekly_mask]
+    weekly_data = weekly_data.sort_values(['symbol', 'date'])
     
-    weekly_stats = weekly_data.groupby('SYMBOL').agg({
-        'CLOSE': ['first', 'last'],
-        'NAME': 'last',
-        'VOLUME': 'last'
+    weekly_stats = weekly_data.groupby('symbol').agg({
+        'close': ['first', 'last'],
+        'name': 'last',
+        'volume': 'last'
     })
-    weekly_stats.columns = ['START_PRICE', 'PRICE', 'NAME', 'LATEST_VOLUME']
+    weekly_stats.columns = ['start_price', 'price', 'name', 'latest_volume']
     weekly_stats = weekly_stats.reset_index()
     
     with np.errstate(divide='ignore', invalid='ignore'):
-        weekly_returns = ((weekly_stats['PRICE'] - weekly_stats['START_PRICE']) / weekly_stats['START_PRICE'])
+        weekly_returns = ((weekly_stats['price'] - weekly_stats['start_price']) / weekly_stats['start_price'])
     
-    weekly_stats['GROWTH'] = weekly_returns
-    weekly_stats = weekly_stats[np.isfinite(weekly_stats['GROWTH'])]
+    weekly_stats['growth'] = weekly_returns
+    weekly_stats = weekly_stats[np.isfinite(weekly_stats['growth'])]
     
     if weekly_stats.empty:
-        return pd.DataFrame(columns=['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME'])
+        return pd.DataFrame(columns=['symbol', 'name', 'price', 'growth', 'latest_volume'])
     
-    returns = weekly_stats['GROWTH'].values
+    returns = weekly_stats['growth'].values
     if len(returns) <= 10:
         top_10_indices = np.argsort(-returns)
     else:
         top_10_indices = np.argpartition(-returns, 10)[:10]
         top_10_indices = top_10_indices[np.argsort(-returns[top_10_indices])]
     
-    return weekly_stats.iloc[top_10_indices][['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME']].copy().reset_index(drop=True)
+    return weekly_stats.iloc[top_10_indices][['symbol', 'name', 'price', 'growth', 'latest_volume']].copy().reset_index(drop=True)
 
 
 @st.cache_data(ttl=86400)
 def bottom10_weekly_performers(df: pd.DataFrame) -> pd.DataFrame:
     """Get bottom 10 weekly performing stocks"""
-    dates = pd.to_datetime(df['DATE'].values)
+    dates = pd.to_datetime(df['date'].values)
     latest_date = dates.max()
     week_ago = latest_date - pd.Timedelta(days=7)
     
     weekly_mask = dates >= week_ago
     weekly_data = df[weekly_mask].copy()
-    weekly_data['DATE'] = dates[weekly_mask]
-    weekly_data = weekly_data.sort_values(['SYMBOL', 'DATE'])
+    weekly_data['date'] = dates[weekly_mask]
+    weekly_data = weekly_data.sort_values(['symbol', 'date'])
     
-    weekly_stats = weekly_data.groupby('SYMBOL').agg({
-        'CLOSE': ['first', 'last'],
-        'NAME': 'last',
-        'VOLUME': 'last'
+    weekly_stats = weekly_data.groupby('symbol').agg({
+        'close': ['first', 'last'],
+        'name': 'last',
+        'volume': 'last'
     })
-    weekly_stats.columns = ['START_PRICE', 'PRICE', 'NAME', 'LATEST_VOLUME']
+    weekly_stats.columns = ['start_price', 'price', 'name', 'latest_volume']
     weekly_stats = weekly_stats.reset_index()
     
     with np.errstate(divide='ignore', invalid='ignore'):
-        weekly_returns = ((weekly_stats['PRICE'] - weekly_stats['START_PRICE']) / weekly_stats['START_PRICE'])
+        weekly_returns = ((weekly_stats['price'] - weekly_stats['start_price']) / weekly_stats['start_price'])
     
-    weekly_stats['GROWTH'] = weekly_returns
-    weekly_stats = weekly_stats[np.isfinite(weekly_stats['GROWTH'])]
+    weekly_stats['growth'] = weekly_returns
+    weekly_stats = weekly_stats[np.isfinite(weekly_stats['growth'])]
     
     if weekly_stats.empty:
-        return pd.DataFrame(columns=['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME'])
+        return pd.DataFrame(columns=['symbol', 'name', 'price', 'growth', 'latest_volume'])
     
-    returns = weekly_stats['GROWTH'].values
+    returns = weekly_stats['growth'].values
     if len(returns) <= 10:
         bottom_10_indices = np.argsort(returns)
     else:
         bottom_10_indices = np.argpartition(returns, 10)[:10]
         bottom_10_indices = bottom_10_indices[np.argsort(returns[bottom_10_indices])]
     
-    return weekly_stats.iloc[bottom_10_indices][['SYMBOL', 'NAME', 'PRICE', 'GROWTH', 'LATEST_VOLUME']].copy().reset_index(drop=True)
+    return weekly_stats.iloc[bottom_10_indices][['symbol', 'name', 'price', 'growth', 'latest_volume']].copy().reset_index(drop=True)
 
 
 def show():
@@ -208,29 +208,29 @@ def show():
     # Sidebar - Stock selector
     st.sidebar.markdown('<div class="sidebar-header">Choose the stock</div>', unsafe_allow_html=True)
     
-    # Check if SYMBOL column exists
-    if 'SYMBOL' not in shares.columns:
-        st.error("Data loaded but missing SYMBOL column")
+    # Check if symbol column exists
+    if 'symbol' not in shares.columns:
+        st.error("Data loaded but missing symbol column")
         st.write("Available columns:", list(shares.columns))
         return
     
     selected_symbol = st.sidebar.selectbox(
         "Select Stock",
-        options=sorted(shares['SYMBOL'].unique()),
+        options=sorted(shares['symbol'].unique()),
         key="dashboard_symbol"
     )
     
     # Get stock data
-    historical_data = shares[shares['SYMBOL'] == selected_symbol].sort_values('DATE')
+    historical_data = shares[shares['symbol'] == selected_symbol].sort_values('date')
     latest_data = historical_data[historical_data.index == historical_data.index.max()].iloc[0]
     
     # Sidebar - Stock info
     st.sidebar.markdown(f"""
         <div class="metric-card">
-            <h4>{latest_data['NAME']}</h4>
-            <h4>Price: {latest_data['CLOSE']:.0f} XOF</h4>
-            <h4>Dividend: {latest_data['DIVIDEND']:.0f} XOF</h4>
-            <h4>ROI: {latest_data['ROI']:.2%}</h4>
+            <h4>{latest_data['name']}</h4>
+            <h4>Price: {latest_data['close']:.0f} XOF</h4>
+            <h4>Dividend: {latest_data['dividend']:.0f} XOF</h4>
+            <h4>ROI: {latest_data['roi']:.2%}</h4>
         </div>
     """, unsafe_allow_html=True)
     
@@ -243,8 +243,8 @@ def show():
         
         fig_price = px.line(
             historical_data,
-            x='DATE',
-            y='CLOSE',
+            x='date',
+            y='close',
             title='',
             template='plotly_white'
         )
@@ -266,12 +266,12 @@ def show():
         
         with col1:
             st.markdown("<h4 style='text-align: center;'>Trading Signal</h4>", unsafe_allow_html=True)
-            pie_fig = create_signal_pie_chart(latest_data[['BUY', 'KEEP', 'SELL']].to_dict())
+            pie_fig = create_signal_pie_chart(latest_data[['buy', 'keep', 'sell']].to_dict())
             st.plotly_chart(pie_fig, use_container_width=True)
         
         with col2:
             st.markdown("<h4 style='text-align: center;'>Confidence Level</h4>", unsafe_allow_html=True)
-            gauge_fig = create_gauge_chart(latest_data['CONFIDENCE'], "")
+            gauge_fig = create_gauge_chart(latest_data['confidence'], "")
             st.plotly_chart(gauge_fig, use_container_width=True)
         
         # Financial Summary (compact)
@@ -296,7 +296,7 @@ def show():
             st.metric("Long-Term Rating", lt_rating if lt_rating else "N/A")
         
         with col_f4:
-            st.metric("Recommendation", latest_data.get('RECOMMENDATION', 'N/A'))
+            st.metric("Recommendation", latest_data.get('recommendation', 'N/A'))
         
         # Performance Tables
         st.markdown("---")
@@ -304,17 +304,17 @@ def show():
         
         with col_table1:
             st.markdown("<h4 style='text-align: center; color: green;'>Top 10 by ROI</h4>", unsafe_allow_html=True)
-            top_roi = top10_by_roi(shares).style.format({'ROI': '{:.2%}', 'CLOSE': '{:.0f}', 'VOLUME': '{:.0f}'})
+            top_roi = top10_by_roi(shares).style.format({'roi': '{:.2%}', 'close': '{:.0f}', 'volume': '{:.0f}'})
             st.dataframe(top_roi, use_container_width=True, hide_index=True)
         
         with col_table2:
             st.markdown("<h4 style='text-align: center; color: green;'>Top Weekly</h4>", unsafe_allow_html=True)
-            top_weekly = top10_weekly_performers(shares).style.format({'GROWTH': '{:.2%}', 'PRICE': '{:.0f}', 'LATEST_VOLUME': '{:.0f}'})
+            top_weekly = top10_weekly_performers(shares).style.format({'growth': '{:.2%}', 'price': '{:.0f}', 'latest_volume': '{:.0f}'})
             st.dataframe(top_weekly, use_container_width=True, hide_index=True)
         
         with col_table3:
             st.markdown("<h4 style='text-align: center; color: red;'>Bottom Weekly</h4>", unsafe_allow_html=True)
-            bottom_weekly = bottom10_weekly_performers(shares).style.format({'GROWTH': '{:.2%}', 'PRICE': '{:.0f}', 'LATEST_VOLUME': '{:.0f}'})
+            bottom_weekly = bottom10_weekly_performers(shares).style.format({'growth': '{:.2%}', 'price': '{:.0f}', 'latest_volume': '{:.0f}'})
             st.dataframe(bottom_weekly, use_container_width=True, hide_index=True)
     
     # Footer
