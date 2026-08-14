@@ -79,9 +79,11 @@ class DataManager:
             import sys
             print(f"[DEBUG] Executing shares query...", file=sys.stderr, flush=True)
             shares = client.query(query1).to_dataframe()
-            # Convert column names to uppercase
+            print(f"[DEBUG] Shares original columns: {list(shares.columns)}", file=sys.stderr, flush=True)
+            # Convert column names to lowercase
             shares.columns = shares.columns.str.lower()
-            print(f"[DEBUG] Shares query returned: {len(shares)} rows", file=sys.stderr, flush=True)
+            print(f"[DEBUG] Shares query returned: {len(shares)} rows, columns: {list(shares.columns)}", file=sys.stderr, flush=True)
+            print(f"[DEBUG] Shares sample data:\n{shares.head(2)}", file=sys.stderr, flush=True)
             
             print(f"[DEBUG] Executing dividends query...", file=sys.stderr, flush=True)
             dividends = client.query(query4).to_dataframe()
@@ -132,6 +134,10 @@ class DataManager:
                 right_on='symbol',
                 how='left'
             )
+        
+        print(f"[DEBUG] Result columns before generate_signals: {list(result.columns)}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Result shape: {result.shape}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Result sample:\n{result.head(2)}", file=sys.stderr, flush=True)
         
         result = trading_system.generate_signals(result, adaptive_weights=True)
         result['roi'] = result['dividend'] / result['close']

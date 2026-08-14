@@ -312,13 +312,19 @@ class TechnicalIndicatorTrading:
             df: Input DataFrame with OHLCV data
             adaptive_weights: Whether to adjust weights based on market conditions
         """
+        import sys
+        
         # Ensure required columns exist (case insensitive)
         df_lower = df.copy()
         df_lower.columns = df_lower.columns.str.lower()
 
+        print(f"[DEBUG] generate_signals input columns: {list(df_lower.columns)}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] generate_signals input shape: {df_lower.shape}", file=sys.stderr, flush=True)
+
         required_cols = ['symbol', 'open', 'high', 'low', 'close', 'volume', 'date']
         missing_cols = [col for col in required_cols if col not in df_lower.columns]
         if missing_cols:
+            print(f"[DEBUG] Missing columns: {missing_cols}", file=sys.stderr, flush=True)
             raise ValueError(f"Required columns not found: {missing_cols}. Available columns: {list(df_lower.columns)}")
 
         # Convert to numeric and sort
