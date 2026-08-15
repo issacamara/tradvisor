@@ -33,10 +33,24 @@ def get_symbols_from_richbourse(url):
     }
     
     session = curl_requests.Session()
-    response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
     
-    if response.status_code != 200:
-        raise ValueError(f"Failed to fetch page: {response.status_code}")
+    max_retries = 3
+    retry_delay = 5  # seconds
+    
+    for attempt in range(max_retries):
+        response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
+        
+        if response.status_code == 200:
+            break
+        elif response.status_code == 202:
+            print(f"Received 202 (Accepted). Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+            time.sleep(retry_delay)
+        else:
+            raise ValueError(f"Failed to fetch page: {response.status_code}")
+    else:
+        # If all retries failed or kept returning 202
+        raise ValueError("Failed to fetch page: Server repeatedly returned 202 Accepted.")
+
     
     soup = BeautifulSoup(response.content, 'html.parser')
     select = soup.find('select', {'id': 'symbole'})
