@@ -175,7 +175,7 @@ resource "google_cloudfunctions2_function" "scrape_financials_init" {
     max_instance_count    = 1
     available_cpu         = "1"
     available_memory      = "4Gi"
-    timeout_seconds       = 300
+    timeout_seconds       = 600
     service_account_email = google_service_account.tradvisor_sa.email
     environment_variables = {
       "OPENROUTER_API_KEY" = var.openrouter_api_key
