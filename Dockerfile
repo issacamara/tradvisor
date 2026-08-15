@@ -4,7 +4,8 @@ FROM python:3.11-slim
 # Prevent Python from writing .pyc files and buffer stdout/stderr for Cloud Run logs
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8501
+    PORT=8501 \
+    PYTHONPATH=/app
 
 WORKDIR app/
 

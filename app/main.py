@@ -1,4 +1,5 @@
 """Main entrypoint for TRADVISOR Streamlit app using st.navigation layout."""
+
 import streamlit as st
 
 st.set_page_config(
