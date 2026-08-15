@@ -10,6 +10,7 @@ import os
 import re
 import json
 import io
+import gc
 
 
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
@@ -89,7 +90,6 @@ def get_announcements_for_symbol(symbol):
         elif href.startswith('http'):
             pdf_url = href
         else:
-            # Relative URL - prepend base URL
             pdf_url = f"https://www.richbourse.com/common/actualite-categorie/index/{href}"
         
         # Parse date (format: DD/MM/YYYY)
@@ -99,10 +99,9 @@ def get_announcements_for_symbol(symbol):
             if len(parts) == 3:
                 day, month, year = parts
                 announcement_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-        except:
+        except Exception:
             pass
         
-        # Skip if no valid announcement date
         if not announcement_date:
             continue
         
@@ -118,13 +117,8 @@ def get_announcements_for_symbol(symbol):
 
 
 def get_existing_symbols_and_years():
-    """Query BigQuery to get existing (symbol, fiscal_year) pairs with announcement_date.
-    
-    Returns a dict mapping (symbol, fiscal_year) tuples to announcement_date.
-    Used for smart PDF download - skips if we already have data from this announcement.
-    """
+    """Query BigQuery to get existing (symbol, fiscal_year) pairs with announcement_date."""
     from google.cloud import bigquery
-    from google.auth import default
     
     credentials, project_id = default()
     client = bigquery.Client(credentials=credentials, project=project_id)
@@ -139,77 +133,90 @@ def get_existing_symbols_and_years():
             'announcement_date': str(row.announcement_date) if row.announcement_date else None
         } for row in results}
     except Exception:
-        # Table might not exist or be empty
         return {}
 
 
 def is_data_incomplete(data):
-    """Check if extracted data is incomplete (any missing value).
-    
-    Returns True if at least one financial field is null/missing.
-    """
+    """Check if extracted data is incomplete (any missing value)."""
     if data is None:
         return True
     
     financial_fields = ['revenue', 'net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
-    
-    # Return True if any field is missing
     return any(data.get(field) is None for field in financial_fields)
 
 
 def extract_text_from_pdf(pdf_content):
-    """Extract text from PDF using pdfplumber (falls back to pypdf).
-    
-    Args:
-        pdf_content: The PDF file content as bytes
-    
-    Returns:
-        Extracted text as string, or None if extraction fails
-    """
+    """Extract full text from PDF across ALL pages using pdfplumber (falls back to pypdf)."""
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
             text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        return text if text.strip() else None
+        if text.strip():
+            return text
     except Exception as e:
         print(f"    pdfplumber failed: {e}")
     
-    # Fallback to pypdf
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(pdf_content))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        return text if text.strip() else None
+        if text.strip():
+            return text
     except Exception as e:
         print(f"    pypdf failed: {e}")
     
     return None
 
 
-def extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
-    """Extract financial data from PDF using OpenRouter API with retry on better models.
-    
-    First extracts text from PDF to avoid hitting image limits (50 max).
-    
-    Args:
-        pdf_content: The PDF file content as bytes
-        openrouter_api_key: OpenRouter API key
-        max_retries: Maximum number of retries with better models (default: 2)
-    
-    Returns:
-        Dictionary with extracted financial data or None if all attempts fail
-    """
-    # First, try to extract text from PDF to avoid image limit issues
-    print("    Extracting text from PDF...")
-    pdf_text = extract_text_from_pdf(pdf_content)
-    
-    use_text_mode = pdf_text and len(pdf_text) > 100  # Use text if we got meaningful content
-    
-    if use_text_mode:
-        print(f"    Using text extraction ({len(pdf_text)} chars)")
-    else:
-        print("    Text extraction failed or too short, falling back to PDF file (may hit image limit)")
-    
+def extract_relevant_pdf_pages(pdf_content, max_pages=40):
+    """Scan all pages (including 50+) for keywords and compile a trimmed PDF payload."""
+    from pypdf import PdfReader, PdfWriter
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_content))
+        total_pages = len(reader.pages)
+
+        if total_pages <= max_pages:
+            return pdf_content
+
+        keywords = [
+            "bilan", "compte de résultat", "états financiers",
+            "capitaux propres", "résultat net", "chiffre d'affaires",
+            "dettes financières", "trésorerie actif", "passif", "exercice"
+        ]
+
+        selected_pages = set()
+        # Cover / index / front matter
+        selected_pages.update(range(min(5, total_pages)))
+
+        for idx, page in enumerate(reader.pages):
+            text = (page.extract_text() or "").lower()
+            if any(kw in text for kw in keywords):
+                selected_pages.add(idx)
+
+        # Fallback to initial pages if text parsing was impossible or found no matches
+        if len(selected_pages) <= 5:
+            print(f"    No keywords matched. Selecting first {max_pages} pages.")
+            selected_pages.update(range(min(max_pages, total_pages)))
+
+        sorted_pages = sorted(list(selected_pages))[:max_pages]
+        print(f"    Filtered PDF from {total_pages} down to {len(sorted_pages)} targeted pages.")
+
+        writer = PdfWriter()
+        for page_idx in sorted_pages:
+            writer.add_page(reader.pages[page_idx])
+
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    except Exception as e:
+        print(f"    Smart slicing failed: {e}")
+        return pdf_content
+
+
+def send_openrouter_payload(content, openrouter_api_key, max_retries=2):
+    """Helper to call OpenRouter models with structured fallback strategy."""
     prompt = """You are a financial statement extraction engine specialized in BRVM and OHADA-style annual reports, often written in French.
 
 Your task is to extract the most recent fiscal year's financial data from the provided PDF or parsed document text and return ONLY a valid JSON object with this exact schema:
@@ -235,58 +242,10 @@ Definitions:
 Unit normalization requirement:
 
 - Return every monetary value in the smallest base currency unit represented by the currency, normally the full currency unit.
-- Detect the reporting unit from headings, captions, footnotes, or the surrounding text. Examples include:
-  - "en milliers de FCFA", "en milliers de francs CFA", "KFCFA", or "FCFA '000": values are in thousands, so multiply each extracted monetary value by 1000.
-  - "en millions de FCFA", "en millions de F CFA", "M FCFA", or "FCFA millions": values are in millions, so multiply each extracted monetary value by 1000000.
-  - "en milliards de FCFA", "milliards de F CFA", or "B FCFA": values are in billions, so multiply each extracted monetary value by 1000000000.
-  - "en milliers d'euros": multiply by 1000.
-  - "en millions d'euros": multiply by 1000000.
-  - "en milliards d'euros": multiply by 1000000000.
-  - If no scale is stated, treat the value as already expressed in full currency units.
+- Detect the reporting unit from headings, captions, footnotes, or the surrounding text.
 - Apply the detected multiplier consistently to revenue, net_income, total_debt, cash_and_cash_equivalents, and total_equity.
-- Do not convert between currencies. Preserve the source currency; only remove the reporting scale.
-- Do not apply the unit multiplier to fiscal_year.
-- If a value contains a French thousands separator, interpret it correctly before applying the scale. For example, "13.423" in a table stated as "millions de FCFA" means 13,423 million FCFA, which must be returned as 13423000000.
-- French decimal commas may represent decimal fractions. Do not treat a decimal fraction as a thousands separator unless the document layout clearly indicates otherwise.
-- Parentheses around a number indicate a negative amount. Preserve the negative sign where the requested field itself is negative, such as a net loss. Do not use parentheses or other non-numeric formatting in the JSON.
-- Round only when the source presents a monetary value as a whole number in the stated reporting unit. Do not invent precision that is not present.
-
-Extraction rules:
-
-1. Use the most recent fiscal year only.
-2. Prefer explicit subtotal or total lines over manual reconstruction.
-3. Never guess.
-4. If a field is not explicitly present and cannot be reconstructed unambiguously from visible components, return null.
-5. Return monetary values as integers only, with no currency symbol, no spaces, no commas, no decimal points, and no unit suffix.
-6. Return values normalized to full base currency units according to the detected reporting scale.
-7. Preserve the source currency denomination; do not convert, revalue, or normalize currencies.
-8. If multiple candidate values exist for a field, choose the one that best matches the definition above.
-9. Do not use total liabilities as total_debt.
-10. Do not infer missing values from ratios, commentary, percentages, cash-flow movements, or narrative text.
-11. Ignore prior years unless the latest year is missing.
-12. If the document is scanned or OCR is noisy, extract only values identifiable with high confidence.
-13. Use the balance sheet for cash, equity, and debt whenever those figures are available.
-14. For total_debt, include only interest-bearing financial debt existing at the reporting date. Do not use debt repayments or financing cash flows as the debt balance.
-15. If a statement provides both "chiffre d'affaires" and "chiffre d'affaires & autres produits", use "chiffre d'affaires" for revenue unless the document explicitly defines the combined subtotal as revenue.
-16. Validate reconstructed totals where possible, but do not substitute a mathematically derived value if an explicit value exists.
-17. Do not include explanatory text, Markdown, comments, citations, or additional JSON fields in the output.
-
-French label hints:
-
-- revenue: "chiffre d'affaires", "ventes", "produits des activités ordinaires", "revenus"
-- net_income: "résultat net", "bénéfice net", "perte nette", "résultat net de l'exercice", "bénéfice/perte de l'exercice"
-- cash_and_cash_equivalents: "trésorerie actif", "disponibilités", "trésorerie et équivalents de trésorerie", "valeurs à encaisser"
-- total_equity: "capitaux propres", "capital", "prime", "réserves", "report à nouveau", "écart de réévaluation", "résultat net"
-- total_debt: "emprunt", "emprunts à LT", "dettes financières", "autres dettes financières", "emprunts et dettes financières", "concours bancaires", "découverts bancaires", "passifs de location"
-
-Examples of unit normalization:
-
-- If the statement says "(en millions de FCFA)" and revenue is "578 922", return 578922000000.
-- If the statement says "(en milliers de FCFA)" and net income is "8 709", return 8709000.
-- If the statement says "(en milliards de FCFA)" and total equity is "45,699", return 45699000000000.
-- If the statement has no stated scale and revenue is "578922000000", return 578922000000.
-- If the statement says "(en millions de FCFA)" and debt is composed of "Emprunts à LT: 1 052" and "Dettes financières: 2 435", return 3487000000 for total_debt.
-- If the statement says "(en millions de FCFA)" and cash is "Trésorerie - Actif: 4 825", return 4825000000.
+- Do not convert between currencies.
+- Return monetary values as integers only with no formatting.
 
 Return only this JSON object:
 
@@ -298,13 +257,9 @@ Return only this JSON object:
   "cash_and_cash_equivalents": <integer or null>,
   "total_equity": <integer or null>
 }"""
-    
-    # Model tiers - from free to paid (better models first for retry)
-    # Each entry: (model_id, is_free, display_name)
+
     model_tiers = [
-        # Tier 1: Free models (tried first)
         (["google/gemma-4-31b-it:free"], True, "Gemma 4 31B (free)"),
-        # Tier 2: Paid models (only used if explicitly enabled or free models fail)
         (["openai/gpt-4o-mini"], False, "GPT-4o Mini"),
     ]
     
@@ -314,47 +269,20 @@ Return only this JSON object:
         "HTTP-Referer": "https://tradvisor.app",
         "X-Title": "TRADVISOR BRVM"
     }
-    
+
     best_result = None
-    
+
     for tier_idx, (models, is_free, model_name) in enumerate(model_tiers):
-        # Skip paid models if we've reached max_retries with free models
         if tier_idx > max_retries and not is_free:
-            print(f"    Max retries reached, skipping paid models")
             break
-        
-        print(f"    Trying model: {model_name}")
-        
-        if use_text_mode:
-            # Send text instead of PDF to avoid image limit
-            content = [
-                {"type": "text", "text": prompt},
-                {"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}
-            ]
-        else:
-            # Fall back to PDF file (may hit image limit)
-            import base64
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-            content = [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "file",
-                    "file": {
-                        "filename": "document.pdf",
-                        "file_data": f"data:application/pdf;base64,{pdf_base64}"
-                    }
-                }
-            ]
         
         payload = {
             "models": models,
-            "provider": {
-                "allow_fallbacks": False
-            },
+            "provider": {"allow_fallbacks": False},
             "messages": [
                 {
                     "role": "user",
-                    "content": content
+                    "content": [{"type": "text", "text": prompt}] + content
                 }
             ]
         }
@@ -371,87 +299,127 @@ Return only this JSON object:
                 result = response.json()
                 text = result['choices'][0]['message']['content']
                 
-                # Parse JSON response
                 json_start = text.find('{')
                 json_end = text.rfind('}') + 1
                 if json_start >= 0 and json_end > json_start:
-                    json_str = text[json_start:json_end]
-                    data = json.loads(json_str)
-                    
-                    # Store this result
+                    data = json.loads(text[json_start:json_end])
                     best_result = data
                     
-                    # Check if data is complete enough
                     if not is_data_incomplete(data):
                         print(f"    ✓ Successfully extracted with {model_name}")
                         return data
                     else:
-                        print(f"    ✗ Incomplete data from {model_name}, trying better model...")
-                        # Continue to try better model
-                        continue
+                        print(f"    ✗ Incomplete data from {model_name}, trying next model...")
             else:
                 print(f"    OpenRouter API error: {response.status_code} - {response.text}")
         except Exception as e:
             print(f"    Error with {model_name}: {e}")
             continue
-    
-    # Return best result we got, even if incomplete
-    if best_result:
-        print(f"    Returning best result (may be incomplete)")
-    else:
-        print(f"    All models failed to extract data")
-    
+
     return best_result
 
 
+def extract_financials_from_pdf(pdf_content, openrouter_api_key):
+    """Extract financial data handling full-text extraction, smart slicing, and image chunking."""
+    import base64
+
+    print("    Extracting text from PDF...")
+    pdf_text = extract_text_from_pdf(pdf_content)
+    
+    # 1. Standard Path: Text Extraction (Parses entire PDF regardless of total page count)
+    if pdf_text and len(pdf_text) > 100:
+        print(f"    Using full document text extraction ({len(pdf_text)} chars)")
+        text_content = [{"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}]
+        result = send_openrouter_payload(text_content, openrouter_api_key)
+        if result and not is_data_incomplete(result):
+            return result
+
+    # 2. Scanned / Image Fallback: Smart Keyword Slicing
+    print("    Text extraction empty or incomplete. Applying Smart Keyword PDF slicing...")
+    sliced_pdf_bytes = extract_relevant_pdf_pages(pdf_content, max_pages=40)
+    pdf_base64 = base64.b64encode(sliced_pdf_bytes).decode('utf-8')
+    
+    file_content = [{
+        "type": "file",
+        "file": {
+            "filename": "document.pdf",
+            "file_data": f"data:application/pdf;base64,{pdf_base64}"
+        }
+    }]
+    
+    result = send_openrouter_payload(file_content, openrouter_api_key)
+    if result and not is_data_incomplete(result):
+        return result
+
+    # 3. Last-resort Fallback: Sequential 40-Page Chunking for fully scanned image PDFs
+    try:
+        from pypdf import PdfReader, PdfWriter
+        reader = PdfReader(io.BytesIO(pdf_content))
+        total_pages = len(reader.pages)
+        
+        if total_pages > 40:
+            print(f"    Attempting sequential chunk processing across {total_pages} pages...")
+            for start in range(0, total_pages, 40):
+                end = min(start + 40, total_pages)
+                print(f"    Scanning page chunk {start + 1} to {end}...")
+
+                writer = PdfWriter()
+                for i in range(start, end):
+                    writer.add_page(reader.pages[i])
+
+                chunk_buf = io.BytesIO()
+                writer.write(chunk_buf)
+                chunk_b64 = base64.b64encode(chunk_buf.getvalue()).decode('utf-8')
+
+                chunk_content = [{
+                    "type": "file",
+                    "file": {
+                        "filename": f"chunk_{start}.pdf",
+                        "file_data": f"data:application/pdf;base64,{chunk_b64}"
+                    }
+                }]
+                
+                chunk_result = send_openrouter_payload(chunk_content, openrouter_api_key)
+                if chunk_result and not is_data_incomplete(chunk_result):
+                    return chunk_result
+    except Exception as e:
+        print(f"    Sequential chunking error: {e}")
+
+    return result
+
+
 def scrape_financials_init(url, openrouter_api_key=None):
-    """Scrape annual financial statements - INITIALIZATION (last 5 years).
-    
-    This script is for first-time setup. It collects all available data
-    within the last 5 years for all symbols.
-    
-    Processes each symbol individually and upserts to BigQuery immediately
-    to avoid memory issues with large datasets.
-    """
-    import gc
-    
+    """Scrape annual financial statements - INITIALIZATION (last 5 years)."""
     current_year = datetime.now().year
-    max_year = current_year - 5  # Collect last 5 years
+    max_year = current_year - 5
     
-    # Get existing data for smart download (skip if already processed)
     print("Checking existing data in BigQuery...")
     existing_data = get_existing_symbols_and_years()
     print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs.")
     
-    # Get all symbols from RichBourse
     print("Fetching all symbols from RichBourse...")
     symbols = get_symbols_from_richbourse(FINANCIALS_URL)
-    
     print(f"Processing {len(symbols)} symbols...")
     
     total_processed = 0
     
     for symbol in symbols:
         print(f"Processing {symbol}...")
-        
         announcements = get_announcements_for_symbol(symbol)
         
         if not announcements:
             print(f"  No announcements found for {symbol}")
             continue
         
-        # Deduplicate: keep only the most recent announcement per (symbol, fiscal_year)
         announcements_by_year = {}
         for ann in announcements:
             fiscal_year = ann['fiscal_year']
             key = (symbol, fiscal_year)
             ann_date = ann.get('announcement_date', '')
             
-            # Skip if outside 5-year limit
             if fiscal_year < max_year:
                 continue
             
-            # Keep most recent announcement
             if key not in announcements_by_year or ann_date > announcements_by_year[key].get('announcement_date', ''):
                 announcements_by_year[key] = ann
         
@@ -462,14 +430,12 @@ def scrape_financials_init(url, openrouter_api_key=None):
             key = (symbol, fiscal_year)
             existing = existing_data.get(key)
             
-            # SMART PDF DOWNLOAD: Skip if we already have data from this exact announcement date
             if existing and existing.get('announcement_date') == ann['announcement_date']:
                 print(f"  FY {fiscal_year} - already up to date, skipping")
                 continue
             
             print(f"  Found: {ann['title']} (FY {fiscal_year})")
             
-            # Download PDF
             try:
                 session = requests.Session()
                 headers = {
@@ -477,27 +443,22 @@ def scrape_financials_init(url, openrouter_api_key=None):
                     "Accept": "application/pdf,*/*",
                     "Referer": "https://www.richbourse.com/",
                 }
-                # Follow redirects and get the actual PDF
                 pdf_response = session.get(ann['url'], headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
                 
                 if pdf_response.status_code != 200:
                     raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
                 
-                # Check if API key is available
                 if not openrouter_api_key:
                     raise Exception("OPENROUTER_API_KEY environment variable not set")
                 
-                # Extract financial data from PDF
                 pdf_content = pdf_response.content
                 financial_data = extract_financials_from_pdf(pdf_content, openrouter_api_key)
                 
-                # CRITICAL: Delete PDF content from memory immediately after processing
                 del pdf_content
                 
                 if not financial_data:
                     raise Exception("Failed to extract financial data from PDF - all AI models failed")
                 
-                # Keep announcement_date as string in YYYY-MM-DD format - BigQuery will parse it as DATE
                 symbol_data.append({
                     'symbol': symbol,
                     'fiscal_year': fiscal_year,
@@ -506,23 +467,19 @@ def scrape_financials_init(url, openrouter_api_key=None):
                     'total_debt': financial_data.get('total_debt'),
                     'cash_and_cash_equivalents': financial_data.get('cash_and_cash_equivalents'),
                     'total_equity': financial_data.get('total_equity'),
-                    'announcement_date': ann['announcement_date'],  # String format "YYYY-MM-DD"
+                    'announcement_date': ann['announcement_date'],
                     'document_link': ann['url'],
                     'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 })
                 print(f"    Extracted: revenue={financial_data.get('revenue')}, net_income={financial_data.get('net_income')}")
                 
-                # Free financial data memory
                 del financial_data
-                
-                # Close session to free memory
                 session.close()
                 
             except Exception as e:
                 print(f"    FATAL ERROR: {e}")
                 raise
         
-        # Upsert this symbol's data to BigQuery immediately
         if symbol_data:
             df_symbol = pd.DataFrame(symbol_data)
             try:
@@ -533,11 +490,9 @@ def scrape_financials_init(url, openrouter_api_key=None):
             except Exception as e:
                 print(f"  BigQuery upsert failed: {e}")
             
-            # Free memory
             del df_symbol
             del symbol_data
         
-        # Force garbage collection after each symbol
         gc.collect()
     
     print(f"\nInitialization complete. Total records upserted: {total_processed}")
@@ -549,10 +504,8 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     
-    # Get OpenRouter API key from environment
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     
-    # Scrape and upsert to BigQuery (memory-efficient, processes each symbol individually)
     scrape_financials_init(
         config['url'].get('financials', 'https://www.richbourse.com/common/actualite-categorie/index/etats-financiers'),
         openrouter_api_key
