@@ -6,6 +6,8 @@ Handles stock data fetching and technical indicator calculations
 """
 
 import os
+import sys
+import traceback
 import pandas as pd
 import streamlit as st
 from trading import TechnicalIndicatorTrading
@@ -76,7 +78,6 @@ class DataManager:
             shares = client.query(query).to_dataframe()
             
             # Debug output
-            import sys
             print(f"[DEBUG] Raw shares from BigQuery: {len(shares)} rows", file=sys.stderr, flush=True)
             print(f"[DEBUG] Raw columns: {list(shares.columns)}", file=sys.stderr, flush=True)
             
@@ -91,7 +92,6 @@ class DataManager:
             return shares
         except Exception as e:
             st.error(f"Error loading shares: {str(e)}")
-            import traceback
             st.error(traceback.format_exc())
             return pd.DataFrame()
 
@@ -276,7 +276,6 @@ class DataManager:
         trading_system = TechnicalIndicatorTrading()
         
         # Debug: Check data before generating signals
-        import sys
         print(f"[DEBUG] Data before generate_signals: {result.shape} rows", file=sys.stderr, flush=True)
         print(f"[DEBUG] Columns: {list(result.columns)}", file=sys.stderr, flush=True)
         print(f"[DEBUG] Unique symbols: {result['symbol'].nunique()}", file=sys.stderr, flush=True)

@@ -8,10 +8,12 @@ variable "service_name" {
 resource "google_cloud_run_v2_service" "tradvisor_service" {
   name     = var.service_name
   location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret.tradvisor_gmail_acc,
-    google_secret_manager_secret_version.gmail_acc_secret_version
+    google_secret_manager_secret_version.gmail_acc_secret_version,
+    google_artifact_registry_repository.tradvisor
   ]
   client              = "terraform"
   deletion_protection = false
@@ -29,7 +31,7 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
     containers {
       image = var.docker_image
       ports { container_port = 8501 }
-
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.tradvisor.repository_id}/${var.service_name}:latest"
       env {
         name  = "PROJECT_ID"
         value = var.project_id
