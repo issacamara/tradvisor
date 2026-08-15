@@ -38,6 +38,7 @@ variable "apis" {
   ]
 }
 
+# This image url will be replaced by the GCP artifact registry one at deployment time
 variable "docker_image" {
   description = "Docker image URL on DockerHub (username/repo:tag)"
   type        = string

@@ -29,9 +29,8 @@ resource "google_cloud_run_v2_service" "tradvisor_service" {
     }
 
     containers {
-      #image = var.docker_image
+      image = var.docker_image
       ports { container_port = 8501 }
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.tradvisor.repository_id}/${var.service_name}:latest"
       env {
         name  = "PROJECT_ID"
         value = var.project_id
