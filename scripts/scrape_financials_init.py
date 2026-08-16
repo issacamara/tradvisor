@@ -17,12 +17,17 @@ import unicodedata
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 
 
-def strip_accents(text):
+def normalize_string(text):
     """Normalize text by removing accents/diacritics and converting to lowercase."""
     if not text:
         return ""
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(c for c in normalized if unicodedata.category(c) != 'Mn').lower()
+    nfkd_form = unicodedata.normalize('NFD', text)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).lower()
+
+
+def is_etats_financiers_title(title):
+    """Check if title contains 'etats financiers' regardless of case or accents."""
+    return "etats financiers" in normalize_string(title)
 
 
 def extract_year_from_title(title):
@@ -47,9 +52,9 @@ def extract_year_from_title(title):
 
 def should_reject_announcement(title):
     """Check if announcement should be rejected (trimestre/semestre)."""
-    title_normalized = strip_accents(title)
+    title_lower = normalize_string(title)
     reject_keywords = ['trimestre', 'trimestriel', 'semestre', 'semestriel', 'quarterly']
-    return any(keyword in title_normalized for keyword in reject_keywords)
+    return any(keyword in title_lower for keyword in reject_keywords)
 
 
 def get_announcements_for_symbol(symbol):
@@ -178,7 +183,7 @@ def extract_text_from_pdf(pdf_content):
 
 
 def extract_relevant_pdf_pages(pdf_content, max_pages=40):
-    """Scan all pages (including 50+) for accent-insensitive keywords and compile a trimmed PDF payload."""
+    """Scan all pages (including 50+) for keywords and compile a trimmed PDF payload."""
     from pypdf import PdfReader, PdfWriter
 
     try:
@@ -188,26 +193,22 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         if total_pages <= max_pages:
             return pdf_content
 
-        # Keywords normalized to lowercase, accent-free strings
         keywords = [
-            "etat financier", "etats financiers", "rapport financier",
-            "bilan", "compte de resultat", "capitaux propres", 
-            "resultat net", "chiffre d'affaires", "dettes financieres", 
-            "tresorerie actif", "passif", "exercice"
+            "bilan", "compte de resultat", "etats financiers",
+            "capitaux propres", "resultat net", "chiffre d'affaires",
+            "dettes financieres", "tresorerie actif", "passif", "exercice"
         ]
 
         selected_pages = set()
-        # Front matter/cover
+        # Cover / index / front matter
         selected_pages.update(range(min(5, total_pages)))
 
         for idx, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            normalized_text = strip_accents(text)
-            
-            if any(kw in normalized_text for kw in keywords):
+            text = normalize_string(page.extract_text() or "")
+            if any(kw in text for kw in keywords):
                 selected_pages.add(idx)
 
-        # Fallback to initial pages if text parsing yielded no matches
+        # Fallback to initial pages if text parsing was impossible or found no matches
         if len(selected_pages) <= 5:
             print(f"    No keywords matched. Selecting first {max_pages} pages.")
             selected_pages.update(range(min(max_pages, total_pages)))
@@ -339,7 +340,7 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
     print("    Extracting text from PDF...")
     pdf_text = extract_text_from_pdf(pdf_content)
     
-    # 1. Standard Path: Text Extraction (Parses entire PDF regardless of page count)
+    # 1. Standard Path: Text Extraction
     if pdf_text and len(pdf_text) > 100:
         print(f"    Using full document text extraction ({len(pdf_text)} chars)")
         text_content = [{"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}]
@@ -347,7 +348,7 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
         if result and not is_data_incomplete(result):
             return result
 
-    # 2. Scanned / Image Fallback: Smart Accent-Insensitive Keyword Slicing
+    # 2. Scanned / Image Fallback: Smart Keyword Slicing
     print("    Text extraction empty or incomplete. Applying Smart Keyword PDF slicing...")
     sliced_pdf_bytes = extract_relevant_pdf_pages(pdf_content, max_pages=40)
     pdf_base64 = base64.b64encode(sliced_pdf_bytes).decode('utf-8')
@@ -364,7 +365,7 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
     if result and not is_data_incomplete(result):
         return result
 
-    # 3. Last-resort Fallback: Sequential 40-Page Chunking for pure image PDFs
+    # 3. Last-resort Fallback: Sequential 40-Page Chunking
     try:
         from pypdf import PdfReader, PdfWriter
         reader = PdfReader(io.BytesIO(pdf_content))
@@ -433,8 +434,20 @@ def scrape_financials_init(url, openrouter_api_key=None):
             if fiscal_year < max_year:
                 continue
             
-            if key not in announcements_by_year or ann_date > announcements_by_year[key].get('announcement_date', ''):
+            # Prioritization logic based on title matching and publication date
+            if key not in announcements_by_year:
                 announcements_by_year[key] = ann
+            else:
+                existing_ann = announcements_by_year[key]
+                existing_has_etats = is_etats_financiers_title(existing_ann['title'])
+                new_has_etats = is_etats_financiers_title(ann['title'])
+                
+                # Rule 1: Always prefer titles matching "Etats Financiers"
+                # Rule 2: If both match or both don't, prefer the newer announcement date
+                if (new_has_etats and not existing_has_etats) or (
+                    new_has_etats == existing_has_etats and ann_date > existing_ann.get('announcement_date', '')
+                ):
+                    announcements_by_year[key] = ann
         
         symbol_data = []
         
