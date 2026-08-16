@@ -58,9 +58,8 @@ def should_reject_announcement(title):
     return any(keyword in title_lower for keyword in reject_keywords)
 
 
-def get_announcements_for_symbol(symbol):
-    """Fetch announcements for a specific symbol."""
-    url = f"https://www.richbourse.com/common/actualite-categorie/index/etats-financiers?symbole={symbol}"
+def get_announcements_for_symbol(symbol, max_year):
+    """Fetch announcements for a specific symbol across multiple pages up to max_year."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -69,69 +68,105 @@ def get_announcements_for_symbol(symbol):
     }
     
     session = requests.Session()
-    response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
-    
-    if response.status_code != 200:
-        return []
-    
-    soup = BeautifulSoup(response.content, 'html.parser')
-    
     announcements = []
-    rows = soup.find_all('div', class_=lambda x: x and ('ligne_paire' in x or 'ligne_impaire' in x))
-    
-    for row in rows:
-        date_div = row.find('div', class_=lambda x: x and ('col-xs-4' in x or 'col-md-3' in x))
-        link_elem = row.find('a', href=True)
-        
-        if not date_div or not link_elem:
-            continue
-        
-        date_text = date_div.get_text(strip=True)
-        title = link_elem.get_text(strip=True)
-        href = link_elem.get('href', '')
-        
-        # Filter: title MUST contain "Etats Financiers" (accent & case insensitive)
-        if not is_valid_financial_title(title):
-            continue
+    page = 1
+    seen_urls = set()
 
-        # Skip trimestre/semestre
-        if should_reject_announcement(title):
-            continue
+    while True:
+        url = f"https://www.richbourse.com/common/actualite-categorie/index/etats-financiers?symbole={symbol}&page={page}"
         
-        # Extract fiscal year
-        fiscal_year = extract_year_from_title(title)
-        if not fiscal_year:
-            continue
-        
-        # Build PDF URL - ensure it's absolute
-        if href.startswith('/'):
-            pdf_url = f"https://www.richbourse.com{href}"
-        elif href.startswith('http'):
-            pdf_url = href
-        else:
-            pdf_url = f"https://www.richbourse.com/common/actualite-categorie/index/{href}"
-        
-        # Parse date (format: DD/MM/YYYY)
-        announcement_date = None
         try:
-            parts = date_text.split('/')
-            if len(parts) == 3:
-                day, month, year = parts
-                announcement_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-        except Exception:
-            pass
-        
-        if not announcement_date:
-            continue
-        
-        announcements.append({
-            'symbol': symbol,
-            'title': title,
-            'fiscal_year': fiscal_year,
-            'announcement_date': announcement_date,
-            'url': pdf_url
-        })
-    
+            response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
+            if response.status_code != 200:
+                break
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            rows = soup.find_all('div', class_=lambda x: x and ('ligne_paire' in x or 'ligne_impaire' in x))
+            
+            if not rows:
+                break
+            
+            page_extracted_years = []
+            new_items_on_page = 0
+            
+            for row in rows:
+                date_div = row.find('div', class_=lambda x: x and ('col-xs-4' in x or 'col-md-3' in x))
+                link_elem = row.find('a', href=True)
+                
+                if not date_div or not link_elem:
+                    continue
+                
+                date_text = date_div.get_text(strip=True)
+                title = link_elem.get_text(strip=True)
+                href = link_elem.get('href', '')
+                
+                # Build absolute PDF URL
+                if href.startswith('/'):
+                    pdf_url = f"https://www.richbourse.com{href}"
+                elif href.startswith('http'):
+                    pdf_url = href
+                else:
+                    pdf_url = f"https://www.richbourse.com/common/actualite-categorie/index/{href}"
+                
+                if pdf_url in seen_urls:
+                    continue
+                seen_urls.add(pdf_url)
+                new_items_on_page += 1
+                
+                # Filter title: MUST contain "Etats Financiers"
+                if not is_valid_financial_title(title):
+                    continue
+
+                # Skip trimestre/semestre
+                if should_reject_announcement(title):
+                    continue
+                
+                # Extract fiscal year
+                fiscal_year = extract_year_from_title(title)
+                if not fiscal_year:
+                    continue
+                
+                page_extracted_years.append(fiscal_year)
+
+                # Skip if outside 5-year limit
+                if fiscal_year < max_year:
+                    continue
+
+                # Parse date (format: DD/MM/YYYY)
+                announcement_date = None
+                try:
+                    parts = date_text.split('/')
+                    if len(parts) == 3:
+                        day, month, year = parts
+                        announcement_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                except Exception:
+                    pass
+                
+                if not announcement_date:
+                    continue
+                
+                announcements.append({
+                    'symbol': symbol,
+                    'title': title,
+                    'fiscal_year': fiscal_year,
+                    'announcement_date': announcement_date,
+                    'url': pdf_url
+                })
+            
+            # Stop paginating if no new items found or if page looped back
+            if new_items_on_page == 0:
+                break
+
+            # Stop paginating if all fiscal years extracted on this page are older than 5 years
+            if page_extracted_years and max(page_extracted_years) < max_year:
+                break
+            
+            page += 1
+
+        except Exception as e:
+            print(f"    Error fetching page {page} for symbol {symbol}: {e}")
+            break
+            
     return announcements
 
 
@@ -205,7 +240,6 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         ]
 
         selected_pages = set()
-        # Cover / index / front matter
         selected_pages.update(range(min(5, total_pages)))
 
         for idx, page in enumerate(reader.pages):
@@ -213,7 +247,6 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
             if any(kw in text for kw in keywords):
                 selected_pages.add(idx)
 
-        # Fallback to initial pages if text parsing was impossible or found no matches
         if len(selected_pages) <= 5:
             print(f"    No keywords matched. Selecting first {max_pages} pages.")
             selected_pages.update(range(min(max_pages, total_pages)))
@@ -424,10 +457,10 @@ def scrape_financials_init(url, openrouter_api_key=None):
     
     for symbol in symbols:
         print(f"Processing {symbol}...")
-        announcements = get_announcements_for_symbol(symbol)
+        announcements = get_announcements_for_symbol(symbol, max_year)
         
         if not announcements:
-            print(f"  No announcements found for {symbol}")
+            print(f"  No valid announcements found for {symbol}")
             continue
         
         announcements_by_year = {}
@@ -435,9 +468,6 @@ def scrape_financials_init(url, openrouter_api_key=None):
             fiscal_year = ann['fiscal_year']
             key = (symbol, fiscal_year)
             ann_date = ann.get('announcement_date', '')
-            
-            if fiscal_year < max_year:
-                continue
             
             if key not in announcements_by_year or ann_date > announcements_by_year[key].get('announcement_date', ''):
                 announcements_by_year[key] = ann
