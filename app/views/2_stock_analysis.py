@@ -1,7 +1,7 @@
 """View 2: Fundamental Stock Analysis and 5-Year Financial Trends."""
 import streamlit as st
 import pandas as pd
-from app.data.repository import get_all_symbols, get_latest_prices, get_stock_financials, get_stock_dividends, get_stock_ratings, get_all_companies
+from app.data.repository import get_all_symbols, get_latest_prices, get_stock_financials, get_stock_dividends, get_stock_ratings, get_all_companies, get_stock_price_history
 from app.core.fundamental.analyzer import calculate_fundamental_ratios
 from app.core.signals.passive_income import calculate_passive_income_score
 from app.components.charts import render_financial_bar_chart

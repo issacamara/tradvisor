@@ -26,12 +26,12 @@ def get_all_companies() -> list[str]:
     """Fetches company names available across stocks."""
     client = get_bigquery_client()
     query = f"""
-        SELECT DISTINCT NAME 
+        SELECT DISTINCT SYMBOL, NAME 
         FROM `{SHARES_TABLE}` 
-        WHERE NAME IS NOT NULL 
+        WHERE SYMBOL IS NOT NULL 
     """
     df = client.query(query).to_dataframe()
-    return df['NAME'].tolist() if not df.empty else []
+    return df.set_index('SYMBOL')['NAME'].to_dict() if not df.empty else {}
 
 @st.cache_data(ttl=86400)
 def get_latest_prices() -> pd.DataFrame:
