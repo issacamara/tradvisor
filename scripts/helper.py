@@ -1,5 +1,6 @@
 import os, io
 import shutil
+import time
 from fileinput import filename
 import duckdb
 import re

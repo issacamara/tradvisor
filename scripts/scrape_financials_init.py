@@ -17,17 +17,18 @@ import unicodedata
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 
 
-def normalize_string(text):
-    """Normalize text by removing accents/diacritics and converting to lowercase."""
-    if not text:
-        return ""
-    nfkd_form = unicodedata.normalize('NFD', text)
-    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).lower()
+def normalize_text(text):
+    """Normalize string by removing accents and converting to lowercase."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    ).lower()
 
 
-def is_etats_financiers_title(title):
-    """Check if title contains 'etats financiers' regardless of case or accents."""
-    return "etats financiers" in normalize_string(title)
+def is_valid_financial_title(title):
+    """Check if title contains 'Etats Financiers' (accent and case insensitive)."""
+    normalized_title = normalize_text(title)
+    return 'etats financiers' in normalized_title
 
 
 def extract_year_from_title(title):
@@ -52,7 +53,7 @@ def extract_year_from_title(title):
 
 def should_reject_announcement(title):
     """Check if announcement should be rejected (trimestre/semestre)."""
-    title_lower = normalize_string(title)
+    title_lower = title.lower()
     reject_keywords = ['trimestre', 'trimestriel', 'semestre', 'semestriel', 'quarterly']
     return any(keyword in title_lower for keyword in reject_keywords)
 
@@ -89,6 +90,10 @@ def get_announcements_for_symbol(symbol):
         title = link_elem.get_text(strip=True)
         href = link_elem.get('href', '')
         
+        # Filter: title MUST contain "Etats Financiers" (accent & case insensitive)
+        if not is_valid_financial_title(title):
+            continue
+
         # Skip trimestre/semestre
         if should_reject_announcement(title):
             continue
@@ -194,9 +199,9 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
             return pdf_content
 
         keywords = [
-            "bilan", "compte de resultat", "etats financiers",
-            "capitaux propres", "resultat net", "chiffre d'affaires",
-            "dettes financieres", "tresorerie actif", "passif", "exercice"
+            "bilan", "compte de résultat", "états financiers",
+            "capitaux propres", "résultat net", "chiffre d'affaires",
+            "dettes financières", "trésorerie actif", "passif", "exercice"
         ]
 
         selected_pages = set()
@@ -204,7 +209,7 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         selected_pages.update(range(min(5, total_pages)))
 
         for idx, page in enumerate(reader.pages):
-            text = normalize_string(page.extract_text() or "")
+            text = (page.extract_text() or "").lower()
             if any(kw in text for kw in keywords):
                 selected_pages.add(idx)
 
@@ -365,7 +370,7 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
     if result and not is_data_incomplete(result):
         return result
 
-    # 3. Last-resort Fallback: Sequential 40-Page Chunking
+    # 3. Last-resort Fallback: Sequential Chunking
     try:
         from pypdf import PdfReader, PdfWriter
         reader = PdfReader(io.BytesIO(pdf_content))
@@ -434,20 +439,8 @@ def scrape_financials_init(url, openrouter_api_key=None):
             if fiscal_year < max_year:
                 continue
             
-            # Prioritization logic based on title matching and publication date
-            if key not in announcements_by_year:
+            if key not in announcements_by_year or ann_date > announcements_by_year[key].get('announcement_date', ''):
                 announcements_by_year[key] = ann
-            else:
-                existing_ann = announcements_by_year[key]
-                existing_has_etats = is_etats_financiers_title(existing_ann['title'])
-                new_has_etats = is_etats_financiers_title(ann['title'])
-                
-                # Rule 1: Always prefer titles matching "Etats Financiers"
-                # Rule 2: If both match or both don't, prefer the newer announcement date
-                if (new_has_etats and not existing_has_etats) or (
-                    new_has_etats == existing_has_etats and ann_date > existing_ann.get('announcement_date', '')
-                ):
-                    announcements_by_year[key] = ann
         
         symbol_data = []
         
