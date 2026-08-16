@@ -10,11 +10,11 @@ def show():
     st.title("📈 TRADVISOR Dashboard")
     st.caption("BRVM Dividend Ranking & Market Signals Overview")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Target Passive Income", "2,000 EUR/mo", "1,311,914 XOF")
-    col2.metric("Target Capital", "100,000 EUR", "5,000 EUR/yr contribution")
-    col3.metric("Target Market", "BRVM", "West Africa")
-    col4.metric("Data Cache TTL", "24 Hours", "BigQuery")
+    # col1, col2, col3, col4 = st.columns(4)
+    # col1.metric("Target Passive Income", "2,000 EUR/mo", "1,311,914 XOF")
+    # col2.metric("Target Capital", "100,000 EUR", "5,000 EUR/yr contribution")
+    # col3.metric("Target Market", "BRVM", "West Africa")
+    # col4.metric("Data Cache TTL", "24 Hours", "BigQuery")
 
     st.subheader("💰 Top Passive Income Opportunities (BRVM)")
 

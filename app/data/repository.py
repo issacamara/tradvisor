@@ -22,6 +22,18 @@ def get_all_symbols() -> list[str]:
     return df['SYMBOL'].tolist() if not df.empty else []
 
 @st.cache_data(ttl=86400)
+def get_all_companies() -> list[str]:
+    """Fetches unique company names available across shares."""
+    client = get_bigquery_client()
+    query = f"""
+        SELECT DISTINCT NAME 
+        FROM `{SHARES_TABLE}` 
+        WHERE NAME IS NOT NULL 
+    """
+    df = client.query(query).to_dataframe()
+    return df['SYMBOL'].tolist() if not df.empty else []
+
+@st.cache_data(ttl=86400)
 def get_latest_prices() -> pd.DataFrame:
     """Retrieves the most recent stock closing price, volume, and 1-day change."""
     client = get_bigquery_client()
