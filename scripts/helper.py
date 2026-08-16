@@ -36,7 +36,7 @@ def get_symbols_from_richbourse(url):
     session = curl_requests.Session()
     
     max_retries = 3
-    retry_delay = 5  # seconds
+    retry_delay = 10  # seconds
     
     for attempt in range(max_retries):
         response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
