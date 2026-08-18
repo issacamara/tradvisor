@@ -28,7 +28,7 @@ def normalize_text(text):
 def is_valid_financial_title(title):
     """Check if title contains 'Etats Financiers' (accent and case insensitive)."""
     normalized_title = normalize_text(title)
-    return 'etats financiers' in normalized_title
+    return 'etat' in normalized_title and 'financier' in normalized_title
 
 
 def extract_year_from_title(title):
@@ -269,46 +269,56 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
 
 def send_openrouter_payload(content, openrouter_api_key, max_retries=2):
     """Helper to call OpenRouter models with structured fallback strategy."""
-    prompt = """You are a financial statement extraction engine specialized in BRVM and OHADA-style annual reports, often written in French.
+    prompt = """You are a financial data extraction expert. Extract structured financial data from a BRVM annual financial statement PDF.
 
-Your task is to extract the most recent fiscal year's financial data from the provided PDF or parsed document text and return ONLY a valid JSON object with this exact schema:
+For each document, extract the following fields:
 
-{
-  "fiscal_year": null,
-  "revenue": null,
-  "net_income": null,
-  "total_debt": null,
-  "cash_and_cash_equivalents": null,
-  "total_equity": null
-}
+fiscal_year: The fiscal year of the report (e.g., 2024). Use the most recent year covered by the statement, not the publication date.
 
-Definitions:
+revenue: Total revenue or "chiffre d'affaires" (produits d'exploitation / chiffre d'affaires net). For banks, use "produit net bancaire" (PNB) if chiffre d'affaires is not presented. In local currency (XOF/FCFA), expressed in full units.
 
-- fiscal_year: the most recent year shown in the statement heading or reporting date, such as "Exercice 2023", "Exercice clos le 31 décembre 2023", or "au 31.12.2023".
-- revenue: total revenue, usually labeled "chiffre d'affaires", "ventes", or "produits des activités ordinaires". Prefer "chiffre d'affaires" over "chiffre d'affaires & autres produits" unless the latter is clearly the document's defined top-line revenue.
-- net_income: final profit or loss for the year, usually labeled "résultat net", "bénéfice net", "perte nette", or "résultat net de l'exercice".
-- total_debt: use ONLY interest-bearing financial debt, not total liabilities. Include clearly financial items such as "emprunts", "emprunts à LT", "dettes financières", "autres dettes financières", bonds, bank borrowings, lease liabilities, overdrafts, and "emprunts et dettes financières". Exclude provisions, trade payables, tax and social liabilities, customer advances, and other operating liabilities. If several explicit interest-bearing debt items are shown and no total is provided, sum them only when the reconstruction is unambiguous.
-- cash_and_cash_equivalents: cash or near-cash liquidity, usually labeled "trésorerie actif", "disponibilités", "trésorerie et équivalents de trésorerie", or equivalent. Prefer the balance-sheet cash asset figure. Do not use net cash or "trésorerie nette" when a gross cash figure is available.
-- total_equity: total shareholders' equity, usually labeled "capitaux propres". Prefer an explicit total. If not explicitly shown, sum visible equity components such as capital, share premium, revaluation surplus, reserves, retained earnings / report à nouveau, and current-year net income only when the reconstruction is unambiguous.
+net_income: Net income or "résultat net" (résultat net de l'exercice). Use the net result attributable to the company (résultat net part du groupe if consolidated accounts are shown alongside company-only accounts, otherwise résultat net). In local currency, expressed in full units.
 
-Unit normalization requirement:
+total_debt: Definition depends on company type:
+  - For NON-FINANCIAL companies (industrial, commercial, services, utilities): use total financial/interest-bearing debt — "dettes financières", "emprunts et dettes financières", or total dettes (excluding trade payables/fournisseurs and other non-financial liabilities when itemized separately). If only "total passif" is available with no breakdown, use total passif minus capitaux propres.
+  - For BANKS and financial institutions: "total_debt" does not follow the standard corporate definition. Instead, use the sum of interest-bearing liabilities to third parties, typically composed of: "dettes envers les établissements de crédit" (interbank borrowings), "dettes envers la clientèle" (customer deposits), and "emprunts obligataires et dettes rattachées" (bonds and related debt), if separately reported. If these line items are not individually broken out, use "total dettes" or "total passif" (excluding "capitaux propres" and "provisions techniques" for insurers) as a fallback. Do not include "capitaux propres", "provisions pour risques et charges", or off-balance-sheet commitments in this figure.
+  - For INSURANCE companies: use total technical and financial liabilities excluding equity — primarily "provisions techniques" plus any interest-bearing debt, if the breakdown is available; otherwise use total passif minus capitaux propres.
+  In local currency, expressed in full units.
 
-- Return every monetary value in the smallest base currency unit represented by the currency, normally the full currency unit.
-- Detect the reporting unit from headings, captions, footnotes, or the surrounding text.
-- Apply the detected multiplier consistently to revenue, net_income, total_debt, cash_and_cash_equivalents, and total_equity.
-- Do not convert between currencies.
-- Return monetary values as integers only with no formatting.
+cash_and_cash_equivalents: Cash and cash equivalents — "trésorerie", "trésorerie et équivalents de trésorerie", or "disponibilités". For banks, this may appear as "caisse, banques centrales" or "trésorerie active" — use that if the standard line is absent. In local currency, expressed in full units.
 
-Return only this JSON object:
+total_equity: Total equity — "capitaux propres" or "capitaux propres part du groupe" (total, including reserves, capital, and retained earnings — "report à nouveau"). In local currency, expressed in full units.
 
+symbol: The first 4 or 5 letters of the document name (before the "_" character).
+
+CRITICAL — DETECT COMPANY TYPE FIRST:
+Before extracting total_debt, determine whether the document is a bank/financial institution, an insurance company, or a non-financial (corporate) company, based on the statement structure, sector references, or company name (e.g., BOA, SGBCI, NSIA, SONIBANK are banks/insurers; industrial or commercial names like SONATEL, NESTLE, SOLIBRA are non-financial). Apply the matching total_debt definition above.
+
+CRITICAL — UNIT NORMALIZATION:
+Financial statements often present figures in thousands, millions, or billions of XOF, with the unit noted near the table header or in a footnote (e.g., "en milliers de FCFA", "en millions de FCFA", "montants exprimés en milliers d'unités monétaires"). You MUST detect this unit and convert every extracted monetary value into full base units (i.e., the actual FCFA amount) before returning it. Examples:
+- If the statement says "en milliers de FCFA" and shows 12 345, the actual value is 12345000.
+- If the statement says "en millions de FCFA" and shows 12, the actual value is 12000000.
+- If the statement says "en milliards de FCFA" and shows 1.2, the actual value is 1200000000.
+- If no unit is specified, assume the figures are already in full units (do not scale).
+Apply the detected scale factor consistently to ALL five monetary fields (revenue, net_income, total_debt, cash_and_cash_equivalents, total_equity) — do not mix scales within the same document. Double-check that the final numbers are plausible in magnitude for a BRVM-listed company (typically hundreds of millions to hundreds of billions of FCFA).
+
+Instructions for each document:
+- The documents are from companies listed on the BRVM (Bourse Régionale des Valeurs Mobilières), West Africa, and prepared under SYSCOHADA révisé / BCEAO-PCB norms.
+- The documents may be in French — look for: "chiffre d'affaires", "résultat net", "trésorerie", "capitaux propres", "dettes", "passifs", along with the unit disclosure (milliers/millions/milliards).
+- Extract the most recent fiscal year's data (usually the first/leftmost column in the balance sheet and income statement).
+- If a field is not found, use null — do not guess or estimate.
+- Do not include any explanation or text outside the output.
+
+Output format: 
 {
   "fiscal_year": <integer or null>,
-  "revenue": <integer or null>,
-  "net_income": <integer or null>,
-  "total_debt": <integer or null>,
-  "cash_and_cash_equivalents": <integer or null>,
-  "total_equity": <integer or null>
-}"""
+  "revenue": <number or null>,
+  "net_income": <number or null>,
+  "total_debt": <number or null>,
+  "cash_and_cash_equivalents": <number or null>,
+  "total_equity": <number or null>
+}
+"""
 
     model_tiers = [
         (["google/gemma-4-31b-it:free"], True, "Gemma 4 31B (free)"),
