@@ -322,7 +322,8 @@ Output format:
 
     model_tiers = [
         (["google/gemma-4-31b-it:free"], True, "Gemma 4 31B (free)"),
-        (["openai/gpt-4o-mini"], False, "GPT-4o Mini"),
+        # (["openai/gpt-4o-mini"], False, "GPT-4o Mini"),
+        (["deepseek/deepseek-v4-flash-0731"], False, "DeepSeek V4 Flash 0731")
     ]
     
     headers = {
