@@ -199,6 +199,84 @@ def is_data_incomplete(data):
     return any(data.get(field) is None for field in financial_fields)
 
 
+def extract_pdf_url_from_details_page(details_url, session, headers):
+    """Fetch the details HTML page and extract the actual PDF URL.
+    
+    RichBourse changed their URL format from:
+    - Old: /common/actualite/afficher-fichier/... (direct PDF)
+    - New: /common/actualite/details/... (HTML page with PDF link)
+    
+    This function handles the new format by extracting the PDF link from the HTML.
+    """
+    try:
+        # Update headers to request HTML
+        html_headers = headers.copy()
+        html_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        
+        response = session.get(details_url, headers=html_headers, timeout=30, impersonate="chrome", allow_redirects=True)
+        
+        if response.status_code != 200:
+            print(f"    Failed to fetch details page: HTTP {response.status_code}")
+            return None
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for PDF links - common patterns:
+        # 1. Links with .pdf extension
+        # 2. Links containing 'fichier' or 'download'
+        # 3. Links in specific classes (if known)
+        
+        pdf_link = None
+        
+        # First, try to find direct PDF links
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag.get('href', '')
+            # Check for PDF extension or common PDF-related keywords
+            if '.pdf' in href.lower() or 'fichier' in href.lower() or 'download' in href.lower():
+                pdf_link = href
+                break
+        
+        # If not found, try to find links in specific containers
+        if not pdf_link:
+            # Look for links in common content areas
+            for container in soup.find_all(['div', 'section', 'article'], class_=lambda x: x and ('content' in x.lower() or 'file' in x.lower() or 'document' in x.lower())):
+                for a_tag in container.find_all('a', href=True):
+                    href = a_tag.get('href', '')
+                    if '.pdf' in href.lower() or 'fichier' in href.lower():
+                        pdf_link = href
+                        break
+                if pdf_link:
+                    break
+        
+        # If still not found, look for any link that might be a PDF
+        if not pdf_link:
+            for a_tag in soup.find_all('a', href=True):
+                href = a_tag.get('href', '')
+                # Check if it looks like a file URL (contains numbers/IDs)
+                if 'afficher-fichier' in href or 'download' in href or 'fichier' in href:
+                    pdf_link = href
+                    break
+        
+        if not pdf_link:
+            print(f"    Could not find PDF link in details page")
+            return None
+        
+        # Convert to absolute URL if needed
+        if pdf_link.startswith('/'):
+            pdf_url = f"https://www.richbourse.com{pdf_link}"
+        elif pdf_link.startswith('http'):
+            pdf_url = pdf_link
+        else:
+            pdf_url = f"https://www.richbourse.com/common/actualite/{pdf_link}"
+        
+        print(f"    Extracted PDF URL: {pdf_url[:80]}...")
+        return pdf_url
+        
+    except Exception as e:
+        print(f"    Error extracting PDF URL from details page: {e}")
+        return None
+
+
 def extract_text_from_pdf(pdf_content):
     """Extract full text from PDF across ALL pages using pdfplumber (falls back to pypdf)."""
     try:
@@ -471,6 +549,7 @@ def scrape_financials_init(url, openrouter_api_key=None):
         announcements = get_announcements_for_symbol(symbol, max_year)
         
         if not announcements:
+            
             print(f"  No valid announcements found for {symbol}")
             continue
         
@@ -503,7 +582,16 @@ def scrape_financials_init(url, openrouter_api_key=None):
                     "Accept": "application/pdf,*/*",
                     "Referer": "https://www.richbourse.com/",
                 }
-                pdf_response = session.get(ann['url'], headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
+                
+                # Handle new URL format: /details/ URLs return HTML with PDF link
+                pdf_url = ann['url']
+                if '/details/' in pdf_url:
+                    print(f"    Detected /details/ URL, extracting actual PDF URL...")
+                    pdf_url = extract_pdf_url_from_details_page(pdf_url, session, headers)
+                    if not pdf_url:
+                        raise Exception("Failed to extract PDF URL from details page")
+                
+                pdf_response = session.get(pdf_url, headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
                 
                 if pdf_response.status_code != 200:
                     raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
