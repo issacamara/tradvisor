@@ -147,7 +147,7 @@ resource "google_bigquery_table" "dividends" {
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.stocks.dataset_id
   table_id            = "dividends"
-  deletion_protection = true
+  deletion_protection = false
 
   schema = jsonencode([
     { name = "symbol", type = "STRING", mode = "REQUIRED", description = "Stock symbol" },
