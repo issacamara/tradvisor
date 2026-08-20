@@ -105,7 +105,7 @@ class DataManager:
             project_id: GCP project ID (defaults to env PROJECT_ID)
             
         Returns:
-            DataFrame with columns: symbol, date, dividend, payment_date
+        DataFrame with columns: symbol, dividend, payment_date, fiscal_year
         """
         if not project_id:
             project_id = get_project_id()
@@ -119,15 +119,19 @@ class DataManager:
         
         query = f"""
             SELECT * FROM `{project_id}.{DataManager.TABLE_DIVIDENDS}`
-            WHERE DATE(date) = (
-                SELECT MAX(DATE(date)) 
+            WHERE (symbol, fiscal_year) IN (
+                SELECT symbol, MAX(fiscal_year)
                 FROM `{project_id}.{DataManager.TABLE_DIVIDENDS}`
+                GROUP BY symbol
             )
         """
         
         try:
             dividends = client.query(query).to_dataframe()
             dividends.columns = dividends.columns.str.lower()
+            # Ensure fiscal_year is integer (handle None/NaN)
+            if 'fiscal_year' in dividends.columns:
+                dividends['fiscal_year'] = dividends['fiscal_year'].astype('Int64')
             return dividends
         except Exception as e:
             st.error(f"Error loading dividends: {str(e)}")
@@ -246,7 +250,7 @@ class DataManager:
         # Merge dividends
         print(f"[DEBUG] Before merge - shares: {shares.shape}, dividends: {dividends.shape}", file=sys.stderr, flush=True)
         result = shares.merge(
-            dividends[["symbol", "dividend", "payment_date"]], 
+            dividends[["symbol", "dividend", "payment_date", "fiscal_year"]], 
             on='symbol', 
             how='left'
         )

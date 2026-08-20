@@ -35,7 +35,7 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     # Formula: current_year - (years_to_keep - 1) = 2025 - 4 = 2021
     delete_query = f"""
     DELETE FROM `{table_id}`
-    WHERE payment_date < DATE_SUB(DATE_TRUNC(CURRENT_DATE(), YEAR), INTERVAL {years_to_keep - 1} YEAR)
+    WHERE fiscal_year < EXTRACT(YEAR FROM CURRENT_DATE()) - {years_to_keep - 1}
     """
     
     query_job = client.query(delete_query)
@@ -60,8 +60,8 @@ def process_dividends(conf, asset):
                 content = blob.download_as_text()
                 df = pd.read_csv(io.StringIO(content), sep='|')
                 rows_count = len(df)  # Get row count before upsert
-                # Upsert with symbol and payment_date as primary keys
-                upsert_into_bigquery(df, project_id, 'stocks', asset, ['symbol', 'payment_date'])
+                # Upsert with symbol and fiscal_year as primary keys
+                upsert_into_bigquery(df, project_id, 'stocks', asset, ['symbol', 'fiscal_year'])
                 print(f"Upserted {rows_count} rows into {asset} table")
                 # Move to archive
                 from helper import move_csv_file_gcp

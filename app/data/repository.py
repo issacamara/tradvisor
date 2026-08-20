@@ -104,10 +104,10 @@ def get_stock_dividends(symbol: str) -> pd.DataFrame:
     """Retrieves historical dividend payments for a symbol."""
     client = get_bigquery_client()
     query = f"""
-        SELECT symbol, dividend, payment_date, date
+        SELECT symbol, dividend, payment_date, fiscal_year
         FROM `{DIVIDENDS_TABLE}`
         WHERE symbol = @symbol
-        ORDER BY payment_date DESC
+        ORDER BY fiscal_year DESC, payment_date DESC
     """
     job_config = bigquery.QueryJobConfig(
         query_parameters=[bigquery.ScalarQueryParameter("symbol", "STRING", symbol)]

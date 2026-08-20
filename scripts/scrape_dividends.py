@@ -1,7 +1,6 @@
 import json
 import os
 import re
-from datetime import datetime
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 import functions_framework
@@ -13,7 +12,7 @@ from helper import save_dataframe_as_csv
 def scrape_dividends(url):
     """Scrape dividend data from BRVM website (Richbourse).
 
-    Returns DataFrame with columns: SYMBOL, DIVIDEND, PAYMENT_DATE, DATE
+    Returns DataFrame with columns: SYMBOL, DIVIDEND, PAYMENT_DATE, FISCAL_YEAR
     """
     params = {"hl": "en"}
     headers = {
@@ -62,12 +61,27 @@ def scrape_dividends(url):
                 if not payment_date or "inconnue" in str(payment_date).lower():
                     payment_date = None
 
+                # Extract fiscal year from the dividend announcement/exercise
+                # RichBourse data may contain exercise year in the item
+                fiscal_year = item.get("e") or item.get("exercice") or item.get("fiscal_year")
+                
+                # If not in the data, try to infer from payment date
+                # Dividends paid in year X typically relate to fiscal year X-1
+                if not fiscal_year and payment_date:
+                    try:
+                        # Payment date format is typically YYYY-MM-DD
+                        payment_year = int(payment_date.split("-")[0])
+                        fiscal_year = payment_year - 1
+                    except (ValueError, IndexError):
+                        pass
+
                 if symbol:
                     all_data.append(
                         {
                             "SYMBOL": symbol,
                             "DIVIDEND": dividend,
                             "PAYMENT_DATE": payment_date,
+                            "FISCAL_YEAR": fiscal_year,
                         }
                     )
         except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -136,11 +150,23 @@ def scrape_dividends(url):
                         else:
                             payment_date = None
 
+                    # Try to extract fiscal year from the row
+                    # Sometimes it's in a separate column or can be inferred
+                    # Dividends paid in year X typically relate to fiscal year X-1
+                    fiscal_year = None
+                    if payment_date:
+                        try:
+                            payment_year = int(payment_date.split("-")[0])
+                            fiscal_year = payment_year - 1
+                        except (ValueError, IndexError):
+                            pass
+
                     all_data.append(
                         {
                             "SYMBOL": symbol,
                             "DIVIDEND": dividend,
                             "PAYMENT_DATE": payment_date,
+                            "FISCAL_YEAR": fiscal_year,
                         }
                     )
                 except Exception:
@@ -150,7 +176,6 @@ def scrape_dividends(url):
         raise ValueError("No dividend data could be extracted.")
 
     df = pd.DataFrame(all_data)
-    df["DATE"] = datetime.now().strftime("%Y-%m-%d")
 
     return df
 

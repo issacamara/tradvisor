@@ -150,14 +150,16 @@ resource "google_bigquery_table" "dividends" {
   deletion_protection = true
 
   schema = jsonencode([
-    { name = "symbol", type = "STRING", mode = "NULLABLE", description = "Stock symbol" },
+    { name = "symbol", type = "STRING", mode = "REQUIRED", description = "Stock symbol" },
     { name = "dividend", type = "FLOAT", mode = "NULLABLE", description = "Dividend amount in XOF" },
     { name = "payment_date", type = "DATE", mode = "NULLABLE", description = "Date when dividend was paid" },
-    { name = "date", type = "DATE", mode = "NULLABLE", description = "Date when data was collected" }
+    { name = "fiscal_year", type = "INTEGER", mode = "NULLABLE", description = "Fiscal year linked to the dividend" }
   ])
 
+  clustering = ["symbol"]
+
   labels = {
-    source = "brvm"
+    source = "richbourse"
     type   = "fundamental"
   }
 
