@@ -59,14 +59,14 @@ resource "google_bigquery_table" "shares" {
   deletion_protection = true
 
   schema = jsonencode([
-    { name = "SYMBOL", type = "STRING", mode = "REQUIRED", description = "Stock symbol (e.g., NTLC, ORGT)" },
-    { name = "NAME", type = "STRING", mode = "NULLABLE", description = "Company name" },
-    { name = "OPEN", type = "FLOAT", mode = "NULLABLE", description = "Opening price in XOF" },
-    { name = "HIGH", type = "FLOAT", mode = "NULLABLE", description = "Highest price in XOF" },
-    { name = "LOW", type = "FLOAT", mode = "NULLABLE", description = "Lowest price in XOF" },
-    { name = "CLOSE", type = "FLOAT", mode = "NULLABLE", description = "Closing price in XOF" },
-    { name = "VOLUME", type = "FLOAT", mode = "NULLABLE", description = "Trading volume" },
-    { name = "DATE", type = "DATE", mode = "NULLABLE", description = "Trading date" }
+    { name = "symbol", type = "STRING", mode = "REQUIRED", description = "Stock symbol (e.g., NTLC, ORGT)" },
+    { name = "name", type = "STRING", mode = "NULLABLE", description = "Company name" },
+    { name = "open", type = "FLOAT", mode = "NULLABLE", description = "Opening price in XOF" },
+    { name = "high", type = "FLOAT", mode = "NULLABLE", description = "Highest price in XOF" },
+    { name = "low", type = "FLOAT", mode = "NULLABLE", description = "Lowest price in XOF" },
+    { name = "close", type = "FLOAT", mode = "NULLABLE", description = "Closing price in XOF" },
+    { name = "volume", type = "FLOAT", mode = "NULLABLE", description = "Trading volume" },
+    { name = "date", type = "DATE", mode = "NULLABLE", description = "Trading date" }
   ])
 
   labels = {
@@ -147,7 +147,7 @@ resource "google_bigquery_table" "dividends" {
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.stocks.dataset_id
   table_id            = "dividends"
-  deletion_protection = false
+  deletion_protection = true
 
   schema = jsonencode([
     { name = "symbol", type = "STRING", mode = "REQUIRED", description = "Stock symbol" },

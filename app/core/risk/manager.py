@@ -6,10 +6,10 @@ def calculate_atr(df_price: pd.DataFrame, period: int = 14) -> float | None:
     if df_price.empty or len(df_price) < period + 1:
         return None
     
-    df = df_price.copy().sort_values('DATE').reset_index(drop=True)
-    high = df['HIGH']
-    low = df['LOW']
-    close = df['CLOSE'].shift(1)
+    df = df_price.copy().sort_values('date').reset_index(drop=True)
+    high = df['high']
+    low = df['low']
+    close = df['close'].shift(1)
 
     tr1 = high - low
     tr2 = (high - close).abs()

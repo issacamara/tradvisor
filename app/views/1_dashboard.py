@@ -19,7 +19,7 @@ def show():
     st.subheader("💰 Top Passive Income Opportunities (BRVM)")
 
     symbols = get_all_symbols()
-    prices_df = get_latest_prices().set_index('SYMBOL') if not get_latest_prices().empty else pd.DataFrame()
+    prices_df = get_latest_prices().set_index('symbol') if not get_latest_prices().empty else pd.DataFrame()
 
     results = []
     with st.spinner("Analyzing stocks for passive income signals..."):
@@ -27,7 +27,7 @@ def show():
             fin_df = get_stock_financials(sym)
             div_df = get_stock_dividends(sym)
             
-            latest_price = float(prices_df.loc[sym, 'CLOSE']) if (not prices_df.empty and sym in prices_df.index) else None
+            latest_price = float(prices_df.loc[sym, 'close']) if (not prices_df.empty and sym in prices_df.index) else None
             latest_div = float(div_df.iloc[0]['dividend']) if not div_df.empty and 'dividend' in div_df.columns else None
             years_div = len(div_df) if not div_df.empty else 0
 

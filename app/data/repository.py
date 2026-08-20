@@ -13,25 +13,25 @@ def get_all_symbols() -> list[str]:
     """Fetches unique trading symbols available across shares and financials tables."""
     client = get_bigquery_client()
     query = f"""
-        SELECT DISTINCT SYMBOL 
+        SELECT DISTINCT symbol 
         FROM `{SHARES_TABLE}` 
-        WHERE SYMBOL IS NOT NULL 
-        ORDER BY SYMBOL
+        WHERE symbol IS NOT NULL 
+        ORDER BY symbol
     """
     df = client.query(query).to_dataframe()
-    return df['SYMBOL'].tolist() if not df.empty else []
+    return df['symbol'].tolist() if not df.empty else []
 
 @st.cache_data(ttl=86400)
 def get_all_companies() -> list[str]:
     """Fetches company names available across stocks."""
     client = get_bigquery_client()
     query = f"""
-        SELECT DISTINCT SYMBOL, NAME 
+        SELECT DISTINCT symbol, name 
         FROM `{SHARES_TABLE}` 
-        WHERE SYMBOL IS NOT NULL 
+        WHERE symbol IS NOT NULL 
     """
     df = client.query(query).to_dataframe()
-    return df.set_index('SYMBOL')['NAME'].to_dict() if not df.empty else {}
+    return df.set_index('symbol')['name'].to_dict() if not df.empty else {}
 
 @st.cache_data(ttl=86400)
 def get_latest_prices() -> pd.DataFrame:
@@ -40,21 +40,21 @@ def get_latest_prices() -> pd.DataFrame:
     query = f"""
         WITH ranked_shares AS (
             SELECT 
-                SYMBOL, 
-                DATE, 
-                CLOSE, 
-                VOLUME,
-                LAG(CLOSE) OVER (PARTITION BY SYMBOL ORDER BY DATE ASC) as PREV_CLOSE,
-                ROW_NUMBER() OVER (PARTITION BY SYMBOL ORDER BY DATE DESC) as rn
+                symbol, 
+                date, 
+                close, 
+                volume,
+                LAG(close) OVER (PARTITION BY symbol ORDER BY date ASC) as prev_close,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
             FROM `{SHARES_TABLE}`
         )
         SELECT 
-            SYMBOL, 
-            DATE, 
-            CLOSE, 
-            VOLUME,
-            PREV_CLOSE,
-            SAFE_DIVIDE(CLOSE - PREV_CLOSE, PREV_CLOSE) * 100 as CHANGE_PCT
+            symbol, 
+            date, 
+            close, 
+            volume,
+            prev_close,
+            SAFE_DIVIDE(close - prev_close, prev_close) * 100 as change_pct
         FROM ranked_shares
         WHERE rn = 1
     """
@@ -65,10 +65,10 @@ def get_stock_price_history(symbol: str, days: int = 1800) -> pd.DataFrame:
     """Retrieves up to 5 years (1800 days) of OHLCV daily trading data for a symbol."""
     client = get_bigquery_client()
     query = f"""
-        SELECT SYMBOL, DATE, OPEN, HIGH, LOW, CLOSE, VOLUME
+        SELECT symbol, date, open, high, low, close, volume
         FROM `{SHARES_TABLE}`
-        WHERE SYMBOL = @symbol
-        ORDER BY DATE ASC
+        WHERE symbol = @symbol
+        ORDER BY date ASC
         LIMIT @days
     """
     job_config = bigquery.QueryJobConfig(
@@ -78,8 +78,8 @@ def get_stock_price_history(symbol: str, days: int = 1800) -> pd.DataFrame:
         ]
     )
     df = client.query(query, job_config=job_config).to_dataframe()
-    if not df.empty and 'DATE' in df.columns:
-        df['DATE'] = pd.to_datetime(df['DATE'])
+    if not df.empty and 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'])
     return df
 
 @st.cache_data(ttl=86400)

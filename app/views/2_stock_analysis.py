@@ -17,8 +17,8 @@ from app.components.metrics import render_score_badge
 
 #     selected_symbol = st.selectbox("Select BRVM Stock Symbol", options=symbols, index=0)
 
-#     prices_df = get_latest_prices().set_index('SYMBOL') if not get_latest_prices().empty else pd.DataFrame()
-#     latest_close = float(prices_df.loc[selected_symbol, 'CLOSE']) if (not prices_df.empty and selected_symbol in prices_df.index) else None
+#     prices_df = get_latest_prices().set_index('symbol') if not get_latest_prices().empty else pd.DataFrame()
+#     latest_close = float(prices_df.loc[selected_symbol, 'close']) if (not prices_df.empty and selected_symbol in prices_df.index) else None
 
 #     fin_df = get_stock_financials(selected_symbol)
 #     div_df = get_stock_dividends(selected_symbol)

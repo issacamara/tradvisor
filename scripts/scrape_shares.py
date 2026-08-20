@@ -24,7 +24,7 @@ def scrape(url):
     table = soup.find('table', {"class": "tablesorter tbl100_6 tbl1"})
     # Extract the headers from the table
     # Extract the header
-    headers = ['SYMBOL', 'NAME', 'OPEN', 'HIGH', 'LOW', 'VOLUME', 'CLOSE']
+    headers = ['symbol', 'name', 'open', 'high', 'low', 'volume', 'close']
 
     # Extract the rows from the table
     rows = []
@@ -46,12 +46,12 @@ def scrape_brvm_shares(url):
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
 
-    df['OPEN'] = df['OPEN'].str.replace(',', '.').astype(float)
-    df['HIGH'] = df['HIGH'].str.replace(',', '.').astype(float)
-    df['LOW'] = df['LOW'].str.replace(',', '.').astype(float)
-    df['CLOSE'] = df['CLOSE'].str.replace(',', '.').astype(float)
-    df['VOLUME'] = df['VOLUME'].str.replace(',', '.').astype(float)
-    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
+    df['open'] = df['open'].str.replace(',', '.').astype(float)
+    df['high'] = df['high'].str.replace(',', '.').astype(float)
+    df['low'] = df['low'].str.replace(',', '.').astype(float)
+    df['close'] = df['close'].str.replace(',', '.').astype(float)
+    df['volume'] = df['volume'].str.replace(',', '.').astype(float)
+    df['date'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
     return df
 
