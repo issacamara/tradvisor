@@ -308,7 +308,7 @@ def process_files(conf, files, asset):
         for f in files:
             content = f.download_as_text()
             df = pd.read_csv(io.StringIO(content), sep='|')
-            df['DATE'] = pd.to_datetime(df['DATE']).dt.date
+            df['date'] = pd.to_datetime(df['DATE']).dt.date
             credentials, project_id = default()
             project_number = get_project_number(project_id)
             bucket_url1 = f"data-{project_number}"
