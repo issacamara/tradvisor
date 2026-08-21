@@ -12,3 +12,7 @@ pyarrow==17.0.0
 google-generativeai==0.8.3
 pdfplumber==0.11.4
 pypdf==5.1.0
+
+# Force transport layer upgrades to mitigate Python 3.11 / OpenSSL 3.0 SSLEOFError
+urllib3>=2.2.2
+requests>=2.32.2
