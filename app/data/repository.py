@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 from google.cloud import bigquery
-from app.data.schema import PROJECT_ID, SHARES_TABLE, DIVIDENDS_TABLE, FINANCIALS_TABLE, RATINGS_TABLE
+from app.data.schema import PROJECT_ID, SHARES_TABLE, DIVIDENDS_TABLE, FINANCIALS_TABLE, RATINGS_TABLE, COMPANIES_TABLE
 
 def get_bigquery_client() -> bigquery.Client:
     """Initializes BigQuery client using Application Default Credentials (ADC)."""
@@ -128,3 +128,56 @@ def get_stock_ratings(symbol: str) -> pd.DataFrame:
         query_parameters=[bigquery.ScalarQueryParameter("symbol", "STRING", symbol)]
     )
     return client.query(query, job_config=job_config).to_dataframe()
+
+@st.cache_data(ttl=86400)
+def get_all_companies_with_sector() -> pd.DataFrame:
+    """Retrieves all companies with sector classification."""
+    client = get_bigquery_client()
+    query = f"""
+        SELECT symbol, name, sector, activity_description
+        FROM `{COMPANIES_TABLE}`
+        ORDER BY sector, name
+    """
+    return client.query(query).to_dataframe()
+
+@st.cache_data(ttl=86400)
+def get_company_by_symbol(symbol: str) -> pd.DataFrame:
+    """Retrieves company details by symbol."""
+    client = get_bigquery_client()
+    query = f"""
+        SELECT symbol, name, sector, activity_description
+        FROM `{COMPANIES_TABLE}`
+        WHERE symbol = @symbol
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("symbol", "STRING", symbol)]
+    )
+    return client.query(query, job_config=job_config).to_dataframe()
+
+@st.cache_data(ttl=86400)
+def get_companies_by_sector(sector: str) -> pd.DataFrame:
+    """Retrieves all companies in a specific sector."""
+    client = get_bigquery_client()
+    query = f"""
+        SELECT symbol, name, sector, activity_description
+        FROM `{COMPANIES_TABLE}`
+        WHERE sector = @sector
+        ORDER BY name
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("sector", "STRING", sector)]
+    )
+    return client.query(query, job_config=job_config).to_dataframe()
+
+@st.cache_data(ttl=86400)
+def get_all_sectors() -> list[str]:
+    """Retrieves all unique sectors."""
+    client = get_bigquery_client()
+    query = f"""
+        SELECT DISTINCT sector
+        FROM `{COMPANIES_TABLE}`
+        WHERE sector IS NOT NULL
+        ORDER BY sector
+    """
+    df = client.query(query).to_dataframe()
+    return df['sector'].tolist() if not df.empty else []

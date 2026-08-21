@@ -70,7 +70,7 @@ resource "google_bigquery_table" "shares" {
   ])
 
   labels = {
-    source = "brvm"
+    source = "sikafinance"
     type   = "market_data"
   }
 
@@ -164,4 +164,30 @@ resource "google_bigquery_table" "dividends" {
   }
 
   description = "Dividend payments collected from RichBourse"
+}
+
+# =====================================================
+# Table: BRVM_COMPANIES
+# =====================================================
+resource "google_bigquery_table" "brvm_companies" {
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.stocks.dataset_id
+  table_id            = "brvm_companies"
+  deletion_protection = true
+
+  schema = jsonencode([
+    { name = "symbol", type = "STRING", mode = "REQUIRED", description = "Stock symbol (e.g., NTLC, ORGT)" },
+    { name = "name", type = "STRING", mode = "NULLABLE", description = "Company name" },
+    { name = "sector", type = "STRING", mode = "NULLABLE", description = "Business sector (e.g., Banking, Telecom, Industry)" },
+    { name = "activity_description", type = "STRING", mode = "NULLABLE", description = "Description of the company's activity" }
+  ])
+
+  clustering = ["sector"]
+
+  labels = {
+    source = "brvm"
+    type   = "company_reference"
+  }
+
+  description = "BRVM listed companies with sector classification"
 }

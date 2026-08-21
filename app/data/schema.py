@@ -8,6 +8,7 @@ SHARES_TABLE = f"{PROJECT_ID}.{DATASET_ID}.shares"
 DIVIDENDS_TABLE = f"{PROJECT_ID}.{DATASET_ID}.dividends"
 FINANCIALS_TABLE = f"{PROJECT_ID}.{DATASET_ID}.financials"
 RATINGS_TABLE = f"{PROJECT_ID}.{DATASET_ID}.ratings"
+COMPANIES_TABLE = f"{PROJECT_ID}.{DATASET_ID}.brvm_companies"
 
 @dataclass
 class StockFinancial:
