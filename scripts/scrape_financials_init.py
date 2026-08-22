@@ -94,7 +94,7 @@ def get_announcements_for_symbol(symbol, min_year, single_year_only=False):
     seen_urls = set()
 
     while True:
-        url = f"{FINANCIALS_URL}?symbole={symbol}&page={page}"
+        url = f"{FINANCIALS_URL}/{symbol}?page={page}"
         try:
             res = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
             if res.status_code != 200:
