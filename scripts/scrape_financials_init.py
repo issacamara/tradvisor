@@ -7,19 +7,22 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 from google.auth import default
-from google.cloud import storage
+from google.cloud import storage, bigquery
 import functions_framework
 
 from helper import get_symbols_from_richbourse, get_project_number
 
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 
+
 def normalize_text(text):
     return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn').lower()
+
 
 def is_valid_financial_title(title):
     normalized = normalize_text(title)
     return 'etat' in normalized and 'financier' in normalized
+
 
 def extract_year_from_title(title):
     patterns = [r'Exercice\s*(\d{4})', r'(\d{4})', r'(\d{4})-(\d{2,4})']
@@ -32,9 +35,29 @@ def extract_year_from_title(title):
                 continue
     return None
 
+
 def should_reject_announcement(title):
     reject_keywords = ['trimestre', 'trimestriel', 'semestre', 'semestriel', 'quarterly']
     return any(k in title.lower() for k in reject_keywords)
+
+
+def get_existing_symbols_and_years():
+    """Query BigQuery to get existing (symbol, fiscal_year) pairs with announcement_date."""
+    credentials, project_id = default()
+    client = bigquery.Client(credentials=credentials, project=project_id)
+    query = f"""
+        SELECT symbol, fiscal_year, announcement_date
+        FROM `{project_id}.stocks.financials`
+    """
+    
+    try:
+        results = client.query(query).result()
+        return {(row.symbol, row.fiscal_year): {
+            'announcement_date': str(row.announcement_date) if row.announcement_date else None
+        } for row in results}
+    except Exception:
+        return {}
+
 
 def extract_pdf_url_from_details_page(details_url, session, headers):
     try:
@@ -63,6 +86,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
     except Exception as e:
         print(f"Error extracting PDF URL: {e}")
         return None
+
 
 def get_announcements_for_symbol(symbol, min_year, single_year_only=False):
     headers = {
@@ -140,17 +164,27 @@ def get_announcements_for_symbol(symbol, min_year, single_year_only=False):
             
     return announcements
 
-def download_and_save_pdf_to_gcs(ann, bucket):
+
+def download_and_save_pdf_to_gcs(ann, bucket, existing_bq_data):
     symbol = ann['symbol']
     fiscal_year = ann['fiscal_year']
     ann_date = ann['announcement_date']
+
+    # 1. Check BigQuery first
+    key = (symbol, fiscal_year)
+    existing_entry = existing_bq_data.get(key)
+    if existing_entry and existing_entry.get('announcement_date') == ann_date:
+        print(f"  FY {fiscal_year} for {symbol} already exists in BigQuery, skipping download.")
+        return
+
+    # 2. Check GCS bucket second
     blob_name = f"financials_pdf/{symbol}_{fiscal_year}_{ann_date}.pdf"
-    
     blob = bucket.blob(blob_name)
     if blob.exists():
         print(f"  {blob_name} already exists in GCS, skipping download.")
         return
 
+    # 3. Download from RichBourse
     session = requests.Session()
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/pdf,*/*"}
     pdf_url = ann['url']
@@ -170,8 +204,14 @@ def download_and_save_pdf_to_gcs(ann, bucket):
         blob.upload_from_string(res.content, content_type='application/pdf')
         print(f"  Saved to GCS: {blob_name}")
 
+
 def scrape_financials_init(url):
     min_year = datetime.now().year - 5
+    
+    print("Checking existing data in BigQuery...")
+    existing_bq_data = get_existing_symbols_and_years()
+    print(f"Found {len(existing_bq_data)} existing (symbol, fiscal_year) pairs in BigQuery.")
+
     credentials, project_id = default()
     project_number = get_project_number(project_id)
     storage_client = storage.Client()
@@ -181,7 +221,8 @@ def scrape_financials_init(url):
     for symbol in symbols:
         announcements = get_announcements_for_symbol(symbol, min_year)
         for ann in announcements:
-            download_and_save_pdf_to_gcs(ann, bucket)
+            download_and_save_pdf_to_gcs(ann, bucket, existing_bq_data)
+
 
 @functions_framework.http
 def entry_point(request=None):
@@ -190,6 +231,7 @@ def entry_point(request=None):
     url = config['url'].get('financials', FINANCIALS_URL)
     scrape_financials_init(url)
     return "Financials initialization (PDF downloads to GCS) completed.\n"
+
 
 if __name__ == "__main__":
     print(entry_point())
