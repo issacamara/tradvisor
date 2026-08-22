@@ -57,7 +57,7 @@ EOF
 }
 
 resource "google_workflows_workflow" "workflow_financials" {
-  depends_on      = [google_cloudfunctions2_function.scrape_financials, google_project_service.apis]
+  depends_on      = [google_cloudfunctions2_function.scrape_financials, google_cloudfunctions2_function.insert_financials, google_project_service.apis]
   name            = "financials-wf"
   region          = var.region
   description     = "A workflow to scrape and upsert financials to BigQuery"
@@ -73,6 +73,13 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.scrape_financials.url}
+    - insert_financials:
+        call: http.get
+        args:
+          url: ${google_cloudfunctions2_function.insert_financials.url}
+          auth:
+            type: OIDC
+            audience: ${google_cloudfunctions2_function.insert_financials.url}
 EOF
 }
 
@@ -97,7 +104,7 @@ EOF
 }
 
 resource "google_workflows_workflow" "workflow_financials_init" {
-  depends_on      = [google_cloudfunctions2_function.scrape_financials_init, google_project_service.apis]
+  depends_on      = [google_cloudfunctions2_function.scrape_financials_init, google_cloudfunctions2_function.insert_financials, google_project_service.apis]
   name            = "financials-init-wf"
   region          = var.region
   description     = "A workflow to initialize financials with 5 years of data"
@@ -113,6 +120,13 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.scrape_financials_init.url}
+    - insert_financials:
+        call: http.get
+        args:
+          url: ${google_cloudfunctions2_function.insert_financials.url}
+          auth:
+            type: OIDC
+            audience: ${google_cloudfunctions2_function.insert_financials.url}
 EOF
 }
 
