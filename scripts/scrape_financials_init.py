@@ -41,16 +41,17 @@ def get_existing_symbols_and_years():
     credentials, project_id = default()
     client = bigquery.Client(credentials=credentials, project=project_id)
     query = f"""
-        SELECT symbol, fiscal_year, announcement_date
+        SELECT symbol, fiscal_year, CAST(announcement_date AS STRING) AS announcement_date
         FROM `{project_id}.stocks.financials`
     """
     try:
         results = client.query(query).result()
         return {
-            (row.symbol, row.fiscal_year): str(row.announcement_date) if row.announcement_date else None
+            (row.symbol, int(row.fiscal_year)): row.announcement_date
             for row in results
         }
-    except Exception:
+    except Exception as e:
+        print(f"Error querying BigQuery: {e}")
         return {}
 
 def extract_pdf_url_from_details_page(details_url, session, headers):
@@ -159,25 +160,25 @@ def get_announcements_for_symbol(symbol, min_year, single_year_only=False):
 
 def download_and_save_pdf_to_gcs(ann, bucket, existing_bq_data):
     symbol = ann['symbol']
-    fiscal_year = ann['fiscal_year']
-    ann_date = ann['announcement_date']
+    fiscal_year = int(ann['fiscal_year'])
+    ann_date = str(ann['announcement_date'])
     key = (symbol, fiscal_year)
 
-    # 1. BigQuery Freshness Check: Skip if BQ already has equal or newer announcement_date
     existing_date = existing_bq_data.get(key)
+
+    # If key exists in BQ and the web announcement date is NOT strictly greater, skip download
     if existing_date and ann_date <= existing_date:
-        print(f"  [BQ Match] {symbol} FY{fiscal_year} already in BigQuery (BQ: {existing_date} >= Scraping: {ann_date}). Skipping download.")
+        print(f"  [SKIPPED BQ] {symbol} FY{fiscal_year}: BQ date ({existing_date}) >= Scraping date ({ann_date})")
         return
 
-    # 2. GCS Idempotency Check
     blob_name = f"financials_pdf/{symbol}_{fiscal_year}_{ann_date}.pdf"
     blob = bucket.blob(blob_name)
     if blob.exists():
-        print(f"  [GCS Match] {blob_name} already staged in GCS. Skipping download.")
+        print(f"  [SKIPPED GCS] {blob_name} already exists in bucket.")
         return
 
-    # 3. Download from RichBourse
-    print(f"  [New Data] Downloading PDF for {symbol} FY{fiscal_year} (Date: {ann_date})...")
+    print(f"  [DOWNLOADING] {symbol} FY{fiscal_year} (Web date: {ann_date} > BQ date: {existing_date})")
+    
     session = requests.Session()
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/pdf,*/*"}
     pdf_url = ann['url']
@@ -195,8 +196,7 @@ def download_and_save_pdf_to_gcs(ann, bucket, existing_bq_data):
             'document_link': ann['url']
         }
         blob.upload_from_string(res.content, content_type='application/pdf')
-        print(f"  Saved to GCS: {blob_name}")
-
+        print(f"  ✓ Saved to GCS: {blob_name}")
 def scrape_financials_init(url):
     min_year = datetime.now().year - 5
     credentials, project_id = default()
