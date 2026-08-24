@@ -49,6 +49,14 @@ data "archive_file" "assets_extra" {
     filename = "scrape_financials_init.py"
   }
   source {
+    content  = file("${path.module}/../scripts/scrape_financials_init_new.py")
+    filename = "scrape_financials_init_new.py"
+  }
+  source {
+    content  = file("${path.module}/../scripts/insert_financials_new.py")
+    filename = "insert_financials_new.py"
+  }
+  source {
     content  = file("${path.module}/../scripts/scrape_ratings_init.py")
     filename = "scrape_ratings_init.py"
   }

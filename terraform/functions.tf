@@ -62,12 +62,13 @@ resource "google_cloudfunctions2_function" "scrape_financials" {
   }
 }
 
-# Insert Financials Function
+# Insert Financials Function (reads PDFs from GCS, extracts data using AI, upserts to BigQuery)
 resource "google_cloudfunctions2_function" "insert_financials" {
   depends_on = [
     google_project_service.apis,
     google_storage_bucket_object.src_code_extra,
-    data.google_project.project
+    data.google_project.project,
+    google_secret_manager_secret.openrouter_api_key
   ]
   name     = "insert_financials_function"
   location = var.region
@@ -85,9 +86,13 @@ resource "google_cloudfunctions2_function" "insert_financials" {
 
   service_config {
     max_instance_count    = 1
-    available_memory      = "512Mi"
-    timeout_seconds       = 180
+    available_cpu         = "1"
+    available_memory      = "4Gi"
+    timeout_seconds       = 600
     service_account_email = google_service_account.tradvisor_sa.email
+    environment_variables = {
+      "OPENROUTER_API_KEY" = var.openrouter_api_key
+    }
   }
 }
 
