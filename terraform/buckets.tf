@@ -69,7 +69,7 @@ data "archive_file" "assets_init" {
     filename = "helper.py"
   }
 
-²²source {
+  source {
     content  = file("${path.module}/../scripts/mapping.csv")
     filename = "mapping.csv"
   }
