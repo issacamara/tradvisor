@@ -49,12 +49,12 @@ data "archive_file" "assets_extra" {
     filename = "scrape_financials_init.py"
   }
   source {
-    content  = file("${path.module}/../scripts/scrape_financials_init_new.py")
-    filename = "scrape_financials_init_new.py"
+    content  = file("${path.module}/../scripts/scrape_financials_init.py")
+    filename = "scrape_financials_init.py"
   }
   source {
-    content  = file("${path.module}/../scripts/insert_financials_new.py")
-    filename = "insert_financials_new.py"
+    content  = file("${path.module}/../scripts/insert_financials.py")
+    filename = "insert_financials.py"
   }
   source {
     content  = file("${path.module}/../scripts/scrape_ratings_init.py")
