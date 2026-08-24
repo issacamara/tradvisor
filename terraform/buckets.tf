@@ -12,6 +12,7 @@ data "archive_file" "assets" {
     content  = file("${path.module}/../scripts/config.yml")
     filename = "config.yml"
   }
+
   source {
     content  = file("${path.module}/../scripts/requirements.txt")
     filename = "requirements.txt"
@@ -35,6 +36,10 @@ data "archive_file" "assets_extra" {
   source {
     content  = file("${path.module}/../scripts/config.yml")
     filename = "config.yml"
+  }
+  source {
+    content  = file("${path.module}/../scripts/mapping.csv")
+    filename = "mapping.csv"
   }
   source {
     content  = file("${path.module}/../scripts/requirements.txt")

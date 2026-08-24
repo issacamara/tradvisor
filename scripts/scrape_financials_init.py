@@ -312,7 +312,7 @@ def download_pdf_to_storage(symbol, fiscal_year, pdf_url, bucket_name):
         return False
 
 
-def scrape_financials_init(url=None, mapping_csv_path=None):
+def scrape_financials_init(url=None, mapping_csv_path="mapping.csv"):
     """Scrape annual financial statements from BRVM - INITIALIZATION (last 5 years).
     
     Downloads PDF files to Cloud Storage for later processing by insert_financials function.
@@ -339,6 +339,7 @@ def scrape_financials_init(url=None, mapping_csv_path=None):
     for slug, company_name in companies:
         # Get symbol from mapping
         symbol = symbol_mapping.get(slug)
+
         if not symbol:
             print(f"  Warning: No symbol mapping for slug '{slug}' ({company_name}), skipping...")
             continue
