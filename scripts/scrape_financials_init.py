@@ -35,8 +35,7 @@ def load_symbol_mapping(csv_path):
         df = pd.read_csv(csv_path, sep=';', encoding='latin1')
         if 'emetteur' in df.columns and 'symbol' in df.columns:
             mapping = dict(zip(df['emetteur'], df['symbol']))
-        print(f"Loaded 
-              {len(mapping)} symbol mappings from {csv_path}")
+        print(f"Loaded {len(mapping)} symbol mappings from {csv_path}")
     else:
         print(f"Warning: Symbol mapping file not found at {csv_path}")
     
