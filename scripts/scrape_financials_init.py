@@ -17,7 +17,7 @@ BRVM_LISTING_URL = "https://www.brvm.org/fr/rapports-societes-cotees"
 FINANCIALS_REPORT_TYPE = 57  # field_type_rapport_tid=57 for "Etats Financiers"
 
 
-def load_symbol_mapping(csv_path=None):
+def load_symbol_mapping(csv_path):
     """Load symbol mapping from CSV file.
     
     CSV format: slug,symbol
@@ -29,15 +29,14 @@ def load_symbol_mapping(csv_path=None):
     Returns:
     - Dictionary mapping slug to symbol
     """
-    if csv_path is None:
-        csv_path = os.path.join(os.path.dirname(__file__), 'mapping.csv')
-    
+
     mapping = {}
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, sep=';', encoding='latin1')
         if 'emetteur' in df.columns and 'symbol' in df.columns:
             mapping = dict(zip(df['emetteur'], df['symbol']))
-        print(f"Loaded {len(mapping)} symbol mappings from {csv_path}")
+        print(f"Loaded 
+              {len(mapping)} symbol mappings from {csv_path}")
     else:
         print(f"Warning: Symbol mapping file not found at {csv_path}")
     
@@ -312,7 +311,7 @@ def download_pdf_to_storage(symbol, fiscal_year, pdf_url, bucket_name):
         return False
 
 
-def scrape_financials_init(url=None, mapping_csv_path="mapping.csv"):
+def scrape_financials_init(url=None):
     """Scrape annual financial statements from BRVM - INITIALIZATION (last 5 years).
     
     Downloads PDF files to Cloud Storage for later processing by insert_financials function.
@@ -322,7 +321,8 @@ def scrape_financials_init(url=None, mapping_csv_path="mapping.csv"):
     
     print(f"Collecting financial PDFs from BRVM (last 5 years: {max_year}-{current_year})...")
     
-    # Load symbol mapping
+    # Load symbol mapping (same directory as config.yml)
+    mapping_csv_path = os.path.join(os.path.dirname(__file__), 'mapping.csv')
     symbol_mapping = load_symbol_mapping(mapping_csv_path)
     
     print("Fetching all companies from BRVM...")
@@ -338,7 +338,7 @@ def scrape_financials_init(url=None, mapping_csv_path="mapping.csv"):
     
     for slug, company_name in companies:
         # Get symbol from mapping
-        symbol = symbol_mapping.get(slug)
+        symbol = symbol_mapping.get(company_name)
 
         if not symbol:
             print(f"  Warning: No symbol mapping for slug '{slug}' ({company_name}), skipping...")
