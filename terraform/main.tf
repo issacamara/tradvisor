@@ -94,7 +94,6 @@ resource "google_bigquery_table" "financials" {
     { name = "total_debt", type = "FLOAT", mode = "NULLABLE", description = "Total debt or total passifs/dettes" },
     { name = "cash_and_cash_equivalents", type = "FLOAT", mode = "NULLABLE", description = "Cash and cash equivalents or trésorerie" },
     { name = "total_equity", type = "FLOAT", mode = "NULLABLE", description = "Total equity or capitaux propres" },
-    { name = "announcement_date", type = "DATE", mode = "NULLABLE", description = "Date of the financial announcement" },
     { name = "document_link", type = "STRING", mode = "NULLABLE", description = "URL to the financial document PDF" },
     { name = "collected_at", type = "TIMESTAMP", mode = "NULLABLE", description = "Timestamp when data was collected" }
   ])

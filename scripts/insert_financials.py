@@ -334,6 +334,31 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
             print(f"Warning: Failed to delete temporary table {temp_table_id}: {e}")
 
 
+def move_pdf_to_archive(blob, source_bucket, project_number):
+    """Move a processed PDF to the archive bucket.
+    
+    Returns:
+    - True if successful, False otherwise
+    """
+    try:
+        archive_bucket = source_bucket.client.bucket(f"archive-{project_number}")
+        source_blob = source_bucket.blob(blob.name)
+        destination_blob_name = blob.name
+        
+        # Copy to archive bucket
+        source_bucket.copy_blob(source_blob, archive_bucket, destination_blob_name)
+        
+        # Delete from source bucket
+        source_blob.delete()
+        
+        print(f"    ✓ Moved to archive: gs://archive-{project_number}/{destination_blob_name}")
+        return True
+        
+    except Exception as e:
+        print(f"    Warning: Failed to move PDF to archive: {e}")
+        return False
+
+
 def process_financial_pdfs(openrouter_api_key):
     """Process PDF files from GCS and extract financial data to BigQuery."""
     credentials, project_id = default()
@@ -360,33 +385,15 @@ def process_financial_pdfs(openrouter_api_key):
     total_failed = 0
     
     for blob in pdf_blobs:
-        # Parse filename: financials/SYMBOL/YEAR/timestamp.pdf
-        # or: financials/SYMBOL_YEAR_TIMESTAMP.pdf
+        # Parse filename: financials/SYMBOL/YEAR/title.pdf
         parts = blob.name.replace('.pdf', '').split('/')
         
-        if len(parts) >= 3:
-            # Format: financials/SYMBOL/YEAR/timestamp.pdf
-            symbol = parts[1]
-            try:
-                fiscal_year = int(parts[2])
-            except (ValueError, IndexError):
-                # Try alternative format
-                filename = os.path.basename(blob.name).replace('.pdf', '')
-                filename_parts = filename.split('_')
-                if len(filename_parts) >= 2:
-                    symbol = filename_parts[0]
-                    try:
-                        fiscal_year = int(filename_parts[1])
-                    except ValueError:
-                        print(f"  Skipping {blob.name}: could not parse symbol/year")
-                        total_skipped += 1
-                        continue
-                else:
-                    print(f"  Skipping {blob.name}: could not parse filename")
-                    total_skipped += 1
-                    continue
-        else:
-            # Try: financials/SYMBOL_YEAR_TIMESTAMP.pdf
+        # Format: financials/SYMBOL/YEAR/title.pdf
+        symbol = parts[1]
+        try:
+            fiscal_year = int(parts[2])
+        except (ValueError, IndexError):
+            # Try alternative format
             filename = os.path.basename(blob.name).replace('.pdf', '')
             filename_parts = filename.split('_')
             if len(filename_parts) >= 2:
@@ -394,7 +401,7 @@ def process_financial_pdfs(openrouter_api_key):
                 try:
                     fiscal_year = int(filename_parts[1])
                 except ValueError:
-                    print(f"  Skipping {blob.name}: could not parse year")
+                    print(f"  Skipping {blob.name}: could not parse symbol/year")
                     total_skipped += 1
                     continue
             else:
@@ -424,11 +431,12 @@ def process_financial_pdfs(openrouter_api_key):
                 total_failed += 1
                 continue
             
-            # Use today's date as announcement_date since BRVM doesn't provide it
-            announcement_date = datetime.now().strftime('%Y-%m-%d')
+            # Move PDF to archive bucket FIRST
+            move_pdf_to_archive(blob, bucket, project_number)
             
-            # Build GCS URL for document_link
-            document_link = f"gs://{bucket.name}/{blob.name}"
+                    
+            # Build GCS URL for document_link (pointing to archive location)
+            document_link = f"gs://archive-{project_number}/{blob.name}"
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{
@@ -439,7 +447,6 @@ def process_financial_pdfs(openrouter_api_key):
                 'total_debt': financial_data.get('total_debt'),
                 'cash_and_cash_equivalents': financial_data.get('cash_and_cash_equivalents'),
                 'total_equity': financial_data.get('total_equity'),
-                'announcement_date': announcement_date,
                 'document_link': document_link,
                 'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }])
@@ -447,6 +454,7 @@ def process_financial_pdfs(openrouter_api_key):
             # Upsert to BigQuery
             upsert_into_bigquery(df, project_id, 'stocks', 'financials', ['symbol', 'fiscal_year'])
             print(f"    ✓ Upserted {symbol} FY{fiscal_year} to BigQuery")
+            
             total_processed += 1
             
             del df

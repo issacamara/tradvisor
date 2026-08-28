@@ -269,7 +269,7 @@ def get_bucket_name():
     raise Exception("No suitable storage bucket found")
 
 
-def download_pdf_to_storage(symbol, fiscal_year, pdf_url, bucket_name):
+def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
     """Download PDF from URL and upload to Cloud Storage.
     
     Returns:
@@ -283,7 +283,7 @@ def download_pdf_to_storage(symbol, fiscal_year, pdf_url, bucket_name):
             "Referer": "https://www.brvm.org/",
         }
         
-        pdf_response = session.get(pdf_url, headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
+        pdf_response = session.get(report['pdf_url'], headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
         
         if pdf_response.status_code != 200:
             print(f"      Failed to download PDF: HTTP {pdf_response.status_code}")
@@ -292,9 +292,10 @@ def download_pdf_to_storage(symbol, fiscal_year, pdf_url, bucket_name):
         pdf_content = pdf_response.content
         
         # Upload to Cloud Storage
-        # Format: financials/{symbol}/{fiscal_year}/{timestamp}.pdf
+        # Format: financials/{symbol}/{fiscal_year}/{title}.pdf
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        blob_name = f"financials/{symbol}/{fiscal_year}/{timestamp}.pdf"
+        title = report['title'] 
+        blob_name = f"financials/{symbol}/{fiscal_year}/{title}.pdf"
         
         credentials, project_id = default()
         storage_client = storage.Client(credentials=credentials, project=project_id)
@@ -366,7 +367,7 @@ def scrape_financials_init(url=None):
             success = download_pdf_to_storage(
                 symbol, 
                 fiscal_year, 
-                report['pdf_url'], 
+                report, 
                 bucket_name
             )
             
