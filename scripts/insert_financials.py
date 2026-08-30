@@ -411,7 +411,9 @@ def process_financial_pdfs(openrouter_api_key):
         
         # Check if already in BigQuery
         if (symbol, fiscal_year) in existing_data:
-            print(f"  {symbol} FY{fiscal_year} - already in BigQuery, skipping")
+            print(f"  {symbol} FY{fiscal_year} - already in BigQuery, moving PDF to archive")
+            # Still move PDF to archive even if data exists
+            move_pdf_to_archive(blob, bucket, project_number)
             total_skipped += 1
             continue
         
@@ -431,10 +433,6 @@ def process_financial_pdfs(openrouter_api_key):
                 total_failed += 1
                 continue
             
-            # Move PDF to archive bucket FIRST
-            move_pdf_to_archive(blob, bucket, project_number)
-            
-                    
             # Build GCS URL for document_link (pointing to archive location)
             document_link = f"gs://archive-{project_number}/{blob.name}"
             
@@ -454,6 +452,9 @@ def process_financial_pdfs(openrouter_api_key):
             # Upsert to BigQuery
             upsert_into_bigquery(df, project_id, 'stocks', 'financials', ['symbol', 'fiscal_year'])
             print(f"    ✓ Upserted {symbol} FY{fiscal_year} to BigQuery")
+            
+            # Move PDF to archive bucket ONLY after successful BigQuery upsert
+            move_pdf_to_archive(blob, bucket, project_number)
             
             total_processed += 1
             
