@@ -12,10 +12,14 @@ def get_bigquery_client() -> bigquery.Client:
 def get_all_symbols() -> list[str]:
     """Fetches unique trading symbols available across shares and financials tables."""
     client = get_bigquery_client()
+    # Get symbols from both shares and financials tables (union)
     query = f"""
         SELECT DISTINCT symbol 
-        FROM `{SHARES_TABLE}` 
-        WHERE symbol IS NOT NULL 
+        FROM (
+            SELECT symbol FROM `{SHARES_TABLE}` WHERE symbol IS NOT NULL
+            UNION ALL
+            SELECT symbol FROM `{FINANCIALS_TABLE}` WHERE symbol IS NOT NULL
+        ) 
         ORDER BY symbol
     """
     df = client.query(query).to_dataframe()

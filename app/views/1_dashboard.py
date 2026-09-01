@@ -45,7 +45,7 @@ def _render_passive_income_view():
 
     results = []
     with st.spinner("Analyzing stocks for passive income signals..."):
-        for sym in symbols[:15]:
+        for sym in symbols:
             fin_df = get_stock_financials(sym)
             div_df = get_stock_dividends(sym)
 
@@ -129,7 +129,7 @@ def _render_checklist_view():
     # Analyze all stocks
     results = []
     with st.spinner("Analyzing stocks with BRVM checklist..."):
-        for sym in symbols[:20]:
+        for sym in symbols:
             fin_df = get_stock_financials(sym)
             div_df = get_stock_dividends(sym)
             price_df = get_stock_price_history(sym, days=180)
