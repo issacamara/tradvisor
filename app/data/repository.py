@@ -89,7 +89,7 @@ def get_stock_financials(symbol: str) -> pd.DataFrame:
     query = f"""
         SELECT 
             symbol, fiscal_year, revenue, net_income, total_debt,
-            cash_and_cash_equivalents, total_equity, announcement_date, document_link
+            cash_and_cash_equivalents, total_equity, document_link
         FROM `{FINANCIALS_TABLE}`
         WHERE symbol = @symbol
         ORDER BY fiscal_year DESC
