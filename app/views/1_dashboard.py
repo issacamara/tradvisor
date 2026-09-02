@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from app.data.repository import (
     get_all_symbols,
+    get_all_companies,
     get_latest_prices,
     get_stock_financials,
     get_stock_dividends,
@@ -42,6 +43,9 @@ def _render_passive_income_view():
         if not get_latest_prices().empty
         else pd.DataFrame()
     )
+    
+    # Get company names
+    companies_dict = get_all_companies()
 
     results = []
     with st.spinner("Analyzing stocks for passive income signals..."):
@@ -75,6 +79,7 @@ def _render_passive_income_view():
             results.append(
                 {
                     "Symbol": sym,
+                    "Company": companies_dict.get(sym, "N/A"),
                     "Close Price (XOF)": latest_price,
                     "Dividend Yield (%)": (
                         round(ratios.get("dividend_yield"), 2)
@@ -98,6 +103,9 @@ def _render_passive_income_view():
         res_df = pd.DataFrame(results).sort_values(
             "Passive Income Score", ascending=False
         )
+        # Reorder columns to put Company after Symbol
+        cols = ["Symbol", "Company", "Close Price (XOF)", "Dividend Yield (%)", "ROE (%)", "Payout Ratio (%)", "Passive Income Score", "Rating"]
+        res_df = res_df[cols]
         st.dataframe(res_df, use_container_width=True)
 
 
@@ -118,6 +126,9 @@ def _render_checklist_view():
         if not companies_df.empty
         else {}
     )
+    
+    # Get company names
+    companies_dict = get_all_companies()
 
     # Get latest prices
     prices_df = (
@@ -153,6 +164,7 @@ def _render_checklist_view():
             results.append(
                 {
                     "Symbol": sym,
+                    "Company": companies_dict.get(sym, "N/A"),
                     "Sector": sector if sector else "Unknown",
                     "Close Price (XOF)": latest_price,
                     "Checklist Score": checklist_result["total_score"],
@@ -169,7 +181,7 @@ def _render_checklist_view():
     res_df = pd.DataFrame(results).sort_values("Checklist Score", ascending=False)
 
     # Display summary table
-    display_df = res_df[["Symbol", "Sector", "Close Price (XOF)", "Checklist Score", "Rating"]].copy()
+    display_df = res_df[["Symbol", "Company", "Sector", "Close Price (XOF)", "Checklist Score", "Rating"]].copy()
     st.dataframe(display_df, use_container_width=True)
 
     # Allow user to select a stock for detailed checklist
@@ -190,12 +202,14 @@ def _render_checklist_view():
         checklist = selected_result["_checklist_result"]
 
         # Display stock info
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Symbol", selected_symbol)
         with col2:
-            st.metric("Sector", selected_result["Sector"])
+            st.metric("Company", selected_result["Company"])
         with col3:
+            st.metric("Sector", selected_result["Sector"])
+        with col4:
             st.metric(
                 "Price",
                 f"{selected_result['Close Price (XOF)']:,.0f} XOF"

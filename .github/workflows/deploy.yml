@@ -67,6 +67,7 @@ jobs:
           fi
 
           REGION="${{ secrets.GCP_REGION }}"
+          GCP_BILLING_ACCOUNT_ID="${{ secrets.GCP_BILLING_ACCOUNT_ID }}"
           REGION="${REGION:-europe-central2}"
 
           echo "environment=$ENV" >> $GITHUB_OUTPUT
@@ -74,6 +75,7 @@ jobs:
           echo "service_account=$SA" >> $GITHUB_OUTPUT
           echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
+          echo "billing_account_id=$GCP_BILLING_ACCOUNT_ID" >> $GITHUB_OUTPUT
           echo "artifact_registry=tradvisor" >> $GITHUB_OUTPUT
           echo "image_name=tradvisor" >> $GITHUB_OUTPUT
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -188,6 +190,7 @@ jobs:
             -var="region=${{ secrets.GCP_REGION }}" \
             -var="docker_image=${{ needs.build.outputs.image-url }}" \
             -var="tradvisor_gmail_acc={\"SMTP_USERNAME\": \"${{ secrets.GMAIL_USERNAME }}\", \"SMTP_PASSWORD\": \"${{ secrets.GMAIL_PASSWORD }}\"}" \
+            -var="billing_account_id=${{ secrets.GCP_BILLING_ACCOUNT_ID }}" \
             -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
             -var="environment=${{ needs.setup.outputs.environment }}" \
             -out=tfplan

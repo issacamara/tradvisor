@@ -190,3 +190,62 @@ resource "google_bigquery_table" "brvm_companies" {
 
   description = "BRVM listed companies with sector classification"
 }
+
+# Email notification channel for budget alerts
+resource "google_monitoring_notification_channel" "email_alert" {
+  project      = var.project_id
+  display_name = "Cloud Run Budget Email Alert"
+  type         = "email"
+
+  labels = {
+    email_address = "issacamara20@gmail.com" # Replace with your email address
+  }
+}
+
+
+resource "google_billing_budget" "tradvisor_budget" {
+  billing_account = var.billing_account_id # Format: "01XXXX-XXXXXX-XXXXXX"
+  display_name    = "${var.project_id} - Cloud Run Budget Alert"
+
+  # Scope budget specifically to this project & Cloud Run service
+  budget_filter {
+    projects = ["projects/${data.google_project.project.number}"]
+    services = ["services/152E-C115-5142"] # GCP Service ID for Cloud Run
+  }
+
+  # Set target monthly spending cap (e.g., $10)
+  amount {
+    specified_amount {
+      currency_code = "EUR"
+      units         = "10"
+    }
+  }
+
+  # --- THRESHOLD RULES ---
+
+  # 1. Early Warning: Actual spend reaches 50% ($5)
+  threshold_rules {
+    threshold_percent = 0.5
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  # 2. Early Warning: Actual spend reaches 80% ($8)
+  threshold_rules {
+    threshold_percent = 0.8
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  # 3. Surge Defense (PROACTIVE): Forecasted spend will reach 100% ($10)
+  # Fires as soon as GCP algorithms detect an abnormal spike heading toward your limit
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "FORECASTED_SPEND"
+  }
+
+  # Link notification channel
+  all_updates_rule {
+    monitoring_notification_channels = [
+      google_monitoring_notification_channel.email_alert.id
+    ]
+  }
+}

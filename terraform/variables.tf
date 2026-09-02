@@ -34,7 +34,8 @@ variable "apis" {
     "cloudscheduler.googleapis.com",
     "iam.googleapis.com",
     "secretmanager.googleapis.com",
-    "artifactregistry.googleapis.com"
+    "artifactregistry.googleapis.com",
+    "billingbudgets.googleapis.com"
   ]
 }
 
@@ -52,6 +53,12 @@ variable "tradvisor_gmail_acc" {
     SMTP_PASSWORD = string
   })
   sensitive = true
+}
+
+variable "billing_account_id" {
+  type        = string
+  description = "The 18-character GCP Billing Account ID (e.g., 01XXXX-XXXXXX-XXXXXX)"
+  sensitive   = true
 }
 
 variable "openrouter_api_key" {
