@@ -1,4 +1,6 @@
 terraform {
+  backend "gcs" {}
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -20,18 +22,11 @@ resource "google_bigquery_dataset" "stocks" {
 }
 
 resource "google_project_service" "apis" {
-  project = var.project_id
-  for_each = toset(var.apis)
+  project                    = var.project_id
+  for_each                   = toset(var.apis)
   service                    = each.key
   disable_dependent_services = true
 }
 
 
 data "google_project" "project" {}
-
-
-
-# Output the service URL
-output "service_url" {
-  value = google_cloud_run_v2_service.tradvisor_service.uri
-}

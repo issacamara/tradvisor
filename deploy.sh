@@ -37,9 +37,8 @@ docker login
 #echo "Applying Terraform configuration..."
 #terraform apply -auto-approve
 #
-## Get the service URL
-#SERVICE_URL=$(terraform output -raw service_url)
-#echo "Application deployed successfully at: $SERVICE_URL"
+## Review Terraform outputs after apply:
+#terraform output
 
 for target in "${targets[@]}"; do
 #    rm -f terraform/$target.zip

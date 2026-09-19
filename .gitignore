@@ -1,2 +1,13 @@
 /.venv/
 /.idea/
+
+.DS_Store
+__pycache__/
+*.tfstate
+*.tfstate.*
+.terraform/
+*.zip
+key.json
+
+database/*.db
+data/*.csv

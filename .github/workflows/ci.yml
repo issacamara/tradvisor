@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - V1
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check Python syntax
+        run: python -m compileall scripts
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform
+
+      - name: Initialize Terraform
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Validate Terraform
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Check tracked files for obvious secrets
+        run: |
+          set -euo pipefail
+          if git grep -n -E 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|private_key_id|client_secret|SMTP_PASSWORD' -- . ':!*.md' ':!.github/workflows/ci.yml'; then
+            echo "Potential secret material found in tracked files."
+            exit 1
+          fi
