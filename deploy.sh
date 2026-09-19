@@ -12,7 +12,7 @@ targets=(
 )
 
 #for target in "${targets[@]}"; do
-#    docker build -f scripts/Dockerfile scripts/ --no-cache --target $target -t issacamara/$target:latest
+#    docker build -f archive/legacy-ingestion/scripts/Dockerfile archive/legacy-ingestion/scripts/ --no-cache --target $target -t issacamara/$target:latest
 #done
 
 #docker build -t issacamara/tradvisor:latest . --platform linux/amd64

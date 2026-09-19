@@ -5,19 +5,19 @@ data "archive_file" "assets" {
   output_path = "${each.key}.zip"
 
   source {
-    content  = file("../scripts/helper.py")
+    content  = file("../archive/legacy-ingestion/scripts/helper.py")
     filename = "helper.py"
   }
   source {
-    content  = file("../scripts/config.yml")
+    content  = file("../archive/legacy-ingestion/scripts/config.yml")
     filename = "config.yml"
   }
   source {
-    content  = file("../scripts/requirements.txt")
+    content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
     filename = "requirements.txt"
   }
   source {
-    content  = file("../scripts/${each.key}.py")
+    content  = file("../archive/legacy-ingestion/scripts/${each.key}.py")
     filename = "main.py"
   }
 }

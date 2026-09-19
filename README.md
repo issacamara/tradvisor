@@ -3,11 +3,12 @@
 Tradvisor V1 is being refocused around the Business Requirements Document in
 `tradvisor_brd.md`.
 
-The repository currently contains the data-ingestion foundation for BRVM market
-data:
+The repository currently contains the V1 requirements and the legacy
+data-ingestion foundation for BRVM market data:
 
-- `scripts/`: scrapers and loaders for shares, bonds, dividends, indices, and
-  capitalizations.
+- `archive/legacy-ingestion/scripts/`: previous scrapers and loaders for shares,
+  bonds, dividends, indices, and capitalizations. These are preserved as
+  reference material while the V1 architecture is redesigned.
 - `terraform/`: Google Cloud infrastructure for storage buckets, Cloud
   Functions, Workflows, Scheduler jobs, BigQuery, IAM, and supporting services.
 - `tradvisor_brd.md`: V1 business requirements for Swing recommendations,
