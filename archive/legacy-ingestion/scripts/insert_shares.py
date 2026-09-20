@@ -10,7 +10,7 @@ def entry_point(request=None):
     with open("config.yml", 'r') as file:
         config = yaml.safe_load(file)
 
-    asset = "SHARES"
+    asset = "shares"
     csv_files = load_files(config, asset)
     process_files(config, csv_files, asset)
 

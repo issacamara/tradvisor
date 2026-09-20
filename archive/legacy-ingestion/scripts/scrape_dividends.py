@@ -1,71 +1,195 @@
-import requests
-import yaml
-import pandas as pd
-from helper import save_dataframe_as_csv
-from datetime import datetime
-from bs4 import BeautifulSoup
-import functions_framework
+import json
 import os
+import re
+from bs4 import BeautifulSoup
+from curl_cffi import requests
+import functions_framework
+import pandas as pd
+import yaml
+from helper import save_dataframe_as_csv
+
 
 def scrape_dividends(url):
-    params = {
-        "hl": "en"  # language
-    }
+    """Scrape dividend data from BRVM website (Richbourse).
 
+    Returns DataFrame with columns: SYMBOL, DIVIDEND, PAYMENT_DATE, FISCAL_YEAR
+    """
+    params = {"hl": "en"}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        ),
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.richbourse.com/common/dividende",
     }
-    data = []
-    for i in range(1, 3):
-        page = requests.get(url=f"{url}?page={i}", params=params, headers=headers, timeout=30, verify=False)
-        soup = BeautifulSoup(page.content, 'html.parser')
-        # Find the table in the HTML (assuming there's only one table)
-        table = soup.find('table', {"class": "table table-striped table-bordered"})
-        # Extract the headers from the table
-        # Extract the header
-        table_headers = []
-        header_row = table.find('thead').find_all('th')
-        for th in header_row:
-            table_headers.append(th.get_text().strip().replace(' ', "_").upper())
 
-        # Extract the rows from the table
-        rows = []
-        for tr in table.find('tbody').find_all('tr'):
-            index = tr.find('a', href=True)['href'].split("/")[-1]
+    session = requests.Session()
+    response = session.get(
+        url,
+        params=params,
+        headers=headers,
+        timeout=30,
+        impersonate="chrome",
+        allow_redirects=True,
+    )
 
-            cells = tr.find_all(['td', 'th'])
-            row = [cell.text.strip() for cell in cells]
-            row[0] = index
-            rows.append(row)
+    if response.status_code != 200:
+        raise ValueError(
+            f"Failed to fetch page. HTTP status code: {response.status_code}"
+        )
 
-        # Convert to a DataFrame
-        table_headers[0] = "SYMBOL"
-        df = pd.DataFrame(rows, columns=table_headers)
-        # df['NAME'] = df['NAME'].str.replace(r'\s+', ' ', regex=True).str.strip().str.upper()
-        # df['PREVIOUS_PRICE'] = df['PREVIOUS_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-        # df['OPENING_PRICE'] = df['OPENING_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-        # df['CLOSING_PRICE'] = df['CLOSING_PRICE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-        data.append(df)
+    all_data = []
 
-    # Display the DataFrame
-    df = pd.concat(data, axis=0)
-    df['DIVIDENDE'] = df['DIVIDENDE'].str.replace(' ', '').str.replace(',', '.').astype(float)
-    df['DATE_PAIEMENT'] = pd.to_datetime(df['DATE_PAIEMENT'], errors='coerce')
-    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
+    # --- Method 1: Extract direct JS data array (window.rbSimData) ---
+    # Richbourse embeds complete dividend JSON data on page load
+    match = re.search(r"window\.rbSimData\s*=\s*(\[.*?\]);", response.text)
+    if match:
+        try:
+            raw_json = match.group(1)
+            json_data = json.loads(raw_json)
 
-    return df[["SYMBOL", "DIVIDENDE", "DATE_PAIEMENT", "DATE"]].rename(
-        columns={'DIVIDENDE': 'DIVIDEND', 'DATE_PAIEMENT': 'PAYMENT_DATE'})
+            for item in json_data:
+                symbol = item.get("s")
+                dividend = round(float(item.get("m", 0)), 4)
+                payment_date = item.get("p")
+
+                # Validate date string or handle unknown/missing
+                if not payment_date or "inconnue" in str(payment_date).lower():
+                    payment_date = None
+
+                # Extract fiscal year from the dividend announcement/exercise
+                # RichBourse data may contain exercise year in the item
+                fiscal_year = item.get("e") or item.get("exercice") or item.get("fiscal_year")
+                
+                # If not in the data, try to infer from payment date
+                # Dividends paid in year X typically relate to fiscal year X-1
+                if not fiscal_year and payment_date:
+                    try:
+                        # Payment date format is typically YYYY-MM-DD
+                        payment_year = int(payment_date.split("-")[0])
+                        fiscal_year = payment_year - 1
+                    except (ValueError, IndexError):
+                        pass
+
+                if symbol:
+                    all_data.append(
+                        {
+                            "SYMBOL": symbol,
+                            "DIVIDEND": dividend,
+                            "PAYMENT_DATE": payment_date,
+                            "FISCAL_YEAR": fiscal_year,
+                        }
+                    )
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            print(f"Error parsing rbSimData JSON: {e}")
+
+    # --- Method 2: Fallback to HTML table parsing ---
+    if not all_data:
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Locate dividend table
+        table = (
+            soup.find("table", {"class": "table table-striped table-bordered"})
+            or soup.find("table", {"class": "table table-striped"})
+            or soup.find("table", {"class": "tablesorter"})
+        )
+
+        if not table:
+            for t in soup.find_all("table"):
+                headers_text = [
+                    h.get_text().strip().upper() for h in t.find_all("th")
+                ]
+                if any("DIVIDENDE" in h or "SOCIÉTÉ" in h for h in headers_text):
+                    table = t
+                    break
+
+        if table and table.find("tbody"):
+            for row in table.find("tbody").find_all("tr"):
+                cells = row.find_all(["td", "th"])
+                if len(cells) < 6:
+                    continue
+
+                try:
+                    # Column 1: Symbol in link
+                    symbol_link = cells[1].find("a", href=True)
+                    if symbol_link:
+                        symbol = symbol_link["href"].split("/")[-1]
+                    else:
+                        continue
+
+                    # Column 2: Dividend amount
+                    dividend_text = cells[2].get_text(strip=True)
+                    dividend_text = re.sub(r"[^\d.,]", "", dividend_text)
+                    dividend_text = (
+                        dividend_text.replace(" ", "")
+                        .replace("\xa0", "")
+                        .replace(",", ".")
+                    )
+                    dividend = (
+                        float(dividend_text) if dividend_text else 0.0
+                    )
+
+                    # Column 5: Payment Date
+                    payment_date = cells[5].get_text(strip=True)
+                    if (
+                        "inconnue" in payment_date.lower()
+                        or not payment_date
+                    ):
+                        payment_date = None
+                    else:
+                        parts = payment_date.split("/")
+                        if len(parts) == 3:
+                            day, month, year = parts
+                            payment_date = (
+                                f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                            )
+                        else:
+                            payment_date = None
+
+                    # Try to extract fiscal year from the row
+                    # Sometimes it's in a separate column or can be inferred
+                    # Dividends paid in year X typically relate to fiscal year X-1
+                    fiscal_year = None
+                    if payment_date:
+                        try:
+                            payment_year = int(payment_date.split("-")[0])
+                            fiscal_year = payment_year - 1
+                        except (ValueError, IndexError):
+                            pass
+
+                    all_data.append(
+                        {
+                            "SYMBOL": symbol,
+                            "DIVIDEND": dividend,
+                            "PAYMENT_DATE": payment_date,
+                            "FISCAL_YEAR": fiscal_year,
+                        }
+                    )
+                except Exception:
+                    continue
+
+    if not all_data:
+        raise ValueError("No dividend data could be extracted.")
+
+    df = pd.DataFrame(all_data)
+
+    return df
 
 
 @functions_framework.http
 def entry_point(request=None):
-    with open('config.yml', 'r') as file:
+    with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
-    df = scrape_dividends(config['url']['dividends'])
-    return save_dataframe_as_csv(df, 'DIVIDENDS', config)
 
-env = 'gcp'
-if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-    pass
-else:
-    print(entry_point())
+    df = scrape_dividends(config["url"]["dividends"])
+    return save_dataframe_as_csv(df, "dividends", config)
+
+
+# Local testing
+if __name__ == "__main__":
+    if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
+        print(entry_point())

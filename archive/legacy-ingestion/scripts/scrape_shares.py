@@ -1,4 +1,4 @@
-import requests
+from curl_cffi import requests
 import yaml
 import pandas as pd
 import re
@@ -15,15 +15,16 @@ def scrape(url):
         "hl": "en"  # language
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     }
-    page = requests.get(url=url, params=params, headers=headers, timeout=30, verify=False)
+    session = requests.Session()
+    page = session.get(url=url, params=params, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
     soup = BeautifulSoup(page.content, 'html.parser')
     # Find the table in the HTML (assuming there's only one table)
     table = soup.find('table', {"class": "tablesorter tbl100_6 tbl1"})
     # Extract the headers from the table
     # Extract the header
-    headers = ['SYMBOL', 'NAME', 'OPEN', 'HIGH', 'LOW', 'VOLUME', 'CLOSE']
+    headers = ['symbol', 'name', 'open', 'high', 'low', 'volume', 'close']
 
     # Extract the rows from the table
     rows = []
@@ -45,12 +46,12 @@ def scrape_brvm_shares(url):
     # Convert to a DataFrame
     df = pd.DataFrame(rows, columns=headers)
 
-    df['OPEN'] = df['OPEN'].str.replace(',', '.').astype(float)
-    df['HIGH'] = df['HIGH'].str.replace(',', '.').astype(float)
-    df['LOW'] = df['LOW'].str.replace(',', '.').astype(float)
-    df['CLOSE'] = df['CLOSE'].str.replace(',', '.').astype(float)
-    df['VOLUME'] = df['VOLUME'].str.replace(',', '.').astype(float)
-    df['DATE'] = datetime.now().strftime('%Y-%m-%d')
+    df['open'] = df['open'].str.replace(',', '.').astype(float)
+    df['high'] = df['high'].str.replace(',', '.').astype(float)
+    df['low'] = df['low'].str.replace(',', '.').astype(float)
+    df['close'] = df['close'].str.replace(',', '.').astype(float)
+    df['volume'] = df['volume'].str.replace(',', '.').astype(float)
+    df['date'] = datetime.now().strftime('%Y-%m-%d')
     # Display the DataFrame
     return df
 
@@ -59,7 +60,7 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     df = scrape_brvm_shares(config['url']['shares'])
-    return save_dataframe_as_csv(df, 'SHARES', config)
+    return save_dataframe_as_csv(df, 'shares', config)
 
 env = 'gcp'
 if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
