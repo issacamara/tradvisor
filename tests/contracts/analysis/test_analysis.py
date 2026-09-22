@@ -14,6 +14,7 @@ from backend.contracts.analysis import (
     LongTermResult,
     NormalizedCapital,
     NormalizedDividend,
+    NormalizedDividendCoverage,
     NormalizedPrice,
     NormalizedSession,
     Provenance,
@@ -112,8 +113,16 @@ def dividend(revision: Revision) -> object:
         installment_id="installment-nsi-2025-1", fiscal_period_end=date(2025, 12, 31), gross_amount_per_share=_money("50"),
         net_amount_per_share=_money("45"), gross_total_amount=_money("50000"), net_total_amount=_money("45000"),
         per_share_semantics="gross", total_semantics="gross", payment_status="paid",
-        dividend_type="ordinary", coverage_status="partial", covered_interval_start=date(2025, 1, 1),
-        covered_interval_end=date(2025, 12, 31), coverage_basis="fiscal_year", revision=revision,
+        dividend_type="ordinary", revision=revision,
+    )
+
+
+@pytest.fixture
+def dividend_coverage(revision: Revision) -> NormalizedDividendCoverage:
+    return NormalizedDividendCoverage(
+        company_id="company-nsi", covered_interval_start=date(2025, 1, 1),
+        covered_interval_end=date(2025, 12, 31), coverage_basis="fiscal_year",
+        coverage_status="complete", payment_outcome="payments_recorded", revision=revision,
     )
 
 
@@ -146,9 +155,10 @@ def test_every_normalized_entity_fixture_is_constructed(
     financial: object,
     capital: object,
     dividend: object,
+    dividend_coverage: NormalizedDividendCoverage,
     rating: object,
 ) -> None:
-    assert all((company, session, price, financial, capital, dividend, rating))
+    assert all((company, session, price, financial, capital, dividend, dividend_coverage, rating))
 
 
 def test_provenance_requires_utc_and_records_actual_estimated_and_modeled_basis() -> None:
@@ -209,8 +219,7 @@ def test_normalized_entities_retain_revision_and_require_known_non_trade_evidenc
         NormalizedDividend(
             dividend_id="dividend-1", company_id="company-nsi", installment_id="installment-1", payment_date=None,
             gross_amount_per_share=None, per_share_semantics="gross", total_semantics="unknown", payment_status="paid",
-            dividend_type="ordinary", coverage_status="unknown", covered_interval_start=None, covered_interval_end=None,
-            coverage_basis="unknown", revision=revision,
+            dividend_type="ordinary", revision=revision,
         )
 
 
@@ -261,6 +270,119 @@ def test_dividend_and_capital_preserve_matching_basis_and_payment_semantics(
     assert getattr(financial, "original_scale") == "units"
     assert getattr(price, "actual_xof_turnover").amount == "100000.000000"
     assert getattr(price, "validated_available_at") == datetime(2026, 9, 22, 15, 2, tzinfo=timezone.utc)
+
+
+def test_capital_accepts_exactly_one_verified_ordinary_claim_basis(revision: Revision) -> None:
+    base = {
+        "company_id": "company-nsi", "effective_date": date(2026, 9, 22), "revision": revision,
+    }
+    single_class = NormalizedCapital.model_validate(base | {
+        "ordinary_shares": 1, "share_basis": "ordinary_outstanding",
+        "capitalization_basis": "matched_ordinary_claim",
+    })
+    assert single_class.ordinary_shares == 1
+
+    aggregate = NormalizedCapital.model_validate(base | {
+        "ordinary_shares": None, "share_basis": None,
+        "aggregate_ordinary_market_cap": _money("1000000.000001"),
+        "capitalization_basis": "verified_aggregate_ordinary_claim",
+    })
+    assert aggregate.aggregate_ordinary_market_cap is not None
+    assert aggregate.aggregate_ordinary_market_cap.amount == "1000000.000001"
+    assert aggregate.model_dump(mode="json")["aggregate_ordinary_market_cap"] == {
+        "amount": "1000000.000001", "currency": "XOF",
+    }
+    largest_supported = NormalizedCapital.model_validate(base | {
+        "ordinary_shares": None, "share_basis": None,
+        "aggregate_ordinary_market_cap": _money("9223372036854.775807"),
+        "capitalization_basis": "verified_aggregate_ordinary_claim",
+    })
+    assert largest_supported.aggregate_ordinary_market_cap is not None
+    assert largest_supported.aggregate_ordinary_market_cap.micros == 2**63 - 1
+    with pytest.raises(ValidationError):
+        NormalizedCapital.model_validate(base | {
+            "ordinary_shares": None, "share_basis": None,
+            "aggregate_ordinary_market_cap": {"amount": "9223372036854.775808", "currency": "XOF"},
+            "capitalization_basis": "verified_aggregate_ordinary_claim",
+        })
+
+    invalid = (
+        {"ordinary_shares": None, "share_basis": None, "capitalization_basis": "matched_ordinary_claim"},
+        {"ordinary_shares": 1, "share_basis": "ordinary_outstanding", "capitalization_basis": "matched_ordinary_claim",
+         "aggregate_ordinary_market_cap": _money("100")},
+        {"ordinary_shares": None, "share_basis": None, "capitalization_basis": "verified_aggregate_ordinary_claim"},
+        {"ordinary_shares": None, "share_basis": None, "capitalization_basis": "verified_aggregate_ordinary_claim",
+         "aggregate_ordinary_market_cap": _money("0")},
+        {"ordinary_shares": 1, "share_basis": "ordinary_outstanding", "capitalization_basis": "verified_aggregate_ordinary_claim",
+         "aggregate_ordinary_market_cap": _money("100")},
+        {"ordinary_shares": None, "share_basis": None, "capitalization_basis": "unmatched",
+         "aggregate_ordinary_market_cap": _money("100"), "reason_codes": ("claim_unmatched",)},
+        {"ordinary_shares": 1, "share_basis": "free_float", "capitalization_basis": "matched_ordinary_claim"},
+    )
+    for fields in invalid:
+        with pytest.raises(ValidationError):
+            NormalizedCapital.model_validate(base | fields)
+
+    with pytest.raises(ValidationError):
+        NormalizedCapital.model_validate(base | {
+            "ordinary_shares": None, "share_basis": None,
+            "aggregate_ordinary_market_cap": _money("100"),
+            "capitalization_basis": "verified_aggregate_ordinary_claim",
+            "revision": Revision(
+                revision=2, known_at=revision.known_at,
+                provenance=revision.provenance.model_copy(update={"basis": "estimated"}),
+            ),
+        })
+
+    unavailable = NormalizedCapital.model_validate(base | {
+        "ordinary_shares": 1, "share_basis": "free_float", "capitalization_basis": "unmatched",
+        "reason_codes": ("ordinary_count_missing",),
+    })
+    assert unavailable.capitalization_basis == "unmatched"
+
+
+def test_dividend_coverage_can_confirm_no_payment_without_a_payment_event(revision: Revision) -> None:
+    base = {
+        "company_id": "company-nsi", "covered_interval_start": date(2025, 1, 1),
+        "covered_interval_end": date(2025, 12, 31), "coverage_basis": "fiscal_year",
+        "coverage_status": "complete", "revision": revision,
+    }
+    no_payment = NormalizedDividendCoverage.model_validate(base | {"payment_outcome": "confirmed_no_payment"})
+    assert no_payment.payment_outcome == "confirmed_no_payment"
+    assert no_payment.revision.provenance.source_id == "brvm-source-1"
+    assert no_payment.model_dump(mode="json")["covered_interval_end"] == "2025-12-31"
+
+    with pytest.raises(ValidationError):
+        NormalizedDividendCoverage.model_validate(
+            base | {"covered_interval_end": date(2024, 12, 31), "payment_outcome": "confirmed_no_payment"}
+        )
+    with pytest.raises(ValidationError):
+        NormalizedDividendCoverage.model_validate(base | {
+            "coverage_status": "partial", "reason_codes": ("source_window_partial",),
+            "payment_outcome": "confirmed_no_payment",
+        })
+    with pytest.raises(ValidationError):
+        NormalizedDividendCoverage.model_validate(base | {
+            "coverage_basis": "unknown", "payment_outcome": "confirmed_no_payment",
+        })
+    with pytest.raises(ValidationError):
+        NormalizedDividendCoverage.model_validate(base | {
+            "revision": Revision(
+                revision=2, known_at=revision.known_at,
+                provenance=revision.provenance.model_copy(update={"basis": "estimated"}),
+            ),
+            "payment_outcome": "confirmed_no_payment",
+        })
+
+    partial = NormalizedDividendCoverage.model_validate(base | {
+        "coverage_status": "partial", "reason_codes": ("source_window_partial",),
+        "payment_outcome": "unresolved",
+    })
+    assert partial.payment_outcome == "unresolved"
+    with pytest.raises(ValidationError):
+        NormalizedDividendCoverage.model_validate(base | {
+            "coverage_status": "partial", "payment_outcome": "unresolved",
+        })
 
 
 def test_suspension_and_unknown_price_states_require_source_evidence(revision: Revision) -> None:

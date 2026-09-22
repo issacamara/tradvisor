@@ -212,7 +212,8 @@ class NormalizedCapital(ImmutableContractModel):
     company_id: OpaqueIdentifier
     effective_date: date
     ordinary_shares: WholeShares | None
-    share_basis: Literal["ordinary_outstanding", "free_float", "weighted_average", "unknown"]
+    share_basis: Literal["ordinary_outstanding", "free_float", "weighted_average", "unknown"] | None
+    aggregate_ordinary_market_cap: NonNegativeMoney | None = None
     capitalization_basis: Literal[
         "matched_ordinary_claim",
         "verified_aggregate_ordinary_claim",
@@ -224,15 +225,29 @@ class NormalizedCapital(ImmutableContractModel):
 
     @model_validator(mode="after")
     def validate_share_basis(self) -> "NormalizedCapital":
-        if self.share_basis == "ordinary_outstanding" and self.ordinary_shares is None:
-            raise ValueError("ordinary outstanding share basis requires a share count")
-        if self.share_basis == "ordinary_outstanding" and self.capitalization_basis not in {
-            "matched_ordinary_claim",
-            "verified_aggregate_ordinary_claim",
-        }:
-            raise ValueError("ordinary outstanding shares require matched capitalization basis")
-        if self.share_basis != "ordinary_outstanding" and not self.reason_codes:
-            raise ValueError("unsupported or unknown share basis requires a reason code")
+        if self.capitalization_basis == "matched_ordinary_claim":
+            if self.share_basis != "ordinary_outstanding" or self.ordinary_shares is None:
+                raise ValueError("matched ordinary claim requires outstanding ordinary shares")
+            if self.aggregate_ordinary_market_cap is not None:
+                raise ValueError("capitalization must use either shares or verified aggregate value")
+        elif self.capitalization_basis == "verified_aggregate_ordinary_claim":
+            if self.ordinary_shares is not None or self.share_basis is not None:
+                raise ValueError("verified aggregate claim cannot use a share count")
+            if (
+                self.aggregate_ordinary_market_cap is None
+                or self.aggregate_ordinary_market_cap.micros <= 0
+                or self.revision.provenance.basis != "actual"
+            ):
+                raise ValueError("verified aggregate claim requires positive actual market capitalization")
+        else:
+            if self.aggregate_ordinary_market_cap is not None:
+                raise ValueError("unverified capitalization cannot supply aggregate value")
+            if (self.ordinary_shares is None) != (self.share_basis is None):
+                raise ValueError("share count and its basis must be supplied together")
+            if self.share_basis == "ordinary_outstanding":
+                raise ValueError("ordinary outstanding shares require matched capitalization basis")
+            if not self.reason_codes:
+                raise ValueError("unmatched or unknown capitalization requires a reason code")
         return self
 
 
@@ -250,10 +265,6 @@ class NormalizedDividend(ImmutableContractModel):
     total_semantics: Literal["gross", "net", "unknown"]
     payment_status: Literal["paid", "declared", "unknown"]
     dividend_type: Literal["ordinary", "exceptional", "unclassified"]
-    coverage_status: Literal["complete", "partial", "unknown"]
-    covered_interval_start: date | None
-    covered_interval_end: date | None
-    coverage_basis: Literal["fiscal_year", "trailing_12_months", "source_observed", "unknown"]
     reason_codes: tuple[ReasonCode, ...] = ()
     revision: Revision
 
@@ -269,16 +280,36 @@ class NormalizedDividend(ImmutableContractModel):
             raise ValueError("paid dividend requires payment date and amount evidence")
         if self.payment_status == "unknown" and not self.reason_codes:
             raise ValueError("unknown dividend status requires a reason code")
-        if self.coverage_status != "unknown" and (
-            self.covered_interval_start is None or self.covered_interval_end is None
-        ):
-            raise ValueError("known dividend coverage requires a covered interval")
-        if (
-            self.covered_interval_start is not None
-            and self.covered_interval_end is not None
-            and self.covered_interval_end < self.covered_interval_start
-        ):
+        return self
+
+
+class NormalizedDividendCoverage(ImmutableContractModel):
+    """Source-backed coverage for an interval, independent of payment events."""
+
+    company_id: OpaqueIdentifier
+    covered_interval_start: date
+    covered_interval_end: date
+    coverage_basis: Literal["fiscal_year", "trailing_12_months", "source_observed", "unknown"]
+    coverage_status: Literal["complete", "partial", "unknown"]
+    payment_outcome: Literal["confirmed_no_payment", "payments_recorded", "unresolved"]
+    reason_codes: tuple[ReasonCode, ...] = ()
+    revision: Revision
+
+    @model_validator(mode="after")
+    def validate_coverage(self) -> "NormalizedDividendCoverage":
+        if self.covered_interval_end < self.covered_interval_start:
             raise ValueError("covered interval cannot end before it starts")
+        if self.coverage_basis == "unknown" and not self.reason_codes:
+            raise ValueError("unknown coverage basis requires a reason code")
+        if self.coverage_status != "complete" and not self.reason_codes:
+            raise ValueError("incomplete or unknown coverage requires a reason code")
+        if self.coverage_status == "complete" and (
+            self.coverage_basis == "unknown" or self.revision.provenance.basis != "actual"
+        ):
+            raise ValueError("complete coverage requires a known basis and actual source evidence")
+        if self.payment_outcome == "confirmed_no_payment":
+            if self.coverage_status != "complete" or self.revision.provenance.basis != "actual":
+                raise ValueError("confirmed no-payment requires complete actual coverage evidence")
         return self
 
 
