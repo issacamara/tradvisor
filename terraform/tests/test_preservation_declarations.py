@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 
 TERRAFORM_DIR = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = TERRAFORM_DIR.parent
 
 
 class PreservationDeclarationTests(unittest.TestCase):
@@ -35,6 +37,23 @@ class PreservationDeclarationTests(unittest.TestCase):
 
         self.assertEqual(binding_count, 13)
         self.assertEqual(iam.count("ignore_changes = [members]"), binding_count)
+
+    def test_terraform_plan_artifacts_are_ignored(self) -> None:
+        artifacts = (
+            "terraform/approved.tfplan",
+            "terraform/approved.tfplan.json",
+            "terraform/tfplan",
+            "terraform/tfplan.json",
+            "terraform/approved.plan",
+            "terraform/approved.plan.json",
+        )
+
+        for artifact in artifacts:
+            result = subprocess.run(
+                ["git", "-C", str(REPOSITORY_ROOT), "check-ignore", "--quiet", artifact],
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, f"{artifact} must be ignored")
 
 
 if __name__ == "__main__":

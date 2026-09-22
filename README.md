@@ -35,7 +35,7 @@ Terraform with their private backend values:
 ```sh
 terraform -chdir=terraform init \
   -backend-config="bucket=<terraform-state-bucket>" \
-  -backend-config="prefix=tradvisor"
+  -backend-config="prefix=<private-state-prefix>"
 ```
 
 Local `*.tfstate` files, backend configuration files, plans, and provider

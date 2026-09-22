@@ -5,6 +5,12 @@
 __pycache__/
 *.tfstate
 *.tfstate.*
+*.tfplan
+*.tfplan.json
+terraform/tfplan
+terraform/tfplan.json
+terraform/*.plan
+terraform/*.plan.json
 .terraform/
 *.zip
 key.json
