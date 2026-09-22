@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from backend.contracts.analysis import (
     AnalyticalBatch,
     AnalyticalMetric,
+    LongTermObjectiveState,
     LongTermResult,
     NormalizedCapital,
     NormalizedDividend,
@@ -48,7 +49,17 @@ def company(revision: Revision) -> object:
 
 @pytest.fixture
 def session(revision: Revision) -> object:
-    return NormalizedSession(session_date=date(2026, 9, 22), status="trading", revision=revision)
+    return NormalizedSession(
+        calendar_version="calendar-2026-1",
+        session_id="brvm-2026-09-22",
+        session_date=date(2026, 9, 22),
+        session_index=100,
+        exchange_timezone="Africa/Abidjan",
+        status="trading",
+        official_close_at=datetime(2026, 9, 22, 15, 1, tzinfo=timezone.utc),
+        source_evidence=(revision.provenance,),
+        revision=revision,
+    )
 
 
 @pytest.fixture
@@ -56,7 +67,9 @@ def price(revision: Revision) -> object:
     return NormalizedPrice(
         symbol="NSI", session_date=date(2026, 9, 22), close=_money("1000"),
         high=_money("1050"), low=_money("950"), volume=100,
-        trade_status="traded", basis="actual", revision=revision,
+        trade_status="traded", basis="actual", original_source_date=date(2026, 9, 22),
+        price_basis_ref="price-basis-1", validated_available_at=datetime(2026, 9, 22, 15, 2, tzinfo=timezone.utc),
+        actual_xof_turnover=_money("100000"), liquidity_basis="actual", suspension_status="not_suspended", revision=revision,
     )
 
 
@@ -66,7 +79,8 @@ def financial(revision: Revision) -> object:
 
     return NormalizedFinancial(
         company_id="company-nsi", fiscal_period_end=date(2025, 12, 31), report_scope="standalone", currency="XOF",
-        revenue=_money("1000000"), publication_status="published", revision=revision,
+        fiscal_period_start=date(2025, 1, 1), original_scale="units", revenue=_money("1000000"),
+        opening_equity=SignedMoney(amount="900", currency="XOF"), publication_status="published", revision=revision,
     )
 
 
@@ -75,6 +89,7 @@ def test_financial_records_preserve_observed_losses_and_nonpositive_equity(revis
 
     financial = NormalizedFinancial(
         company_id="company-nsi", fiscal_period_end=date(2025, 12, 31), report_scope="standalone", currency="XOF",
+        fiscal_period_start=date(2025, 1, 1), original_scale="units",
         ordinary_owner_earnings=SignedMoney(amount="-100", currency="XOF"),
         equity=SignedMoney(amount="-50", currency="XOF"), publication_status="published", revision=revision,
     )
@@ -86,7 +101,7 @@ def test_financial_records_preserve_observed_losses_and_nonpositive_equity(revis
 def capital(revision: Revision) -> object:
     return NormalizedCapital(
         company_id="company-nsi", effective_date=date(2026, 9, 22), ordinary_shares=1000,
-        share_basis="ordinary_outstanding", revision=revision,
+        share_basis="ordinary_outstanding", capitalization_basis="matched_ordinary_claim", revision=revision,
     )
 
 
@@ -94,8 +109,11 @@ def capital(revision: Revision) -> object:
 def dividend(revision: Revision) -> object:
     return NormalizedDividend(
         dividend_id="dividend-nsi-2025", company_id="company-nsi", payment_date=date(2026, 5, 1),
-        fiscal_period_end=date(2025, 12, 31), amount_per_share=_money("50"),
-        payment_status="paid", dividend_type="ordinary", coverage_status="partial", revision=revision,
+        installment_id="installment-nsi-2025-1", fiscal_period_end=date(2025, 12, 31), gross_amount_per_share=_money("50"),
+        net_amount_per_share=_money("45"), gross_total_amount=_money("50000"), net_total_amount=_money("45000"),
+        per_share_semantics="gross", total_semantics="gross", payment_status="paid",
+        dividend_type="ordinary", coverage_status="partial", covered_interval_start=date(2025, 1, 1),
+        covered_interval_end=date(2025, 12, 31), coverage_basis="fiscal_year", revision=revision,
     )
 
 
@@ -171,35 +189,94 @@ def test_normalized_entities_retain_revision_and_require_known_non_trade_evidenc
 ) -> None:
     assert getattr(revision, "revision") == 1
     with pytest.raises(ValidationError):
-        NormalizedSession(session_date=date(2026, 9, 22), status="holiday", revision=revision)
+        NormalizedSession(
+            calendar_version="calendar-1", session_id="session-1", session_date=date(2026, 9, 22),
+            session_index=1, exchange_timezone="Africa/Abidjan", status="holiday", official_close_at=None,
+            source_evidence=(revision.provenance,), revision=revision,
+        )
     with pytest.raises(ValidationError):
         NormalizedPrice(
-            symbol="NSI",
-            session_date=date(2026, 9, 22),
-            close=None,
-            trade_status="unknown",
-            basis="actual",
-            revision=revision,
+            symbol="NSI", session_date=date(2026, 9, 22), close=None, trade_status="unknown", basis="actual",
+            original_source_date=date(2026, 9, 22), price_basis_ref="basis-1", validated_available_at=None,
+            suspension_status="not_suspended", revision=revision,
         )
     with pytest.raises(ValidationError):
         NormalizedCapital(
-            company_id="company-nsi",
-            effective_date=date(2026, 9, 22),
-            ordinary_shares=100,
-            share_basis="free_float",
-            revision=revision,
+            company_id="company-nsi", effective_date=date(2026, 9, 22), ordinary_shares=100,
+            share_basis="free_float", capitalization_basis="unmatched", revision=revision,
         )
     with pytest.raises(ValidationError):
         NormalizedDividend(
-            dividend_id="dividend-1",
-            company_id="company-nsi",
-            payment_date=None,
-            amount_per_share=None,
-            payment_status="paid",
-            dividend_type="ordinary",
-            coverage_status="unknown",
-            revision=revision,
+            dividend_id="dividend-1", company_id="company-nsi", installment_id="installment-1", payment_date=None,
+            gross_amount_per_share=None, per_share_semantics="gross", total_semantics="unknown", payment_status="paid",
+            dividend_type="ordinary", coverage_status="unknown", covered_interval_start=None, covered_interval_end=None,
+            coverage_basis="unknown", revision=revision,
         )
+
+
+def test_session_calendar_identity_and_price_execution_provenance_boundaries(
+    revision: Revision,
+) -> None:
+    first = NormalizedSession(
+        calendar_version="calendar-1", session_id="session-1", session_date=date(2026, 9, 21), session_index=99,
+        exchange_timezone="Africa/Abidjan", status="trading", official_close_at=datetime(2026, 9, 21, 15, 1, tzinfo=timezone.utc),
+        source_evidence=(revision.provenance,), revision=revision,
+    )
+    second = NormalizedSession(
+        calendar_version="calendar-1", session_id="session-2", session_date=date(2026, 9, 22), session_index=100,
+        exchange_timezone="Africa/Abidjan", status="trading", official_close_at=datetime(2026, 9, 22, 15, 1, tzinfo=timezone.utc),
+        source_evidence=(revision.provenance,), revision=revision,
+    )
+    assert first.session_index < second.session_index
+
+    with pytest.raises(ValidationError):
+        NormalizedSession(
+            calendar_version="calendar-1", session_id="session-3", session_date=date(2026, 9, 23), session_index=101,
+            exchange_timezone="Africa/Abidjan", status="trading", official_close_at=None,
+            source_evidence=(revision.provenance,), revision=revision,
+        )
+    with pytest.raises(ValidationError):
+        NormalizedPrice(
+            symbol="NSI", session_date=date(2026, 9, 22), close=_money("1000"), trade_status="traded", basis="actual",
+            original_source_date=date(2026, 9, 22), price_basis_ref="basis-1", validated_available_at=None,
+            suspension_status="not_suspended", revision=revision,
+        )
+    with pytest.raises(ValidationError):
+        NormalizedPrice(
+            symbol="NSI", session_date=date(2026, 9, 22), close=_money("1000"), trade_status="traded", basis="actual",
+            original_source_date=date(2026, 9, 22), price_basis_ref="basis-1",
+            validated_available_at=datetime(2026, 9, 22, 15, 2, tzinfo=timezone.utc), actual_xof_turnover=_money("1"),
+            liquidity_basis="estimated", suspension_status="not_suspended", revision=revision,
+        )
+
+
+def test_dividend_and_capital_preserve_matching_basis_and_payment_semantics(
+    capital: object, dividend: object, financial: object, price: object
+) -> None:
+    assert getattr(capital, "capitalization_basis") == "matched_ordinary_claim"
+    assert getattr(dividend, "installment_id") == "installment-nsi-2025-1"
+    assert getattr(dividend, "gross_amount_per_share").amount == "50.000000"
+    assert getattr(dividend, "net_total_amount").amount == "45000.000000"
+    assert getattr(financial, "opening_equity").amount == "900.000000"
+    assert getattr(financial, "original_scale") == "units"
+    assert getattr(price, "actual_xof_turnover").amount == "100000.000000"
+    assert getattr(price, "validated_available_at") == datetime(2026, 9, 22, 15, 2, tzinfo=timezone.utc)
+
+
+def test_suspension_and_unknown_price_states_require_source_evidence(revision: Revision) -> None:
+    with pytest.raises(ValidationError):
+        NormalizedPrice(
+            symbol="NSI", session_date=date(2026, 9, 22), close=None, trade_status="unknown", basis="actual",
+            original_source_date=date(2026, 9, 22), price_basis_ref="basis-1", validated_available_at=None,
+            suspension_status="suspended", reason_codes=("suspension_reported",), revision=revision,
+        )
+    suspended = NormalizedPrice(
+        symbol="NSI", session_date=date(2026, 9, 22), close=None, trade_status="unknown", basis="actual",
+        original_source_date=date(2026, 9, 22), price_basis_ref="basis-1", validated_available_at=None,
+        suspension_status="suspended", suspension_evidence=(revision.provenance,), reason_codes=("suspension_reported",),
+        revision=revision,
+    )
+    assert suspended.suspension_evidence[0].source_id == "brvm-source-1"
 
 
 def test_long_term_results_keep_deferred_scores_distinct_from_missing_growth(
@@ -219,35 +296,28 @@ def test_long_term_results_keep_deferred_scores_distinct_from_missing_growth(
     )
     result = LongTermResult(
         company_id="company-nsi",
-        growth_score=assessable_growth,
-        dividend_score=deferred_dividend,
-        balanced_score=deferred_balanced,
-        overall_score=assessable_growth,
+        growth=LongTermObjectiveState(objective="growth", overall_score=assessable_growth),
+        dividend=LongTermObjectiveState(objective="dividend", overall_score=deferred_dividend),
+        balanced=LongTermObjectiveState(objective="balanced", overall_score=deferred_balanced),
         revision=revision,
     )
-    assert result.dividend_score.value is None
-    assert result.growth_score.status == "assessable"
+    assert result.dividend.overall_score.value is None
+    assert result.growth.overall_score.status == "assessable"
 
     missing_growth = assessable_growth.model_copy(
         update={"status": "missing_inputs", "value": None, "reason_codes": ("history_incomplete",)}
     )
     assert LongTermResult(
         company_id="company-nsi",
-        growth_score=missing_growth,
-        dividend_score=deferred_dividend,
-        balanced_score=deferred_balanced,
-        overall_score=missing_growth,
+        growth=LongTermObjectiveState(objective="growth", overall_score=missing_growth),
+        dividend=LongTermObjectiveState(objective="dividend", overall_score=deferred_dividend),
+        balanced=LongTermObjectiveState(objective="balanced", overall_score=deferred_balanced),
         revision=revision,
-    ).growth_score.status == "missing_inputs"
+    ).growth.overall_score.status == "missing_inputs"
 
     with pytest.raises(ValidationError):
-        LongTermResult(
-            company_id="company-nsi",
-            growth_score=assessable_growth,
-            dividend_score=deferred_balanced,
-            balanced_score=deferred_balanced,
-            overall_score=assessable_growth,
-            revision=revision,
+        LongTermObjectiveState(
+            objective="balanced", overall_score=deferred_dividend
         )
 
 
@@ -262,10 +332,9 @@ def test_result_and_batch_are_immutable_and_keep_distinct_company_results(
     )
     result = LongTermResult(
         company_id="company-nsi",
-        growth_score=assessable_growth,
-        dividend_score=deferred_dividend,
-        balanced_score=deferred_balanced,
-        overall_score=assessable_growth,
+        growth=LongTermObjectiveState(objective="growth", overall_score=assessable_growth),
+        dividend=LongTermObjectiveState(objective="dividend", overall_score=deferred_dividend),
+        balanced=LongTermObjectiveState(objective="balanced", overall_score=deferred_balanced),
         revision=revision,
     )
     with pytest.raises(ValidationError):

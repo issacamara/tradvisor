@@ -108,13 +108,32 @@ class NormalizedCompany(ImmutableContractModel):
 
 
 class NormalizedSession(ImmutableContractModel):
+    calendar_version: OpaqueIdentifier
+    session_id: OpaqueIdentifier
     session_date: date
+    session_index: NonNegativeVersion
+    exchange_timezone: Literal["Africa/Abidjan"]
     status: Literal["trading", "holiday", "suspended", "unknown"]
+    official_close_at: datetime | None
+    source_evidence: tuple[Provenance, ...]
     revision: Revision
     reason_codes: tuple[ReasonCode, ...] = ()
 
+    @field_validator("official_close_at")
+    @classmethod
+    def validate_official_close_at(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _require_utc(value)
+
+    @field_serializer("official_close_at")
+    def serialize_official_close_at(self, value: datetime | None) -> str | None:
+        return None if value is None else value.isoformat().replace("+00:00", "Z")
+
     @model_validator(mode="after")
     def require_reason_for_non_trading_session(self) -> "NormalizedSession":
+        if not self.source_evidence:
+            raise ValueError("session requires source evidence")
+        if self.status == "trading" and self.official_close_at is None:
+            raise ValueError("trading session requires an official close instant")
         if self.status != "trading" and not self.reason_codes:
             raise ValueError("non-trading session status requires a reason code")
         return self
@@ -129,34 +148,61 @@ class NormalizedPrice(ImmutableContractModel):
     volume: NonNegativeShares | None = None
     trade_status: Literal["traded", "confirmed_no_trade", "unknown"]
     basis: Basis
+    original_source_date: date
+    price_basis_ref: OpaqueIdentifier
+    validated_available_at: datetime | None
+    actual_xof_turnover: NonNegativeMoney | None = None
+    liquidity_basis: Basis | None = None
+    suspension_status: Literal["not_suspended", "suspended", "unknown"]
+    suspension_evidence: tuple[Provenance, ...] = ()
     reason_codes: tuple[ReasonCode, ...] = ()
     revision: Revision
+
+    @field_validator("validated_available_at")
+    @classmethod
+    def validate_available_at(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _require_utc(value)
+
+    @field_serializer("validated_available_at")
+    def serialize_available_at(self, value: datetime | None) -> str | None:
+        return None if value is None else value.isoformat().replace("+00:00", "Z")
 
     @model_validator(mode="after")
     def validate_price_availability(self) -> "NormalizedPrice":
         if self.trade_status == "traded" and self.close is None:
             raise ValueError("traded price requires a close")
+        if self.trade_status == "traded" and self.basis == "actual" and self.validated_available_at is None:
+            raise ValueError("actual traded price requires validated availability")
         if self.trade_status != "traded" and not self.reason_codes:
             raise ValueError("non-traded price requires a reason code")
         if (self.high is None) != (self.low is None):
             raise ValueError("high and low must be supplied together")
+        if self.actual_xof_turnover is not None and self.liquidity_basis != "actual":
+            raise ValueError("actual turnover requires an actual liquidity basis")
+        if self.suspension_status != "not_suspended" and not self.suspension_evidence:
+            raise ValueError("suspension or unknown status requires evidence")
         return self
 
 
 class NormalizedFinancial(ImmutableContractModel):
     company_id: OpaqueIdentifier
+    fiscal_period_start: date
     fiscal_period_end: date
     report_scope: Literal["standalone", "consolidated", "unknown"]
     currency: Literal["XOF"]
+    original_scale: ShortText | None
     revenue: NonNegativeMoney | None = None
     ordinary_owner_earnings: SignedMoney | None = None
     equity: SignedMoney | None = None
+    opening_equity: SignedMoney | None = None
     publication_status: Literal["published", "unknown"]
     reason_codes: tuple[ReasonCode, ...] = ()
     revision: Revision
 
     @model_validator(mode="after")
     def require_reason_for_unknown_publication(self) -> "NormalizedFinancial":
+        if self.fiscal_period_end < self.fiscal_period_start:
+            raise ValueError("financial period cannot end before it starts")
         if self.publication_status == "unknown" and not self.reason_codes:
             raise ValueError("unknown publication status requires a reason code")
         return self
@@ -167,6 +213,12 @@ class NormalizedCapital(ImmutableContractModel):
     effective_date: date
     ordinary_shares: WholeShares | None
     share_basis: Literal["ordinary_outstanding", "free_float", "weighted_average", "unknown"]
+    capitalization_basis: Literal[
+        "matched_ordinary_claim",
+        "verified_aggregate_ordinary_claim",
+        "unmatched",
+        "unknown",
+    ]
     reason_codes: tuple[ReasonCode, ...] = ()
     revision: Revision
 
@@ -174,6 +226,11 @@ class NormalizedCapital(ImmutableContractModel):
     def validate_share_basis(self) -> "NormalizedCapital":
         if self.share_basis == "ordinary_outstanding" and self.ordinary_shares is None:
             raise ValueError("ordinary outstanding share basis requires a share count")
+        if self.share_basis == "ordinary_outstanding" and self.capitalization_basis not in {
+            "matched_ordinary_claim",
+            "verified_aggregate_ordinary_claim",
+        }:
+            raise ValueError("ordinary outstanding shares require matched capitalization basis")
         if self.share_basis != "ordinary_outstanding" and not self.reason_codes:
             raise ValueError("unsupported or unknown share basis requires a reason code")
         return self
@@ -182,21 +239,46 @@ class NormalizedCapital(ImmutableContractModel):
 class NormalizedDividend(ImmutableContractModel):
     dividend_id: OpaqueIdentifier
     company_id: OpaqueIdentifier
+    installment_id: OpaqueIdentifier
     payment_date: date | None
     fiscal_period_end: date | None = None
-    amount_per_share: NonNegativeMoney | None
+    gross_amount_per_share: NonNegativeMoney | None = None
+    net_amount_per_share: NonNegativeMoney | None = None
+    gross_total_amount: NonNegativeMoney | None = None
+    net_total_amount: NonNegativeMoney | None = None
+    per_share_semantics: Literal["gross", "net", "unknown"]
+    total_semantics: Literal["gross", "net", "unknown"]
     payment_status: Literal["paid", "declared", "unknown"]
     dividend_type: Literal["ordinary", "exceptional", "unclassified"]
     coverage_status: Literal["complete", "partial", "unknown"]
+    covered_interval_start: date | None
+    covered_interval_end: date | None
+    coverage_basis: Literal["fiscal_year", "trailing_12_months", "source_observed", "unknown"]
     reason_codes: tuple[ReasonCode, ...] = ()
     revision: Revision
 
     @model_validator(mode="after")
     def validate_dividend_evidence(self) -> "NormalizedDividend":
-        if self.payment_status == "paid" and (self.payment_date is None or self.amount_per_share is None):
-            raise ValueError("paid dividend requires payment date and per-share amount")
+        amounts = (
+            self.gross_amount_per_share,
+            self.net_amount_per_share,
+            self.gross_total_amount,
+            self.net_total_amount,
+        )
+        if self.payment_status == "paid" and (self.payment_date is None or not any(amounts)):
+            raise ValueError("paid dividend requires payment date and amount evidence")
         if self.payment_status == "unknown" and not self.reason_codes:
             raise ValueError("unknown dividend status requires a reason code")
+        if self.coverage_status != "unknown" and (
+            self.covered_interval_start is None or self.covered_interval_end is None
+        ):
+            raise ValueError("known dividend coverage requires a covered interval")
+        if (
+            self.covered_interval_start is not None
+            and self.covered_interval_end is not None
+            and self.covered_interval_end < self.covered_interval_start
+        ):
+            raise ValueError("covered interval cannot end before it starts")
         return self
 
 
@@ -246,29 +328,48 @@ class AnalyticalMetric(ImmutableContractModel, Generic[T]):
         return self
 
 
+class LongTermObjectiveState(ImmutableContractModel):
+    """An objective-specific overall score without conflating deferred and missing states."""
+
+    objective: Literal["growth", "dividend", "balanced"]
+    overall_score: AnalyticalMetric[Score]
+
+    @model_validator(mode="after")
+    def validate_objective_scope(self) -> "LongTermObjectiveState":
+        deferred_reason = {
+            "dividend": "dividend_scoring_deferred_v1",
+            "balanced": "balanced_scoring_deferred_v1",
+        }.get(self.objective)
+        if deferred_reason is None:
+            if self.overall_score.status == "deferred_scope":
+                raise ValueError("Growth must use missing or unsupported evidence, not deferred scope")
+            return self
+        if (
+            self.overall_score.status != "deferred_scope"
+            or self.overall_score.value is not None
+            or deferred_reason not in self.overall_score.reason_codes
+        ):
+            raise ValueError(f"{deferred_reason} must be an explicit deferred V1 state")
+        return self
+
+
 class LongTermResult(ImmutableContractModel):
-    """Published long-term state; Dividend and Balanced scoring stay deferred in V1."""
+    """Published Long-Term results with isolated objective-specific score states."""
 
     company_id: OpaqueIdentifier
-    growth_score: AnalyticalMetric[Score]
-    dividend_score: AnalyticalMetric[Score]
-    balanced_score: AnalyticalMetric[Score]
-    overall_score: AnalyticalMetric[Score]
+    growth: LongTermObjectiveState
+    dividend: LongTermObjectiveState
+    balanced: LongTermObjectiveState
     revision: Revision
 
     @model_validator(mode="after")
-    def validate_v1_score_scope(self) -> "LongTermResult":
-        deferred = (
-            (self.dividend_score, "dividend_scoring_deferred_v1"),
-            (self.balanced_score, "balanced_scoring_deferred_v1"),
-        )
-        for metric, reason in deferred:
-            if metric.status != "deferred_scope" or metric.value is not None or reason not in metric.reason_codes:
-                raise ValueError(f"{reason} must be an explicit deferred V1 state")
-        if self.growth_score.status == "deferred_scope":
-            raise ValueError("Growth must use missing or unsupported evidence, not deferred scope")
-        if self.overall_score != self.growth_score:
-            raise ValueError("Growth overall score must equal the Growth score")
+    def validate_objectives(self) -> "LongTermResult":
+        if (self.growth.objective, self.dividend.objective, self.balanced.objective) != (
+            "growth",
+            "dividend",
+            "balanced",
+        ):
+            raise ValueError("Long-Term result must contain each objective exactly once")
         return self
 
 

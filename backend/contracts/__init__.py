@@ -10,6 +10,7 @@ from backend.contracts.envelopes import (
 from backend.contracts.analysis import (
     AnalyticalBatch,
     AnalyticalMetric,
+    LongTermObjectiveState,
     LongTermResult,
     NormalizedCapital,
     NormalizedCompany,
@@ -43,6 +44,7 @@ __all__ = [
     "INT64_MAX",
     "INT64_MIN",
     "LongTermResult",
+    "LongTermObjectiveState",
     "MAX_COMMAND_BYTES",
     "MAX_SAFE_INTEGER",
     "Money",
