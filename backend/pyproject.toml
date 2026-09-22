@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradvisor-backend"
+version = "0.1.0"
+description = "Tradvisor V1 backend package foundation"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest==8.3.5"]
+type = ["mypy==1.15.0"]
+
+[tool.setuptools]
+package-dir = { backend = "." }
+packages = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
