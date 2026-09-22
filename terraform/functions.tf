@@ -21,6 +21,10 @@ resource "google_cloudfunctions2_function" "functions" {
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 
@@ -50,6 +54,10 @@ main:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[var.functions[count.index + 4]].service_config[0].uri}
 EOF
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 
@@ -74,5 +82,11 @@ resource "google_cloud_scheduler_job" "jobs" {
     #       service_account_email = google_service_account.tradvisor_sa.email
     #       audience = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
     #     }
+  }
+
+  # Existing jobs, including paused jobs, are preserved. Activation or
+  # replacement requires its own approved change.
+  lifecycle {
+    prevent_destroy = true
   }
 }

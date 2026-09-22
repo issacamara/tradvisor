@@ -17,10 +17,20 @@ data-ingestion foundation for BRVM market data:
 The previous Streamlit webapp has been removed so the next architecture pass can
 target the V1 BRD cleanly.
 
-## Terraform State
+## Terraform Preservation
 
-Terraform is configured to use a GCS backend. Initialize it with the project's
-state bucket and prefix:
+The checked-in Terraform declarations preserve the existing development
+resources. They are not permission to discover, import, move, remove, plan,
+apply, rotate keys, or activate schedules. The existing paused legacy schedule
+must remain paused.
+
+The development backend bucket and prefix are private operator evidence. Keep
+them outside the repository and provide them only to an approved operator at
+the separately authorized preservation-plan review. Do not place backend values
+in `.tf` files, commits, issues, pull requests, logs, or command history.
+
+When that review has been separately authorized, an operator can initialize
+Terraform with their private backend values:
 
 ```sh
 terraform -chdir=terraform init \
@@ -28,4 +38,9 @@ terraform -chdir=terraform init \
   -backend-config="prefix=tradvisor"
 ```
 
-Local `*.tfstate` files are ignored and should not be committed.
+Local `*.tfstate` files, backend configuration files, plans, and provider
+caches are ignored and must not be committed. Before any future plan, the
+operator must revalidate development ownership and state compatibility. The
+legacy IAM bindings intentionally ignore membership drift to avoid removing
+principals managed elsewhere; any migration to additive IAM-member resources
+requires a state-aware, separately approved change.

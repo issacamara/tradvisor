@@ -17,15 +17,24 @@ provider "google" {
 resource "google_bigquery_dataset" "stocks" {
   dataset_id                 = "stocks"
   location                   = var.region
-  delete_contents_on_destroy = true
+  delete_contents_on_destroy = false
   depends_on                 = [google_project_service.apis]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_project_service" "apis" {
   project                    = var.project_id
   for_each                   = toset(var.apis)
   service                    = each.key
-  disable_dependent_services = true
+  disable_dependent_services = false
+  disable_on_destroy         = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 
