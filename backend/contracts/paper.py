@@ -8,7 +8,7 @@ from typing import Annotated, Literal, Protocol
 from pydantic import Field, field_serializer, field_validator, model_validator
 
 from backend.contracts.analysis import ImmutableContractModel, Provenance, ReasonCode
-from backend.contracts.envelopes import CommandReceipt, ContractModel, IdempotencyKey
+from backend.contracts.envelopes import CommandMetadata, CommandReceipt, ContractModel, IdempotencyKey
 from backend.contracts.scalars import (
     FeeRatePct,
     NonNegativeMoney,
@@ -143,6 +143,32 @@ class ExecutionPrice(ImmutableContractModel):
         return self
 
 
+class CalendarCorrectionEvidence(ImmutableContractModel):
+    """Evidence for rejecting, rather than silently rescheduling, affected orders."""
+
+    original_calendar_version: OpaqueIdentifier
+    original_session_id: OpaqueIdentifier
+    correcting_calendar_version: OpaqueIdentifier
+    correcting_session_id: OpaqueIdentifier
+    corrected_at: datetime
+    source_evidence: tuple[Provenance, ...]
+
+    @field_validator("corrected_at")
+    @classmethod
+    def validate_corrected_at(cls, value: datetime) -> datetime:
+        return _require_utc(value)
+
+    @field_serializer("corrected_at")
+    def serialize_corrected_at(self, value: datetime) -> str:
+        return value.isoformat().replace("+00:00", "Z")
+
+    @model_validator(mode="after")
+    def require_evidence(self) -> "CalendarCorrectionEvidence":
+        if not self.source_evidence:
+            raise ValueError("calendar correction requires source evidence")
+        return self
+
+
 class PaperOrder(ImmutableContractModel):
     order_id: OpaqueIdentifier
     owner_uid: OpaqueIdentifier
@@ -154,6 +180,9 @@ class PaperOrder(ImmutableContractModel):
     quantity: WholeShares
     accepted_at: datetime
     intended_session: date
+    accepted_calendar_version: OpaqueIdentifier
+    accepted_session_id: OpaqueIdentifier
+    accepted_session_index: NonNegativeVersion
     grace_deadline_at: datetime
     fee_rate_pct: FeeRatePct
     reserved_cash: NonNegativeMoney | None = None
@@ -167,6 +196,7 @@ class PaperOrder(ImmutableContractModel):
     acknowledged_keep_override: bool = False
     terminal_reason: ReasonCode | None = None
     terminal_at: datetime | None = None
+    calendar_correction: CalendarCorrectionEvidence | None = None
 
     @field_validator("accepted_at", "grace_deadline_at", "terminal_at")
     @classmethod
@@ -198,10 +228,18 @@ class PaperOrder(ImmutableContractModel):
                     raise ValueError("keep advice requires acknowledged override evidence")
             elif self.is_advice_override or self.acknowledged_keep_override:
                 raise ValueError("sell advice cannot carry a keep override")
-        if self.status == "pending" and (self.terminal_reason is not None or self.terminal_at is not None):
-            raise ValueError("pending order cannot have terminal evidence")
-        if self.status != "pending" and (self.terminal_reason is None or self.terminal_at is None):
-            raise ValueError("terminal order requires reason and terminal instant")
+        if self.status in {"pending", "executed"} and (self.terminal_reason is not None or self.terminal_at is not None):
+            raise ValueError("pending and executed orders cannot have terminal rejection evidence")
+        if self.status in {"rejected", "expired"} and (self.terminal_reason is None or self.terminal_at is None):
+            raise ValueError("rejected and expired orders require reason and terminal instant")
+        if self.calendar_correction is not None:
+            if (
+                self.calendar_correction.original_calendar_version != self.accepted_calendar_version
+                or self.calendar_correction.original_session_id != self.accepted_session_id
+            ):
+                raise ValueError("calendar correction must retain the accepted calendar reference")
+            if self.status != "rejected":
+                raise ValueError("calendar-corrected orders must be rejected rather than rescheduled")
         return self
 
 
@@ -271,6 +309,15 @@ class PaperCommandReceipt(CommandReceipt):
         if self.expires_at != self.accepted_at + RECEIPT_RETENTION:
             raise ValueError("paper command receipt must retain exactly thirty days")
         return self
+
+    def matches_replay(self, command: CommandMetadata) -> bool:
+        """A handler may replay only an identical command inside the same recovery fence."""
+
+        return (
+            self.idempotency_key == command.idempotency_key
+            and self.recovery_id == command.recovery_id
+            and self.request_fingerprint == command.request_fingerprint
+        )
 
 
 class PaperStore(Protocol):

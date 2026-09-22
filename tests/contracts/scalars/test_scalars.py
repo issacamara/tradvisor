@@ -168,6 +168,7 @@ def test_command_metadata_requires_utc_recovery_fence_and_paired_versions() -> N
     payload = {
         "idempotency_key": "1726920000000.0123456789abcdef0123456789abcdef",
         "recovery_id": "recovery-20260922",
+        "request_fingerprint": "fingerprint-20260922",
         "content_length": 100,
         "issued_at": datetime(2026, 9, 22, tzinfo=timezone.utc),
         "expected_generation": "generation-1",

@@ -69,6 +69,7 @@ class CommandMetadata(ContractModel):
 
     idempotency_key: IdempotencyKey
     recovery_id: OpaqueIdentifier
+    request_fingerprint: OpaqueIdentifier
     content_length: Annotated[int, Field(strict=True, ge=0, le=MAX_COMMAND_BYTES)]
     issued_at: datetime
     expected_generation: OpaqueIdentifier | None = None
@@ -88,6 +89,11 @@ class CommandMetadata(ContractModel):
         if (self.expected_generation is None) != (self.expected_state_version is None):
             raise ValueError("expected generation and state version must be supplied together")
         return self
+
+    def matches_recovery(self, active_recovery_id: OpaqueIdentifier) -> bool:
+        """Lets a handler reject a command fenced by a stale portfolio generation."""
+
+        return self.recovery_id == active_recovery_id
 
 
 class CommandReceipt(ContractModel):

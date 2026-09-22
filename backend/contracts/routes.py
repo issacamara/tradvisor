@@ -7,7 +7,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field, StringConstraints, field_serializer, field_validator, model_validator
 
-from backend.contracts.envelopes import ContractModel
+from backend.contracts.envelopes import CommandMetadata, ContractModel
 from backend.contracts.paper import (
     CashMovement,
     PAPER_ORDER_STATUS,
@@ -26,6 +26,13 @@ Cursor = Annotated[str, StringConstraints(min_length=1, max_length=2048, strict=
 HttpMethod: TypeAlias = Literal["GET", "PATCH", "POST"]
 HttpStatus: TypeAlias = Literal[200, 201, 401, 403, 404, 409, 410, 413, 422, 503]
 PortfolioSetupState: TypeAlias = Literal["setup_required", "configured"]
+RouteErrorCode: TypeAlias = Literal[
+    "recovery_mismatch",
+    "stale_cursor",
+    "expired_snapshot",
+    "validation_failed",
+    "admission_rejected",
+]
 
 
 def _require_utc(value: datetime) -> datetime:
@@ -68,6 +75,7 @@ class CursorBinding(ContractModel):
 
 
 class PatchPreferencesRequest(ContractModel):
+    command: CommandMetadata
     expected_preference_version: NonNegativeVersion
     objective: Literal["growth", "dividend"] | None = None
     fee_rate_pct: FeeRatePct | None = None
@@ -80,11 +88,13 @@ class PatchPreferencesRequest(ContractModel):
 
 
 class SetupPortfolioRequest(ContractModel):
+    command: CommandMetadata
     starting_cash: StartingCash
     fee_rate_pct: FeeRatePct
 
 
 class CreatePaperOrderRequest(ContractModel):
+    command: CommandMetadata
     expected_generation: OpaqueIdentifier
     expected_state_version: NonNegativeVersion
     recommendation_ref: OpaqueIdentifier
@@ -94,11 +104,30 @@ class CreatePaperOrderRequest(ContractModel):
     quantity: WholeShares
     acknowledge_keep_override: bool = False
 
+    @model_validator(mode="after")
+    def bind_command_fence(self) -> "CreatePaperOrderRequest":
+        if (
+            self.command.expected_generation != self.expected_generation
+            or self.command.expected_state_version != self.expected_state_version
+        ):
+            raise ValueError("order command metadata must match the expected portfolio state")
+        return self
+
 
 class ResetPortfolioRequest(ContractModel):
+    command: CommandMetadata
     expected_generation: OpaqueIdentifier
     expected_state_version: NonNegativeVersion
     starting_cash: StartingCash
+
+    @model_validator(mode="after")
+    def bind_command_fence(self) -> "ResetPortfolioRequest":
+        if (
+            self.command.expected_generation != self.expected_generation
+            or self.command.expected_state_version != self.expected_state_version
+        ):
+            raise ValueError("reset command metadata must match the expected portfolio state")
+        return self
 
 
 class MeResource(ContractModel):
@@ -179,16 +208,36 @@ class RouteContract(ContractModel):
     path: str
     success_status: Literal[200, 201]
     mutation: bool
+    error_outcomes: tuple["RouteErrorOutcome", ...]
+
+
+class RouteErrorOutcome(ContractModel):
+    status: HttpStatus
+    code: RouteErrorCode
+
+
+COMMON_READ_ERRORS = (
+    RouteErrorOutcome(status=401, code="admission_rejected"),
+    RouteErrorOutcome(status=422, code="validation_failed"),
+)
+COMMON_MUTATION_ERRORS = COMMON_READ_ERRORS + (
+    RouteErrorOutcome(status=409, code="recovery_mismatch"),
+    RouteErrorOutcome(status=503, code="admission_rejected"),
+)
+PAGINATION_ERRORS = COMMON_READ_ERRORS + (
+    RouteErrorOutcome(status=409, code="stale_cursor"),
+    RouteErrorOutcome(status=410, code="expired_snapshot"),
+)
 
 
 PAPER_ROUTES: tuple[RouteContract, ...] = (
-    RouteContract(method="GET", path="/v1/me", success_status=200, mutation=False),
-    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True),
-    RouteContract(method="GET", path="/v1/paper/portfolio", success_status=200, mutation=False),
-    RouteContract(method="POST", path="/v1/paper/portfolio", success_status=201, mutation=True),
-    RouteContract(method="POST", path="/v1/paper/orders", success_status=201, mutation=True),
-    RouteContract(method="GET", path="/v1/paper/orders", success_status=200, mutation=False),
-    RouteContract(method="GET", path="/v1/paper/executions", success_status=200, mutation=False),
-    RouteContract(method="GET", path="/v1/paper/cash-movements", success_status=200, mutation=False),
-    RouteContract(method="POST", path="/v1/paper/reset", success_status=200, mutation=True),
+    RouteContract(method="GET", path="/v1/me", success_status=200, mutation=False, error_outcomes=COMMON_READ_ERRORS),
+    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
+    RouteContract(method="GET", path="/v1/paper/portfolio", success_status=200, mutation=False, error_outcomes=COMMON_READ_ERRORS),
+    RouteContract(method="POST", path="/v1/paper/portfolio", success_status=201, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
+    RouteContract(method="POST", path="/v1/paper/orders", success_status=201, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
+    RouteContract(method="GET", path="/v1/paper/orders", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
+    RouteContract(method="GET", path="/v1/paper/executions", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
+    RouteContract(method="GET", path="/v1/paper/cash-movements", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
+    RouteContract(method="POST", path="/v1/paper/reset", success_status=200, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
 )
