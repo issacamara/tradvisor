@@ -11,9 +11,8 @@ terraform/tfplan
 terraform/tfplan.json
 terraform/*.plan
 terraform/*.plan.json
-terraform/backend.hcl
-terraform/backend.tfbackend
-terraform/private.backend.hcl
+terraform/*.tfbackend
+terraform/*backend*.hcl
 .terraform/
 *.zip
 key.json

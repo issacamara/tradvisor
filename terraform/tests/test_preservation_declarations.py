@@ -60,6 +60,8 @@ class PreservationDeclarationTests(unittest.TestCase):
             "terraform/backend.hcl",
             "terraform/backend.tfbackend",
             "terraform/private.backend.hcl",
+            "terraform/backend-dev.tfbackend",
+            "terraform/operator.backend.hcl",
         )
 
         for backend_config in backend_configs:
