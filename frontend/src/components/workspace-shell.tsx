@@ -3,7 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Menu, PanelLeft, Search } from "lucide-react";
+import { PanelLeft, Search } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
   return (
     <main className="min-h-screen bg-canvas">
       <header className="flex min-h-16 items-center justify-between border-b border-line px-4 lg:px-6">
-        <div className="flex items-center gap-3"><Button className="lg:hidden" aria-label="Open workspace navigation"><Menu size={18} /></Button><span className="font-bold text-accent lg:hidden">TRADVISOR</span><span className="hidden text-sm text-muted sm:inline">BRVM investor research</span></div>
+        <div className="flex items-center gap-3"><span className="font-bold text-accent lg:hidden">TRADVISOR</span><span className="hidden text-sm text-muted sm:inline">BRVM investor research</span></div>
         <div className="flex items-center gap-2"><Badge tone="warning">Static preview</Badge><Button aria-label="Search stocks"><Search size={18} /></Button></div>
       </header>
       <div className="hidden min-h-[calc(100vh-4rem)] lg:block">

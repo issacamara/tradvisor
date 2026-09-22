@@ -10,6 +10,20 @@ const scoreData = [
   { label: "Value", value: 58 },
 ];
 
+const priceData = [
+  { date: "2025-01-02", close: 120 },
+  { date: "2025-01-03", close: 128 },
+  { date: "2025-01-06", close: 125 },
+  { date: "2025-01-07", close: 133 },
+];
+
+export function ChartAccessibleData() {
+  return <div className="sr-only">
+    <table><caption>Illustrative closing-price data in XOF</caption><thead><tr><th scope="col">Date</th><th scope="col">Closing price</th></tr></thead><tbody>{priceData.map((point) => <tr key={point.date}><td>{point.date}</td><td>{point.close} XOF</td></tr>)}</tbody></table>
+    <table><caption>Illustrative research score data</caption><thead><tr><th scope="col">Factor</th><th scope="col">Score</th></tr></thead><tbody>{scoreData.map((point) => <tr key={point.label}><td>{point.label}</td><td>{point.value}</td></tr>)}</tbody></table>
+  </div>;
+}
+
 export function ChartPlaceholder() {
   const container = useRef<HTMLDivElement>(null);
   const [chartReady, setChartReady] = useState(false);
@@ -27,9 +41,7 @@ export function ChartPlaceholder() {
         layout: { background: { color: "#171d1d" }, textColor: "#9aacaa" },
         grid: { vertLines: { color: "#2d3737" }, horzLines: { color: "#2d3737" } },
       });
-      chart.addSeries(AreaSeries, { lineColor: "#45c88a", topColor: "rgba(69, 200, 138, 0.25)", bottomColor: "rgba(69, 200, 138, 0)" }).setData([
-        { time: "2025-01-02", value: 120 }, { time: "2025-01-03", value: 128 }, { time: "2025-01-06", value: 125 }, { time: "2025-01-07", value: 133 },
-      ]);
+      chart.addSeries(AreaSeries, { lineColor: "#45c88a", topColor: "rgba(69, 200, 138, 0.25)", bottomColor: "rgba(69, 200, 138, 0)" }).setData(priceData.map((point) => ({ time: point.date, value: point.close })));
       chart.timeScale().fitContent();
       const observer = new ResizeObserver(() => chart.applyOptions({ width: container.current?.clientWidth ?? 0 }));
       observer.observe(container.current);
@@ -54,6 +66,7 @@ export function ChartPlaceholder() {
           <ResponsiveContainer width="100%" height="100%"><AreaChart data={scoreData}><Tooltip /><Area type="monotone" dataKey="value" stroke="#f2c14e" fill="#f2c14e" fillOpacity={0.18} /></AreaChart></ResponsiveContainer>
         </div>
       </div>
+      <ChartAccessibleData />
     </section>
   );
 }
