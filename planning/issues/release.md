@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-074 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 13; ORCH-13
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 13; ORCH-13
 
 ## Scope
 Assemble evidence and obtain named operator/support and product-owner launch decision; list deployment, seed and schedule activation requests separately.
@@ -28,7 +28,7 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: S (up to 2 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 17
 Domain: operations
-Blocked by: V1-028 (number pending), V1-061 (number pending), V1-062 (number pending), V1-066 (number pending), V1-067 (number pending), V1-069 (number pending), V1-070 (number pending), V1-072 (number pending), V1-073 (number pending), V1-077 (number pending)
+Blocked by: #61, #70, #65, #72, #74, #69, #75, #78, #5, #77
 Blocks: none
 
 Conflict exclusions (not hard dependencies):

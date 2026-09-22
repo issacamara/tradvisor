@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-010 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 6,7; NFR-02, DR-03
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 6,7; NFR-02, DR-03
 
 ## Scope
 Adapt MERGE support to explicit source keys, per-run staging and stable committed-load identity; preserve revision history.
@@ -29,10 +29,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 5
 Domain: ingestion
-Blocked by: V1-009 (number pending)
-Blocks: V1-011 (number pending), V1-012 (number pending), V1-014 (number pending), V1-018 (number pending), V1-019 (number pending), V1-020 (number pending), V1-021 (number pending)
+Blocked by: #13
+Blocks: #31, #32, #33, #44, #45, #46, #47
 
 Conflict exclusions (not hard dependencies):
-- V1-009 (number pending): `archive/legacy-ingestion/scripts/helper.py`
+- #13: `archive/legacy-ingestion/scripts/helper.py`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-054 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 8; BRD-A-04
-- Api baseline (publication pending): sections/trace 2,4,5,7
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 8; BRD-A-04
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 2,4,5,7
 
 ## Scope
 Bind approved service handlers to FastAPI with request limits, safe errors, schema checks and distinct workload-authenticated worker entry points.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 13
 Domain: backend
-Blocked by: V1-053 (number pending), V1-051 (number pending), V1-052 (number pending)
-Blocks: V1-061 (number pending), V1-065 (number pending), V1-066 (number pending), V1-068 (number pending)
+Blocked by: #64, #62, #51
+Blocks: #70, #71, #72, #73
 
 Conflict exclusions (not hard dependencies):
 none

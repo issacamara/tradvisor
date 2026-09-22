@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-039 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.3,5.4,7; NFR-02,FR-SW-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.3,5.4,7; NFR-02,FR-SW-07
 
 ## Scope
 Compose coherent per-catalog batches keyed by session/input/rule, reuse unchanged financial factors and persist canonical results/evidence with bounded retry behavior.
@@ -29,8 +29,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 7
 Domain: analysis
-Blocked by: V1-034 (number pending), V1-037 (number pending), V1-038 (number pending)
-Blocks: V1-047 (number pending)
+Blocked by: #34, #35, #27
+Blocks: #56
 
 Conflict exclusions (not hard dependencies):
 none

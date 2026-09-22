@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-042 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Api baseline (publication pending): sections/trace 6
-- Architecture baseline (publication pending): sections/trace 7; NFR-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 6
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; NFR-02
 
 ## Scope
 Implement owner-global key parsing, canonical fingerprint, logical expiry, recovery-first checks and atomic receipt helpers.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: backend
-Blocked by: V1-040 (number pending)
-Blocks: V1-043 (number pending)
+Blocked by: #28
+Blocks: #49
 
 Conflict exclusions (not hard dependencies):
 none

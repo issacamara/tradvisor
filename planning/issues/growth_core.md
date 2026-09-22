@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-035 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 2,3.1,3.2
-- Architecture baseline (publication pending): sections/trace 5.4; FR-LT-03,FR-LT-05
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 2,3.1,3.2
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4; FR-LT-03,FR-LT-05
 
 ## Scope
 Implement approved 30-point activity/earnings growth and 25-point profitability/consistency with required history, six equity dates and loss/small-base policies.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 5
 Domain: analysis
-Blocked by: V1-029 (number pending)
-Blocks: V1-037 (number pending)
+Blocked by: #17
+Blocks: #35
 
 Conflict exclusions (not hard dependencies):
 none

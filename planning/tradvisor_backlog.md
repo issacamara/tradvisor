@@ -1,6 +1,6 @@
 <!-- tradvisor-v1-tracking-epic -->
 ## Scope And Authority
-Approved sanitized baseline: BASELINE_PENDING. Target integration branch: `V1`.
+Approved sanitized baseline: https://github.com/issacamara/tradvisor/issues/1. Target integration branch: `V1`.
 Seven responsibilities: reused Ingestion, Analytical Data and Pipeline Orchestration; new Analysis Engine, Investor Application, Paper Trading and Application Store.
 Deliver Swing (EMA20/50, RSI14, ATR14, liquidity and versioned entry/exit rules), equal-priority Long-Term Growth/dividend research, and manual recommendation-linked paper trading with reset/recovery protection.
 Static Next.js/TypeScript frontend, FastAPI, shared batch analysis, structured Firestore and existing cloud ingestion foundation. No Dividend/Balanced composite scores or real portfolio tracking in V1.
@@ -17,186 +17,186 @@ Estimates: S: up to 2 hours; M: 2-4 hours. Split before implementation if scope 
 ## Tickets And Estimates
 | Wave | Ticket | Estimate | Domain |
 |---|---|---|---|
-| 1 | V1-006 Verify development ownership and preservation inputs | M | infrastructure |
-| 1 | V1-055 Build the responsive static investor workspace shell | M | frontend |
-| 1 | V1-073 Record legal privacy and advisory release review | S | operations |
-| 1 | V1-075 Establish isolated Python package and fixture test foundations | S | contracts |
-| 2 | V1-001 Define exact-money scalars and command envelopes | M | contracts |
-| 2 | V1-007 Preserve existing Terraform resource ownership | M | infrastructure |
-| 3 | V1-002 Define analytical input and result schemas | M | contracts |
-| 3 | V1-008 Review the complete preservation-only Terraform plan | S | infrastructure |
-| 3 | V1-044 Implement exact paper cost and P&L arithmetic | M | paper |
-| 4 | V1-003 Define transactional paper and REST schemas | M | contracts |
-| 4 | V1-009 Preserve retry-stable raw ingestion evidence | M | ingestion |
-| 4 | V1-024 Define additive analytical source and revision structures | M | infrastructure |
-| 4 | V1-029 Build point-in-time analytical session inputs | M | analysis |
-| 5 | V1-004 Generate the versioned OpenAPI and TypeScript client | M | contracts |
-| 5 | V1-010 Make shared BigQuery loads idempotent and isolated | M | ingestion |
-| 5 | V1-025 Configure static hosting and invited identity foundation | M | infrastructure |
-| 5 | V1-030 Implement seeded EMA20 and EMA50 with replay anchors | M | analysis |
-| 5 | V1-031 Implement Wilder RSI14 and interruption handling | M | analysis |
-| 5 | V1-032 Implement Wilder ATR14 with labeled no-trade modeling | M | analysis |
-| 5 | V1-033 Calculate complete-window liquidity eligibility | M | analysis |
-| 5 | V1-035 Calculate Growth activity and profitability dimensions | M | analysis |
-| 5 | V1-036 Calculate sector resilience and valuation dimensions | M | analysis |
-| 5 | V1-038 Publish supported dividend facts without composite scores | M | analysis |
-| 5 | V1-040 Implement versioned Firestore repositories and transaction seams | M | backend |
-| 5 | V1-050 Implement ordered independent recovery-register operations | M | backend |
-| 6 | V1-005 Extend CI with isolated contract and application checks | M | ci |
-| 6 | V1-011 Normalize issuer identity and financial category evidence | M | ingestion |
-| 6 | V1-012 Implement versioned exchange calendar ingestion | M | ingestion |
-| 6 | V1-014 Align existing financial PDF extraction entry points | M | ingestion |
-| 6 | V1-026 Configure scale-to-zero API and bounded jobs | M | infrastructure |
-| 6 | V1-034 Implement the versioned trend-confirmation strategy | M | analysis |
-| 6 | V1-037 Compose Growth ratings and independent advisory guards | M | analysis |
-| 6 | V1-041 Enforce verified identity and current invitation admission | M | backend |
-| 6 | V1-042 Implement recovery-fenced idempotency receipts | M | backend |
-| 6 | V1-056 Build sign-in verification and password-reset flows | M | frontend |
-| 6 | V1-057 Build the Swing screener and indicator detail | M | frontend |
-| 6 | V1-058 Build Growth rankings and first-class dividend research | M | frontend |
-| 6 | V1-059 Build paper portfolio reporting and order history | M | frontend |
-| 7 | V1-013 Normalize genuine share observations and source sessions | M | ingestion |
-| 7 | V1-015 Normalize annual reporting and non-financial inputs | M | ingestion |
-| 7 | V1-018 Normalize matching ordinary capitalization evidence | M | ingestion |
-| 7 | V1-019 Normalize supported price and share adjustment evidence | M | ingestion |
-| 7 | V1-020 Normalize existing dividend payments and coverage | M | ingestion |
-| 7 | V1-021 Normalize rating-specific history and loading | M | ingestion |
-| 7 | V1-027 Configure transactional storage and protected recovery storage | M | infrastructure |
-| 7 | V1-039 Persist immutable analytical batches and readiness manifests | M | analysis |
-| 7 | V1-043 Implement paper setup and versioned preferences | M | paper |
-| 7 | V1-045 Implement versioned position exit advice | M | paper |
-| 7 | V1-052 Implement recovery-safe trusted admission changes | M | backend |
-| 7 | V1-060 Implement confirmed paper commands and uncertain-response handling | M | frontend |
-| 8 | V1-016 Normalize evidenced banking activity and capital inputs | M | ingestion |
-| 8 | V1-017 Normalize evidenced insurance activity and solvency inputs | M | ingestion |
-| 8 | V1-046 Publish transactionally guarded execution-price revisions | M | backend |
-| 8 | V1-047 Publish complete immutable analytical serving copies | M | backend |
-| 9 | V1-022 Package reused ingestion functions with explicit settings | M | infrastructure |
-| 9 | V1-048 Accept fresh manual orders with atomic reservations | M | paper |
-| 10 | V1-023 Define explicit ingestion workflow dependencies | M | infrastructure |
-| 10 | V1-049 Execute or expire pending orders exactly once | M | paper |
-| 11 | V1-028 Restore approval-gated development delivery automation | M | ci |
-| 11 | V1-051 Implement restrictive-intent-first portfolio reset | M | paper |
-| 11 | V1-076 Persist session-ordered position exit references | M | paper |
-| 12 | V1-053 Implement bounded authenticated analysis and paper reads | M | backend |
-| 12 | V1-062 Integrate source readiness and daily publication | M | analysis |
-| 12 | V1-063 Implement evidence-aware retention and reset cleanup | M | backend |
-| 12 | V1-064 Implement isolated restore reconciliation and recovery fencing | M | backend |
-| 13 | V1-054 Wire protected REST handlers and internal worker entry points | M | backend |
-| 13 | V1-069 Review actual source and company-sector coverage | M | qa |
-| 14 | V1-061 Connect all static workspaces to the protected API | M | frontend |
-| 14 | V1-065 Add bounded operational telemetry and backup alerts | M | operations |
-| 14 | V1-066 Verify cross-store and financial mutation races | M | qa |
-| 14 | V1-068 Measure pilot latency and calculation placement costs | M | qa |
-| 15 | V1-067 Verify complete workflows against WCAG 2.2 AA | M | qa |
-| 15 | V1-070 Evaluate provisional financial rules on point-in-time holdouts | M | qa |
-| 15 | V1-071 Validate the isolated backup and restore runbook | M | operations |
-| 15 | V1-077 Configure bounded operational alerts and log retention | M | infrastructure |
-| 16 | V1-072 Review measured whole-stack pilot operating cost | S | operations |
-| 17 | V1-074 Assemble pilot acceptance and separate activation approvals | S | operations |
+| 1 | [#3](https://github.com/issacamara/tradvisor/issues/3) Verify development ownership and preservation inputs | M | infrastructure |
+| 1 | [#4](https://github.com/issacamara/tradvisor/issues/4) Build the responsive static investor workspace shell | M | frontend |
+| 1 | [#5](https://github.com/issacamara/tradvisor/issues/5) Record legal privacy and advisory release review | S | operations |
+| 1 | [#6](https://github.com/issacamara/tradvisor/issues/6) Establish isolated Python package and fixture test foundations | S | contracts |
+| 2 | [#7](https://github.com/issacamara/tradvisor/issues/7) Define exact-money scalars and command envelopes | M | contracts |
+| 2 | [#8](https://github.com/issacamara/tradvisor/issues/8) Preserve existing Terraform resource ownership | M | infrastructure |
+| 3 | [#9](https://github.com/issacamara/tradvisor/issues/9) Define analytical input and result schemas | M | contracts |
+| 3 | [#10](https://github.com/issacamara/tradvisor/issues/10) Review the complete preservation-only Terraform plan | S | infrastructure |
+| 3 | [#11](https://github.com/issacamara/tradvisor/issues/11) Implement exact paper cost and P&L arithmetic | M | paper |
+| 4 | [#12](https://github.com/issacamara/tradvisor/issues/12) Define transactional paper and REST schemas | M | contracts |
+| 4 | [#13](https://github.com/issacamara/tradvisor/issues/13) Preserve retry-stable raw ingestion evidence | M | ingestion |
+| 4 | [#14](https://github.com/issacamara/tradvisor/issues/14) Define additive analytical source and revision structures | M | infrastructure |
+| 4 | [#17](https://github.com/issacamara/tradvisor/issues/17) Build point-in-time analytical session inputs | M | analysis |
+| 5 | [#18](https://github.com/issacamara/tradvisor/issues/18) Generate the versioned OpenAPI and TypeScript client | M | contracts |
+| 5 | [#19](https://github.com/issacamara/tradvisor/issues/19) Make shared BigQuery loads idempotent and isolated | M | ingestion |
+| 5 | [#15](https://github.com/issacamara/tradvisor/issues/15) Configure static hosting and invited identity foundation | M | infrastructure |
+| 5 | [#21](https://github.com/issacamara/tradvisor/issues/21) Implement seeded EMA20 and EMA50 with replay anchors | M | analysis |
+| 5 | [#22](https://github.com/issacamara/tradvisor/issues/22) Implement Wilder RSI14 and interruption handling | M | analysis |
+| 5 | [#23](https://github.com/issacamara/tradvisor/issues/23) Implement Wilder ATR14 with labeled no-trade modeling | M | analysis |
+| 5 | [#24](https://github.com/issacamara/tradvisor/issues/24) Calculate complete-window liquidity eligibility | M | analysis |
+| 5 | [#25](https://github.com/issacamara/tradvisor/issues/25) Calculate Growth activity and profitability dimensions | M | analysis |
+| 5 | [#26](https://github.com/issacamara/tradvisor/issues/26) Calculate sector resilience and valuation dimensions | M | analysis |
+| 5 | [#27](https://github.com/issacamara/tradvisor/issues/27) Publish supported dividend facts without composite scores | M | analysis |
+| 5 | [#28](https://github.com/issacamara/tradvisor/issues/28) Implement versioned Firestore repositories and transaction seams | M | backend |
+| 5 | [#29](https://github.com/issacamara/tradvisor/issues/29) Implement ordered independent recovery-register operations | M | backend |
+| 6 | [#30](https://github.com/issacamara/tradvisor/issues/30) Extend CI with isolated contract and application checks | M | ci |
+| 6 | [#31](https://github.com/issacamara/tradvisor/issues/31) Normalize issuer identity and financial category evidence | M | ingestion |
+| 6 | [#32](https://github.com/issacamara/tradvisor/issues/32) Implement versioned exchange calendar ingestion | M | ingestion |
+| 6 | [#33](https://github.com/issacamara/tradvisor/issues/33) Align existing financial PDF extraction entry points | M | ingestion |
+| 6 | [#16](https://github.com/issacamara/tradvisor/issues/16) Configure scale-to-zero API and bounded jobs | M | infrastructure |
+| 6 | [#34](https://github.com/issacamara/tradvisor/issues/34) Implement the versioned trend-confirmation strategy | M | analysis |
+| 6 | [#35](https://github.com/issacamara/tradvisor/issues/35) Compose Growth ratings and independent advisory guards | M | analysis |
+| 6 | [#36](https://github.com/issacamara/tradvisor/issues/36) Enforce verified identity and current invitation admission | M | backend |
+| 6 | [#37](https://github.com/issacamara/tradvisor/issues/37) Implement recovery-fenced idempotency receipts | M | backend |
+| 6 | [#38](https://github.com/issacamara/tradvisor/issues/38) Build sign-in verification and password-reset flows | M | frontend |
+| 6 | [#39](https://github.com/issacamara/tradvisor/issues/39) Build the Swing screener and indicator detail | M | frontend |
+| 6 | [#40](https://github.com/issacamara/tradvisor/issues/40) Build Growth rankings and first-class dividend research | M | frontend |
+| 6 | [#41](https://github.com/issacamara/tradvisor/issues/41) Build paper portfolio reporting and order history | M | frontend |
+| 7 | [#42](https://github.com/issacamara/tradvisor/issues/42) Normalize genuine share observations and source sessions | M | ingestion |
+| 7 | [#43](https://github.com/issacamara/tradvisor/issues/43) Normalize annual reporting and non-financial inputs | M | ingestion |
+| 7 | [#44](https://github.com/issacamara/tradvisor/issues/44) Normalize matching ordinary capitalization evidence | M | ingestion |
+| 7 | [#45](https://github.com/issacamara/tradvisor/issues/45) Normalize supported price and share adjustment evidence | M | ingestion |
+| 7 | [#46](https://github.com/issacamara/tradvisor/issues/46) Normalize existing dividend payments and coverage | M | ingestion |
+| 7 | [#47](https://github.com/issacamara/tradvisor/issues/47) Normalize rating-specific history and loading | M | ingestion |
+| 7 | [#20](https://github.com/issacamara/tradvisor/issues/20) Configure transactional storage and protected recovery storage | M | infrastructure |
+| 7 | [#48](https://github.com/issacamara/tradvisor/issues/48) Persist immutable analytical batches and readiness manifests | M | analysis |
+| 7 | [#49](https://github.com/issacamara/tradvisor/issues/49) Implement paper setup and versioned preferences | M | paper |
+| 7 | [#50](https://github.com/issacamara/tradvisor/issues/50) Implement versioned position exit advice | M | paper |
+| 7 | [#51](https://github.com/issacamara/tradvisor/issues/51) Implement recovery-safe trusted admission changes | M | backend |
+| 7 | [#52](https://github.com/issacamara/tradvisor/issues/52) Implement confirmed paper commands and uncertain-response handling | M | frontend |
+| 8 | [#53](https://github.com/issacamara/tradvisor/issues/53) Normalize evidenced banking activity and capital inputs | M | ingestion |
+| 8 | [#54](https://github.com/issacamara/tradvisor/issues/54) Normalize evidenced insurance activity and solvency inputs | M | ingestion |
+| 8 | [#55](https://github.com/issacamara/tradvisor/issues/55) Publish transactionally guarded execution-price revisions | M | backend |
+| 8 | [#56](https://github.com/issacamara/tradvisor/issues/56) Publish complete immutable analytical serving copies | M | backend |
+| 9 | [#57](https://github.com/issacamara/tradvisor/issues/57) Package reused ingestion functions with explicit settings | M | infrastructure |
+| 9 | [#58](https://github.com/issacamara/tradvisor/issues/58) Accept fresh manual orders with atomic reservations | M | paper |
+| 10 | [#59](https://github.com/issacamara/tradvisor/issues/59) Define explicit ingestion workflow dependencies | M | infrastructure |
+| 10 | [#60](https://github.com/issacamara/tradvisor/issues/60) Execute or expire pending orders exactly once | M | paper |
+| 11 | [#61](https://github.com/issacamara/tradvisor/issues/61) Restore approval-gated development delivery automation | M | ci |
+| 11 | [#62](https://github.com/issacamara/tradvisor/issues/62) Implement restrictive-intent-first portfolio reset | M | paper |
+| 11 | [#63](https://github.com/issacamara/tradvisor/issues/63) Persist session-ordered position exit references | M | paper |
+| 12 | [#64](https://github.com/issacamara/tradvisor/issues/64) Implement bounded authenticated analysis and paper reads | M | backend |
+| 12 | [#65](https://github.com/issacamara/tradvisor/issues/65) Integrate source readiness and daily publication | M | analysis |
+| 12 | [#66](https://github.com/issacamara/tradvisor/issues/66) Implement evidence-aware retention and reset cleanup | M | backend |
+| 12 | [#67](https://github.com/issacamara/tradvisor/issues/67) Implement isolated restore reconciliation and recovery fencing | M | backend |
+| 13 | [#68](https://github.com/issacamara/tradvisor/issues/68) Wire protected REST handlers and internal worker entry points | M | backend |
+| 13 | [#69](https://github.com/issacamara/tradvisor/issues/69) Review actual source and company-sector coverage | M | qa |
+| 14 | [#70](https://github.com/issacamara/tradvisor/issues/70) Connect all static workspaces to the protected API | M | frontend |
+| 14 | [#71](https://github.com/issacamara/tradvisor/issues/71) Add bounded operational telemetry and backup alerts | M | operations |
+| 14 | [#72](https://github.com/issacamara/tradvisor/issues/72) Verify cross-store and financial mutation races | M | qa |
+| 14 | [#73](https://github.com/issacamara/tradvisor/issues/73) Measure pilot latency and calculation placement costs | M | qa |
+| 15 | [#74](https://github.com/issacamara/tradvisor/issues/74) Verify complete workflows against WCAG 2.2 AA | M | qa |
+| 15 | [#75](https://github.com/issacamara/tradvisor/issues/75) Evaluate provisional financial rules on point-in-time holdouts | M | qa |
+| 15 | [#76](https://github.com/issacamara/tradvisor/issues/76) Validate the isolated backup and restore runbook | M | operations |
+| 15 | [#77](https://github.com/issacamara/tradvisor/issues/77) Configure bounded operational alerts and log retention | M | infrastructure |
+| 16 | [#78](https://github.com/issacamara/tradvisor/issues/78) Review measured whole-stack pilot operating cost | S | operations |
+| 17 | [#79](https://github.com/issacamara/tradvisor/issues/79) Assemble pilot acceptance and separate activation approvals | S | operations |
 
 ## Wave Plan
 | Wave | Tickets | Parallelizability | Rationale |
 |---|---|---|---|
-| 1 | V1-006 (number pending), V1-055 (number pending), V1-073 (number pending), V1-075 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 2 | V1-001 (number pending), V1-007 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 3 | V1-002 (number pending), V1-008 (number pending), V1-044 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 4 | V1-003 (number pending), V1-009 (number pending), V1-024 (number pending), V1-029 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 5 | V1-025 (number pending), V1-004 (number pending), V1-010 (number pending), V1-030 (number pending), V1-031 (number pending), V1-032 (number pending), V1-033 (number pending), V1-035 (number pending), V1-036 (number pending), V1-038 (number pending), V1-040 (number pending), V1-050 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 6 | V1-026 (number pending), V1-005 (number pending), V1-011 (number pending), V1-012 (number pending), V1-014 (number pending), V1-034 (number pending), V1-037 (number pending), V1-041 (number pending), V1-042 (number pending), V1-056 (number pending), V1-057 (number pending), V1-058 (number pending), V1-059 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 7 | V1-027 (number pending), V1-013 (number pending), V1-015 (number pending), V1-018 (number pending), V1-019 (number pending), V1-020 (number pending), V1-021 (number pending), V1-039 (number pending), V1-043 (number pending), V1-045 (number pending), V1-052 (number pending), V1-060 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 8 | V1-016 (number pending), V1-017 (number pending), V1-046 (number pending), V1-047 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 9 | V1-022 (number pending), V1-048 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 10 | V1-023 (number pending), V1-049 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 11 | V1-028 (number pending), V1-051 (number pending), V1-076 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 12 | V1-053 (number pending), V1-062 (number pending), V1-063 (number pending), V1-064 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 13 | V1-054 (number pending), V1-069 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 14 | V1-061 (number pending), V1-065 (number pending), V1-066 (number pending), V1-068 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 15 | V1-067 (number pending), V1-070 (number pending), V1-071 (number pending), V1-077 (number pending) | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 16 | V1-072 (number pending) | Single task | All hard prerequisites are in earlier waves; conflicting owners are serialized |
-| 17 | V1-074 (number pending) | Single task | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 1 | #3, #4, #5, #6 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 2 | #7, #8 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 3 | #9, #10, #11 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 4 | #12, #13, #14, #17 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 5 | #15, #18, #19, #21, #22, #23, #24, #25, #26, #27, #28, #29 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 6 | #16, #30, #31, #32, #33, #34, #35, #36, #37, #38, #39, #40, #41 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 7 | #20, #42, #43, #44, #45, #46, #47, #48, #49, #50, #51, #52 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 8 | #53, #54, #55, #56 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 9 | #57, #58 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 10 | #59, #60 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 11 | #61, #62, #63 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 12 | #64, #65, #66, #67 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 13 | #68, #69 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 14 | #70, #71, #72, #73 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 15 | #74, #75, #76, #77 | May run concurrently after eligibility verification; no shared-file conflicts within this wave | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 16 | #78 | Single task | All hard prerequisites are in earlier waves; conflicting owners are serialized |
+| 17 | #79 | Single task | All hard prerequisites are in earlier waves; conflicting owners are serialized |
 
 ## Dependency Graph
 Solid arrows are hard prerequisites. Dotted undirected edges are file-conflict exclusions, not dependencies. Node IDs map to the ticket table; wave planning does not replace current ownership checks.
 ```mermaid
 flowchart TD
-  V1006["V1-006 "]
-  V1055["V1-055 "]
-  V1073["V1-073 "]
-  V1075["V1-075 "]
-  V1001["V1-001 "]
-  V1007["V1-007 "]
-  V1002["V1-002 "]
-  V1008["V1-008 "]
-  V1044["V1-044 "]
-  V1003["V1-003 "]
-  V1009["V1-009 "]
-  V1024["V1-024 "]
-  V1025["V1-025 "]
-  V1026["V1-026 "]
-  V1029["V1-029 "]
-  V1004["V1-004 "]
-  V1010["V1-010 "]
-  V1027["V1-027 "]
-  V1030["V1-030 "]
-  V1031["V1-031 "]
-  V1032["V1-032 "]
-  V1033["V1-033 "]
-  V1035["V1-035 "]
-  V1036["V1-036 "]
-  V1038["V1-038 "]
-  V1040["V1-040 "]
-  V1050["V1-050 "]
-  V1005["V1-005 "]
-  V1011["V1-011 "]
-  V1012["V1-012 "]
-  V1014["V1-014 "]
-  V1034["V1-034 "]
-  V1037["V1-037 "]
-  V1041["V1-041 "]
-  V1042["V1-042 "]
-  V1056["V1-056 "]
-  V1057["V1-057 "]
-  V1058["V1-058 "]
-  V1059["V1-059 "]
-  V1013["V1-013 "]
-  V1015["V1-015 "]
-  V1018["V1-018 "]
-  V1019["V1-019 "]
-  V1020["V1-020 "]
-  V1021["V1-021 "]
-  V1039["V1-039 "]
-  V1043["V1-043 "]
-  V1045["V1-045 "]
-  V1052["V1-052 "]
-  V1060["V1-060 "]
-  V1016["V1-016 "]
-  V1017["V1-017 "]
-  V1046["V1-046 "]
-  V1047["V1-047 "]
-  V1022["V1-022 "]
-  V1048["V1-048 "]
-  V1023["V1-023 "]
-  V1049["V1-049 "]
-  V1028["V1-028 "]
-  V1051["V1-051 "]
-  V1076["V1-076 "]
-  V1053["V1-053 "]
-  V1062["V1-062 "]
-  V1063["V1-063 "]
-  V1064["V1-064 "]
-  V1054["V1-054 "]
-  V1069["V1-069 "]
-  V1061["V1-061 "]
-  V1065["V1-065 "]
-  V1066["V1-066 "]
-  V1068["V1-068 "]
-  V1067["V1-067 "]
-  V1070["V1-070 "]
-  V1071["V1-071 "]
-  V1077["V1-077 "]
-  V1072["V1-072 "]
-  V1074["V1-074 "]
+  V1006["V1-006 #3"]
+  V1055["V1-055 #4"]
+  V1073["V1-073 #5"]
+  V1075["V1-075 #6"]
+  V1001["V1-001 #7"]
+  V1007["V1-007 #8"]
+  V1002["V1-002 #9"]
+  V1008["V1-008 #10"]
+  V1044["V1-044 #11"]
+  V1003["V1-003 #12"]
+  V1009["V1-009 #13"]
+  V1024["V1-024 #14"]
+  V1025["V1-025 #15"]
+  V1026["V1-026 #16"]
+  V1029["V1-029 #17"]
+  V1004["V1-004 #18"]
+  V1010["V1-010 #19"]
+  V1027["V1-027 #20"]
+  V1030["V1-030 #21"]
+  V1031["V1-031 #22"]
+  V1032["V1-032 #23"]
+  V1033["V1-033 #24"]
+  V1035["V1-035 #25"]
+  V1036["V1-036 #26"]
+  V1038["V1-038 #27"]
+  V1040["V1-040 #28"]
+  V1050["V1-050 #29"]
+  V1005["V1-005 #30"]
+  V1011["V1-011 #31"]
+  V1012["V1-012 #32"]
+  V1014["V1-014 #33"]
+  V1034["V1-034 #34"]
+  V1037["V1-037 #35"]
+  V1041["V1-041 #36"]
+  V1042["V1-042 #37"]
+  V1056["V1-056 #38"]
+  V1057["V1-057 #39"]
+  V1058["V1-058 #40"]
+  V1059["V1-059 #41"]
+  V1013["V1-013 #42"]
+  V1015["V1-015 #43"]
+  V1018["V1-018 #44"]
+  V1019["V1-019 #45"]
+  V1020["V1-020 #46"]
+  V1021["V1-021 #47"]
+  V1039["V1-039 #48"]
+  V1043["V1-043 #49"]
+  V1045["V1-045 #50"]
+  V1052["V1-052 #51"]
+  V1060["V1-060 #52"]
+  V1016["V1-016 #53"]
+  V1017["V1-017 #54"]
+  V1046["V1-046 #55"]
+  V1047["V1-047 #56"]
+  V1022["V1-022 #57"]
+  V1048["V1-048 #58"]
+  V1023["V1-023 #59"]
+  V1049["V1-049 #60"]
+  V1028["V1-028 #61"]
+  V1051["V1-051 #62"]
+  V1076["V1-076 #63"]
+  V1053["V1-053 #64"]
+  V1062["V1-062 #65"]
+  V1063["V1-063 #66"]
+  V1064["V1-064 #67"]
+  V1054["V1-054 #68"]
+  V1069["V1-069 #69"]
+  V1061["V1-061 #70"]
+  V1065["V1-065 #71"]
+  V1066["V1-066 #72"]
+  V1068["V1-068 #73"]
+  V1067["V1-067 #74"]
+  V1070["V1-070 #75"]
+  V1071["V1-071 #76"]
+  V1077["V1-077 #77"]
+  V1072["V1-072 #78"]
+  V1074["V1-074 #79"]
   V1075 --> V1001
   V1006 --> V1007
   V1001 --> V1002
@@ -410,123 +410,123 @@ flowchart TD
 ## Conflict Register
 | Ticket | Conflicts With | Overlapping Files/Modules |
 |---|---|---|
-| V1-004 (number pending) | V1-055 (number pending) | `frontend/` |
-| V1-005 (number pending) | V1-055 (number pending) | `frontend/` |
-| V1-006 (number pending) | V1-008 (number pending) | `operator-evidence/infrastructure/` |
-| V1-007 (number pending) | V1-022 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-023 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-024 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-025 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-026 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-007 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-009 (number pending) | V1-010 (number pending) | `archive/legacy-ingestion/scripts/helper.py` |
-| V1-022 (number pending) | V1-023 (number pending) | `terraform/` |
-| V1-022 (number pending) | V1-024 (number pending) | `terraform/` |
-| V1-022 (number pending) | V1-025 (number pending) | `terraform/` |
-| V1-022 (number pending) | V1-026 (number pending) | `terraform/` |
-| V1-022 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-022 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-023 (number pending) | V1-024 (number pending) | `terraform/` |
-| V1-023 (number pending) | V1-025 (number pending) | `terraform/` |
-| V1-023 (number pending) | V1-026 (number pending) | `terraform/` |
-| V1-023 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-023 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-024 (number pending) | V1-025 (number pending) | `terraform/` |
-| V1-024 (number pending) | V1-026 (number pending) | `terraform/` |
-| V1-024 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-024 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-025 (number pending) | V1-026 (number pending) | `terraform/` |
-| V1-025 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-025 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-026 (number pending) | V1-027 (number pending) | `terraform/` |
-| V1-026 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-027 (number pending) | V1-077 (number pending) | `terraform/` |
-| V1-055 (number pending) | V1-056 (number pending) | `frontend/` |
-| V1-055 (number pending) | V1-057 (number pending) | `frontend/` |
-| V1-055 (number pending) | V1-058 (number pending) | `frontend/` |
-| V1-055 (number pending) | V1-059 (number pending) | `frontend/` |
-| V1-055 (number pending) | V1-060 (number pending) | `frontend/` |
-| V1-055 (number pending) | V1-061 (number pending) | `frontend/` |
+| #18 | #4 | `frontend/` |
+| #30 | #4 | `frontend/` |
+| #3 | #10 | `operator-evidence/infrastructure/` |
+| #8 | #57 | `terraform/` |
+| #8 | #59 | `terraform/` |
+| #8 | #14 | `terraform/` |
+| #8 | #15 | `terraform/` |
+| #8 | #16 | `terraform/` |
+| #8 | #20 | `terraform/` |
+| #8 | #77 | `terraform/` |
+| #13 | #19 | `archive/legacy-ingestion/scripts/helper.py` |
+| #57 | #59 | `terraform/` |
+| #57 | #14 | `terraform/` |
+| #57 | #15 | `terraform/` |
+| #57 | #16 | `terraform/` |
+| #57 | #20 | `terraform/` |
+| #57 | #77 | `terraform/` |
+| #59 | #14 | `terraform/` |
+| #59 | #15 | `terraform/` |
+| #59 | #16 | `terraform/` |
+| #59 | #20 | `terraform/` |
+| #59 | #77 | `terraform/` |
+| #14 | #15 | `terraform/` |
+| #14 | #16 | `terraform/` |
+| #14 | #20 | `terraform/` |
+| #14 | #77 | `terraform/` |
+| #15 | #16 | `terraform/` |
+| #15 | #20 | `terraform/` |
+| #15 | #77 | `terraform/` |
+| #16 | #20 | `terraform/` |
+| #16 | #77 | `terraform/` |
+| #20 | #77 | `terraform/` |
+| #4 | #38 | `frontend/` |
+| #4 | #39 | `frontend/` |
+| #4 | #40 | `frontend/` |
+| #4 | #41 | `frontend/` |
+| #4 | #52 | `frontend/` |
+| #4 | #70 | `frontend/` |
 
 ## Delivery Checklist
-- [ ] V1-006 (number pending) Verify development ownership and preservation inputs
-- [ ] V1-055 (number pending) Build the responsive static investor workspace shell
-- [ ] V1-073 (number pending) Record legal privacy and advisory release review
-- [ ] V1-075 (number pending) Establish isolated Python package and fixture test foundations
-- [ ] V1-001 (number pending) Define exact-money scalars and command envelopes
-- [ ] V1-007 (number pending) Preserve existing Terraform resource ownership
-- [ ] V1-002 (number pending) Define analytical input and result schemas
-- [ ] V1-008 (number pending) Review the complete preservation-only Terraform plan
-- [ ] V1-044 (number pending) Implement exact paper cost and P&L arithmetic
-- [ ] V1-003 (number pending) Define transactional paper and REST schemas
-- [ ] V1-009 (number pending) Preserve retry-stable raw ingestion evidence
-- [ ] V1-024 (number pending) Define additive analytical source and revision structures
-- [ ] V1-025 (number pending) Configure static hosting and invited identity foundation
-- [ ] V1-026 (number pending) Configure scale-to-zero API and bounded jobs
-- [ ] V1-029 (number pending) Build point-in-time analytical session inputs
-- [ ] V1-004 (number pending) Generate the versioned OpenAPI and TypeScript client
-- [ ] V1-010 (number pending) Make shared BigQuery loads idempotent and isolated
-- [ ] V1-027 (number pending) Configure transactional storage and protected recovery storage
-- [ ] V1-030 (number pending) Implement seeded EMA20 and EMA50 with replay anchors
-- [ ] V1-031 (number pending) Implement Wilder RSI14 and interruption handling
-- [ ] V1-032 (number pending) Implement Wilder ATR14 with labeled no-trade modeling
-- [ ] V1-033 (number pending) Calculate complete-window liquidity eligibility
-- [ ] V1-035 (number pending) Calculate Growth activity and profitability dimensions
-- [ ] V1-036 (number pending) Calculate sector resilience and valuation dimensions
-- [ ] V1-038 (number pending) Publish supported dividend facts without composite scores
-- [ ] V1-040 (number pending) Implement versioned Firestore repositories and transaction seams
-- [ ] V1-050 (number pending) Implement ordered independent recovery-register operations
-- [ ] V1-005 (number pending) Extend CI with isolated contract and application checks
-- [ ] V1-011 (number pending) Normalize issuer identity and financial category evidence
-- [ ] V1-012 (number pending) Implement versioned exchange calendar ingestion
-- [ ] V1-014 (number pending) Align existing financial PDF extraction entry points
-- [ ] V1-034 (number pending) Implement the versioned trend-confirmation strategy
-- [ ] V1-037 (number pending) Compose Growth ratings and independent advisory guards
-- [ ] V1-041 (number pending) Enforce verified identity and current invitation admission
-- [ ] V1-042 (number pending) Implement recovery-fenced idempotency receipts
-- [ ] V1-056 (number pending) Build sign-in verification and password-reset flows
-- [ ] V1-057 (number pending) Build the Swing screener and indicator detail
-- [ ] V1-058 (number pending) Build Growth rankings and first-class dividend research
-- [ ] V1-059 (number pending) Build paper portfolio reporting and order history
-- [ ] V1-013 (number pending) Normalize genuine share observations and source sessions
-- [ ] V1-015 (number pending) Normalize annual reporting and non-financial inputs
-- [ ] V1-018 (number pending) Normalize matching ordinary capitalization evidence
-- [ ] V1-019 (number pending) Normalize supported price and share adjustment evidence
-- [ ] V1-020 (number pending) Normalize existing dividend payments and coverage
-- [ ] V1-021 (number pending) Normalize rating-specific history and loading
-- [ ] V1-039 (number pending) Persist immutable analytical batches and readiness manifests
-- [ ] V1-043 (number pending) Implement paper setup and versioned preferences
-- [ ] V1-045 (number pending) Implement versioned position exit advice
-- [ ] V1-052 (number pending) Implement recovery-safe trusted admission changes
-- [ ] V1-060 (number pending) Implement confirmed paper commands and uncertain-response handling
-- [ ] V1-016 (number pending) Normalize evidenced banking activity and capital inputs
-- [ ] V1-017 (number pending) Normalize evidenced insurance activity and solvency inputs
-- [ ] V1-046 (number pending) Publish transactionally guarded execution-price revisions
-- [ ] V1-047 (number pending) Publish complete immutable analytical serving copies
-- [ ] V1-022 (number pending) Package reused ingestion functions with explicit settings
-- [ ] V1-048 (number pending) Accept fresh manual orders with atomic reservations
-- [ ] V1-023 (number pending) Define explicit ingestion workflow dependencies
-- [ ] V1-049 (number pending) Execute or expire pending orders exactly once
-- [ ] V1-028 (number pending) Restore approval-gated development delivery automation
-- [ ] V1-051 (number pending) Implement restrictive-intent-first portfolio reset
-- [ ] V1-076 (number pending) Persist session-ordered position exit references
-- [ ] V1-053 (number pending) Implement bounded authenticated analysis and paper reads
-- [ ] V1-062 (number pending) Integrate source readiness and daily publication
-- [ ] V1-063 (number pending) Implement evidence-aware retention and reset cleanup
-- [ ] V1-064 (number pending) Implement isolated restore reconciliation and recovery fencing
-- [ ] V1-054 (number pending) Wire protected REST handlers and internal worker entry points
-- [ ] V1-069 (number pending) Review actual source and company-sector coverage
-- [ ] V1-061 (number pending) Connect all static workspaces to the protected API
-- [ ] V1-065 (number pending) Add bounded operational telemetry and backup alerts
-- [ ] V1-066 (number pending) Verify cross-store and financial mutation races
-- [ ] V1-068 (number pending) Measure pilot latency and calculation placement costs
-- [ ] V1-067 (number pending) Verify complete workflows against WCAG 2.2 AA
-- [ ] V1-070 (number pending) Evaluate provisional financial rules on point-in-time holdouts
-- [ ] V1-071 (number pending) Validate the isolated backup and restore runbook
-- [ ] V1-077 (number pending) Configure bounded operational alerts and log retention
-- [ ] V1-072 (number pending) Review measured whole-stack pilot operating cost
-- [ ] V1-074 (number pending) Assemble pilot acceptance and separate activation approvals
+- [ ] #3 Verify development ownership and preservation inputs
+- [ ] #4 Build the responsive static investor workspace shell
+- [ ] #5 Record legal privacy and advisory release review
+- [ ] #6 Establish isolated Python package and fixture test foundations
+- [ ] #7 Define exact-money scalars and command envelopes
+- [ ] #8 Preserve existing Terraform resource ownership
+- [ ] #9 Define analytical input and result schemas
+- [ ] #10 Review the complete preservation-only Terraform plan
+- [ ] #11 Implement exact paper cost and P&L arithmetic
+- [ ] #12 Define transactional paper and REST schemas
+- [ ] #13 Preserve retry-stable raw ingestion evidence
+- [ ] #14 Define additive analytical source and revision structures
+- [ ] #15 Configure static hosting and invited identity foundation
+- [ ] #16 Configure scale-to-zero API and bounded jobs
+- [ ] #17 Build point-in-time analytical session inputs
+- [ ] #18 Generate the versioned OpenAPI and TypeScript client
+- [ ] #19 Make shared BigQuery loads idempotent and isolated
+- [ ] #20 Configure transactional storage and protected recovery storage
+- [ ] #21 Implement seeded EMA20 and EMA50 with replay anchors
+- [ ] #22 Implement Wilder RSI14 and interruption handling
+- [ ] #23 Implement Wilder ATR14 with labeled no-trade modeling
+- [ ] #24 Calculate complete-window liquidity eligibility
+- [ ] #25 Calculate Growth activity and profitability dimensions
+- [ ] #26 Calculate sector resilience and valuation dimensions
+- [ ] #27 Publish supported dividend facts without composite scores
+- [ ] #28 Implement versioned Firestore repositories and transaction seams
+- [ ] #29 Implement ordered independent recovery-register operations
+- [ ] #30 Extend CI with isolated contract and application checks
+- [ ] #31 Normalize issuer identity and financial category evidence
+- [ ] #32 Implement versioned exchange calendar ingestion
+- [ ] #33 Align existing financial PDF extraction entry points
+- [ ] #34 Implement the versioned trend-confirmation strategy
+- [ ] #35 Compose Growth ratings and independent advisory guards
+- [ ] #36 Enforce verified identity and current invitation admission
+- [ ] #37 Implement recovery-fenced idempotency receipts
+- [ ] #38 Build sign-in verification and password-reset flows
+- [ ] #39 Build the Swing screener and indicator detail
+- [ ] #40 Build Growth rankings and first-class dividend research
+- [ ] #41 Build paper portfolio reporting and order history
+- [ ] #42 Normalize genuine share observations and source sessions
+- [ ] #43 Normalize annual reporting and non-financial inputs
+- [ ] #44 Normalize matching ordinary capitalization evidence
+- [ ] #45 Normalize supported price and share adjustment evidence
+- [ ] #46 Normalize existing dividend payments and coverage
+- [ ] #47 Normalize rating-specific history and loading
+- [ ] #48 Persist immutable analytical batches and readiness manifests
+- [ ] #49 Implement paper setup and versioned preferences
+- [ ] #50 Implement versioned position exit advice
+- [ ] #51 Implement recovery-safe trusted admission changes
+- [ ] #52 Implement confirmed paper commands and uncertain-response handling
+- [ ] #53 Normalize evidenced banking activity and capital inputs
+- [ ] #54 Normalize evidenced insurance activity and solvency inputs
+- [ ] #55 Publish transactionally guarded execution-price revisions
+- [ ] #56 Publish complete immutable analytical serving copies
+- [ ] #57 Package reused ingestion functions with explicit settings
+- [ ] #58 Accept fresh manual orders with atomic reservations
+- [ ] #59 Define explicit ingestion workflow dependencies
+- [ ] #60 Execute or expire pending orders exactly once
+- [ ] #61 Restore approval-gated development delivery automation
+- [ ] #62 Implement restrictive-intent-first portfolio reset
+- [ ] #63 Persist session-ordered position exit references
+- [ ] #64 Implement bounded authenticated analysis and paper reads
+- [ ] #65 Integrate source readiness and daily publication
+- [ ] #66 Implement evidence-aware retention and reset cleanup
+- [ ] #67 Implement isolated restore reconciliation and recovery fencing
+- [ ] #68 Wire protected REST handlers and internal worker entry points
+- [ ] #69 Review actual source and company-sector coverage
+- [ ] #70 Connect all static workspaces to the protected API
+- [ ] #71 Add bounded operational telemetry and backup alerts
+- [ ] #72 Verify cross-store and financial mutation races
+- [ ] #73 Measure pilot latency and calculation placement costs
+- [ ] #74 Verify complete workflows against WCAG 2.2 AA
+- [ ] #75 Evaluate provisional financial rules on point-in-time holdouts
+- [ ] #76 Validate the isolated backup and restore runbook
+- [ ] #77 Configure bounded operational alerts and log retention
+- [ ] #78 Review measured whole-stack pilot operating cost
+- [ ] #79 Assemble pilot acceptance and separate activation approvals
 
 ## Reservations And First-Wave Assignments
 None. Dispatch is disabled. First-wave work is technically independent local foundations plus restricted infrastructure/compliance review; no agent availability or authorization is presumed. Infrastructure read/plan permission and legal/operator decisions must be established by the future owner.

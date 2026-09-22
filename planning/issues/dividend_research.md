@@ -1,10 +1,10 @@
 <!-- tradvisor-v1-backlog:V1-038 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 1,2
-- Api baseline (publication pending): sections/trace 3,4
-- Architecture baseline (publication pending): sections/trace 5.4; FR-LT-01,FR-LT-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 1,2
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 3,4
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4; FR-LT-01,FR-LT-07
 
 ## Scope
 Present recorded payments and calculate historical ordinary yield only with verified complete TTM and compatible paid/gross/share basis.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 5
 Domain: analysis
-Blocked by: V1-029 (number pending)
-Blocks: V1-039 (number pending)
+Blocked by: #17
+Blocks: #48
 
 Conflict exclusions (not hard dependencies):
 none

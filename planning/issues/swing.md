@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-034 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.4; FR-SW-01,FR-SW-02,FR-SW-03,FR-SW-05,FR-SW-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4; FR-SW-01,FR-SW-02,FR-SW-03,FR-SW-05,FR-SW-07
 
 ## Scope
 Compose approved 20+20+30+30 contributions, unrounded threshold and independent liquidity/current-trade/structural guards behind one stable strategy interface.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: analysis
-Blocked by: V1-030 (number pending), V1-031 (number pending), V1-032 (number pending), V1-033 (number pending)
-Blocks: V1-039 (number pending), V1-045 (number pending)
+Blocked by: #21, #22, #23, #24
+Blocks: #48, #50
 
 Conflict exclusions (not hard dependencies):
 none

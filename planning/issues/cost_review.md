@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-072 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9,13; BRD-A-03,ARCH-ASM-04
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9,13; BRD-A-03,ARCH-ASM-04
 
 ## Scope
 Compile compute, BigQuery, storage, serving operations, extraction, backup/restore, logs, builds, artifacts and transfer costs with assumptions and limits.
@@ -28,8 +28,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: S (up to 2 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 16
 Domain: operations
-Blocked by: V1-068 (number pending), V1-071 (number pending), V1-065 (number pending)
-Blocks: V1-074 (number pending)
+Blocked by: #73, #76, #71
+Blocks: #79
 
 Conflict exclusions (not hard dependencies):
 none

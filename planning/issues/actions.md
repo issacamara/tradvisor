@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-019 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 6.3
-- Mapping baseline (publication pending): sections/trace MAP-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 6.3
+- [Mapping part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667): sections/trace MAP-07
 
 ## Scope
 Represent evidenced split/bonus factors and unsupported complex events with original values and known-at dates.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 7
 Domain: ingestion
-Blocked by: V1-011 (number pending), V1-010 (number pending)
-Blocks: V1-062 (number pending)
+Blocked by: #31, #19
+Blocks: #65
 
 Conflict exclusions (not hard dependencies):
 none

@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-044 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 7; FR-PT-04,FR-PT-06
-- Api baseline (publication pending): sections/trace 2
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; FR-PT-04,FR-PT-06
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 2
 
 ## Scope
 Implement whole-XOF half-up fees, weighted costs, proportional purchase-fee allocation and final-sale residuals with checked intermediates.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 3
 Domain: paper
-Blocked by: V1-001 (number pending)
-Blocks: V1-045 (number pending), V1-049 (number pending)
+Blocked by: #7
+Blocks: #50, #60
 
 Conflict exclusions (not hard dependencies):
 none

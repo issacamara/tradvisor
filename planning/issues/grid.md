@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-029 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 2,6.1,6.3
-- Architecture baseline (publication pending): sections/trace 5.4,7; NFR-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 2,6.1,6.3
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4,7; NFR-02
 
 ## Scope
 Implement deterministic session-grid/price-basis selection and known-at joins using synthetic normalized fixtures.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 4
 Domain: analysis
-Blocked by: V1-002 (number pending)
-Blocks: V1-030 (number pending), V1-031 (number pending), V1-032 (number pending), V1-033 (number pending), V1-035 (number pending), V1-036 (number pending), V1-038 (number pending)
+Blocked by: #9
+Blocks: #21, #22, #23, #24, #25, #26, #27
 
 Conflict exclusions (not hard dependencies):
 none

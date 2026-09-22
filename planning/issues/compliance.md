@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-073 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9,11; BRD-C-02,ARCH-ASM-08
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9,11; BRD-C-02,ARCH-ASM-08
 
 ## Scope
 Have product owner obtain applicable legal/privacy/disclaimer and retention review for private advisory/paper use; record only public-safe conclusions.
@@ -29,7 +29,7 @@ Estimate: S (up to 2 hours of focused work; not elapsed wait for approvals/evide
 Wave: 1
 Domain: operations
 Blocked by: none
-Blocks: V1-074 (number pending)
+Blocks: #79
 
 Conflict exclusions (not hard dependencies):
 none

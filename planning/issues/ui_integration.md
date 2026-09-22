@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-061 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 13; ORCH-11,NFR-04
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 13; ORCH-11,NFR-04
 
 ## Scope
 Wire runtime client transport and navigation across Swing, Long-Term and paper flows; remove fixture-only routing from production build.
@@ -30,10 +30,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 14
 Domain: frontend
-Blocked by: V1-054 (number pending), V1-057 (number pending), V1-058 (number pending), V1-060 (number pending)
-Blocks: V1-067 (number pending), V1-074 (number pending)
+Blocked by: #68, #39, #40, #52
+Blocks: #74, #79
 
 Conflict exclusions (not hard dependencies):
-- V1-055 (number pending): `frontend/`
+- #4: `frontend/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

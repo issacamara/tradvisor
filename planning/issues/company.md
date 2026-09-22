@@ -1,10 +1,10 @@
 <!-- tradvisor-v1-backlog:V1-011 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Mapping baseline (publication pending): sections/trace MAP-01,MAP-02
-- Financial baseline (publication pending): sections/trace 2
-- Architecture baseline (publication pending): sections/trace 11; DR-01
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Mapping part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667): sections/trace MAP-01,MAP-02
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 2
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 11; DR-01
 
 ## Scope
 Reuse company discovery and mapping; add reference loading with issuer/class validity, market sector, financial category, provenance and manual corrections.
@@ -32,8 +32,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: ingestion
-Blocked by: V1-010 (number pending)
-Blocks: V1-013 (number pending), V1-015 (number pending), V1-018 (number pending), V1-019 (number pending), V1-020 (number pending), V1-021 (number pending)
+Blocked by: #19
+Blocks: #42, #43, #44, #45, #46, #47
 
 Conflict exclusions (not hard dependencies):
 none

@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-060 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Api baseline (publication pending): sections/trace 5,6
-- Architecture baseline (publication pending): sections/trace 5.5; FR-PT-01,FR-PT-04,FR-PT-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 5,6
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.5; FR-PT-01,FR-PT-04,FR-PT-07
 
 ## Scope
 Implement setup/explicit fee, manual recommendation-linked order with Keep acknowledgment, preferences and confirmed reset using one key per intent.
@@ -30,10 +30,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 7
 Domain: frontend
-Blocked by: V1-056 (number pending), V1-059 (number pending), V1-057 (number pending)
-Blocks: V1-061 (number pending)
+Blocked by: #38, #41, #39
+Blocks: #70
 
 Conflict exclusions (not hard dependencies):
-- V1-055 (number pending): `frontend/`
+- #4: `frontend/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

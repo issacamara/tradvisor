@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-055 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.5; NFR-04,BRD-A-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.5; NFR-04,BRD-A-02
 
 ## Scope
 Initialize pinned Next.js static export, Tailwind/shadcn, TanStack v8, selected chart libraries and resizable desktop/stacked mobile workspace primitives.
@@ -29,16 +29,16 @@ Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence)
 Wave: 1
 Domain: frontend
 Blocked by: none
-Blocks: V1-004 (number pending), V1-056 (number pending), V1-057 (number pending), V1-058 (number pending), V1-059 (number pending)
+Blocks: #18, #38, #39, #40, #41
 
 Conflict exclusions (not hard dependencies):
-- V1-004 (number pending): `frontend/`
-- V1-005 (number pending): `frontend/`
-- V1-056 (number pending): `frontend/`
-- V1-057 (number pending): `frontend/`
-- V1-058 (number pending): `frontend/`
-- V1-059 (number pending): `frontend/`
-- V1-060 (number pending): `frontend/`
-- V1-061 (number pending): `frontend/`
+- #18: `frontend/`
+- #30: `frontend/`
+- #38: `frontend/`
+- #39: `frontend/`
+- #40: `frontend/`
+- #41: `frontend/`
+- #52: `frontend/`
+- #70: `frontend/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

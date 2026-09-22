@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-041 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9; BRD-A-01
-- Api baseline (publication pending): sections/trace 2
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9; BRD-A-01
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 2
 
 ## Scope
 Implement token verification, verified-email checks and fail-closed current admin-controlled membership on every protected request and receipt replay.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: backend
-Blocked by: V1-040 (number pending)
-Blocks: V1-043 (number pending), V1-052 (number pending), V1-053 (number pending)
+Blocked by: #28
+Blocks: #49, #51, #64
 
 Conflict exclusions (not hard dependencies):
 none

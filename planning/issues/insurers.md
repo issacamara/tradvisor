@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-017 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 2,3.3
-- Mapping baseline (publication pending): sections/trace MAP-06
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 2,3.3
+- [Mapping part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667): sections/trace MAP-06
 
 ## Scope
 Add consistent gross written premiums and eligible/required solvency amounts from obtainable report evidence.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 8
 Domain: ingestion
-Blocked by: V1-015 (number pending)
-Blocks: V1-022 (number pending), V1-062 (number pending)
+Blocked by: #43
+Blocks: #57, #65
 
 Conflict exclusions (not hard dependencies):
 none

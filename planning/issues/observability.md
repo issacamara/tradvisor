@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-065 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9; NFR-05,NFR-08,NFR-09
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9; NFR-05,NFR-08,NFR-09
 
 ## Scope
 Instrument ingestion/publication/worker failures, backup age, retries and cost drivers with sanitized logs and an operator alert/runbook contract.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 14
 Domain: operations
-Blocked by: V1-054 (number pending), V1-062 (number pending), V1-063 (number pending)
-Blocks: V1-072 (number pending), V1-077 (number pending)
+Blocked by: #68, #65, #66
+Blocks: #78, #77
 
 Conflict exclusions (not hard dependencies):
 none

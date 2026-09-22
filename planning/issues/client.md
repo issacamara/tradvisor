@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-004 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 8; BRD-A-02
-- Api baseline (publication pending): sections/trace 11
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 8; BRD-A-02
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 11
 
 ## Scope
 Generate the complete schema and reproducible TypeScript bindings; provide safe fixture transport for frontend work.
@@ -32,10 +32,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 5
 Domain: contracts
-Blocked by: V1-003 (number pending), V1-055 (number pending)
-Blocks: V1-005 (number pending), V1-056 (number pending), V1-057 (number pending), V1-058 (number pending), V1-059 (number pending)
+Blocked by: #12, #4
+Blocks: #30, #38, #39, #40, #41
 
 Conflict exclusions (not hard dependencies):
-- V1-055 (number pending): `frontend/`
+- #4: `frontend/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

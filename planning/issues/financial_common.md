@@ -1,10 +1,10 @@
 <!-- tradvisor-v1-backlog:V1-015 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Mapping baseline (publication pending): sections/trace MAP-01,MAP-06
-- Financial baseline (publication pending): sections/trace 2,3
-- Architecture baseline (publication pending): sections/trace 13; FR-LT-05
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Mapping part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667): sections/trace MAP-01,MAP-06
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 2,3
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 13; FR-LT-05
 
 ## Scope
 Extend the existing extraction schema for period/publication/units/scope, matched ordinary-owner earnings/equity, opening balance and non-financial debt/cash/current assets/liabilities where evidenced.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 7
 Domain: ingestion
-Blocked by: V1-014 (number pending), V1-011 (number pending)
-Blocks: V1-016 (number pending), V1-017 (number pending), V1-022 (number pending)
+Blocked by: #33, #31
+Blocks: #53, #54, #57
 
 Conflict exclusions (not hard dependencies):
 none

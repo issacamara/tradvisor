@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-076 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 7; FR-SW-06,NFR-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; FR-SW-06,NFR-02
 
 ## Scope
 Advance high-water, latched activation, evaluated-through session and generation-bound advice from each eligible daily close using historical position state and frozen exit policy.
@@ -29,8 +29,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 11
 Domain: paper
-Blocked by: V1-045 (number pending), V1-049 (number pending), V1-040 (number pending)
-Blocks: V1-053 (number pending), V1-062 (number pending)
+Blocked by: #50, #60, #28
+Blocks: #64, #65
 
 Conflict exclusions (not hard dependencies):
 none

@@ -1,0 +1,450 @@
+{
+  "gate": {
+    "number": 1,
+    "url": "https://github.com/issacamara/tradvisor/issues/1"
+  },
+  "comments": [
+    {
+      "document": "architecture",
+      "part": 1,
+      "number": 5766885054,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054"
+    },
+    {
+      "document": "architecture",
+      "part": 2,
+      "number": 5766899249,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249"
+    },
+    {
+      "document": "architecture",
+      "part": 3,
+      "number": 5766899584,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584"
+    },
+    {
+      "document": "financial",
+      "part": 1,
+      "number": 5766900132,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132"
+    },
+    {
+      "document": "api",
+      "part": 1,
+      "number": 5766900607,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607"
+    },
+    {
+      "document": "api",
+      "part": 2,
+      "number": 5766900955,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955"
+    },
+    {
+      "document": "integration",
+      "part": 1,
+      "number": 5766901291,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901291"
+    },
+    {
+      "document": "mapping",
+      "part": 1,
+      "number": 5766901667,
+      "url": "https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667"
+    }
+  ],
+  "epic": {
+    "number": 2,
+    "url": "https://github.com/issacamara/tradvisor/issues/2"
+  },
+  "tickets": {
+    "ownership": {
+      "number": 3,
+      "url": "https://github.com/issacamara/tradvisor/issues/3"
+    },
+    "shell": {
+      "number": 4,
+      "url": "https://github.com/issacamara/tradvisor/issues/4"
+    },
+    "compliance": {
+      "number": 5,
+      "url": "https://github.com/issacamara/tradvisor/issues/5"
+    },
+    "bootstrap": {
+      "number": 6,
+      "url": "https://github.com/issacamara/tradvisor/issues/6"
+    },
+    "scalars": {
+      "number": 7,
+      "url": "https://github.com/issacamara/tradvisor/issues/7"
+    },
+    "preserve": {
+      "number": 8,
+      "url": "https://github.com/issacamara/tradvisor/issues/8"
+    },
+    "analysis_models": {
+      "number": 9,
+      "url": "https://github.com/issacamara/tradvisor/issues/9"
+    },
+    "preservation_plan": {
+      "number": 10,
+      "url": "https://github.com/issacamara/tradvisor/issues/10"
+    },
+    "accounting": {
+      "number": 11,
+      "url": "https://github.com/issacamara/tradvisor/issues/11"
+    },
+    "paper_models": {
+      "number": 12,
+      "url": "https://github.com/issacamara/tradvisor/issues/12"
+    },
+    "snapshot": {
+      "number": 13,
+      "url": "https://github.com/issacamara/tradvisor/issues/13"
+    },
+    "tables": {
+      "number": 14,
+      "url": "https://github.com/issacamara/tradvisor/issues/14"
+    },
+    "hosting": {
+      "number": 15,
+      "url": "https://github.com/issacamara/tradvisor/issues/15"
+    },
+    "runtime": {
+      "number": 16,
+      "url": "https://github.com/issacamara/tradvisor/issues/16"
+    },
+    "grid": {
+      "number": 17,
+      "url": "https://github.com/issacamara/tradvisor/issues/17"
+    },
+    "client": {
+      "number": 18,
+      "url": "https://github.com/issacamara/tradvisor/issues/18"
+    },
+    "loads": {
+      "number": 19,
+      "url": "https://github.com/issacamara/tradvisor/issues/19"
+    },
+    "store_infra": {
+      "number": 20,
+      "url": "https://github.com/issacamara/tradvisor/issues/20"
+    },
+    "ema": {
+      "number": 21,
+      "url": "https://github.com/issacamara/tradvisor/issues/21"
+    },
+    "rsi": {
+      "number": 22,
+      "url": "https://github.com/issacamara/tradvisor/issues/22"
+    },
+    "atr": {
+      "number": 23,
+      "url": "https://github.com/issacamara/tradvisor/issues/23"
+    },
+    "liquidity": {
+      "number": 24,
+      "url": "https://github.com/issacamara/tradvisor/issues/24"
+    },
+    "growth_core": {
+      "number": 25,
+      "url": "https://github.com/issacamara/tradvisor/issues/25"
+    },
+    "growth_risk": {
+      "number": 26,
+      "url": "https://github.com/issacamara/tradvisor/issues/26"
+    },
+    "dividend_research": {
+      "number": 27,
+      "url": "https://github.com/issacamara/tradvisor/issues/27"
+    },
+    "store": {
+      "number": 28,
+      "url": "https://github.com/issacamara/tradvisor/issues/28"
+    },
+    "register": {
+      "number": 29,
+      "url": "https://github.com/issacamara/tradvisor/issues/29"
+    },
+    "ci": {
+      "number": 30,
+      "url": "https://github.com/issacamara/tradvisor/issues/30"
+    },
+    "company": {
+      "number": 31,
+      "url": "https://github.com/issacamara/tradvisor/issues/31"
+    },
+    "calendar": {
+      "number": 32,
+      "url": "https://github.com/issacamara/tradvisor/issues/32"
+    },
+    "financial_pipeline": {
+      "number": 33,
+      "url": "https://github.com/issacamara/tradvisor/issues/33"
+    },
+    "swing": {
+      "number": 34,
+      "url": "https://github.com/issacamara/tradvisor/issues/34"
+    },
+    "growth_advice": {
+      "number": 35,
+      "url": "https://github.com/issacamara/tradvisor/issues/35"
+    },
+    "auth": {
+      "number": 36,
+      "url": "https://github.com/issacamara/tradvisor/issues/36"
+    },
+    "receipts": {
+      "number": 37,
+      "url": "https://github.com/issacamara/tradvisor/issues/37"
+    },
+    "auth_ui": {
+      "number": 38,
+      "url": "https://github.com/issacamara/tradvisor/issues/38"
+    },
+    "swing_ui": {
+      "number": 39,
+      "url": "https://github.com/issacamara/tradvisor/issues/39"
+    },
+    "long_ui": {
+      "number": 40,
+      "url": "https://github.com/issacamara/tradvisor/issues/40"
+    },
+    "paper_ui": {
+      "number": 41,
+      "url": "https://github.com/issacamara/tradvisor/issues/41"
+    },
+    "shares": {
+      "number": 42,
+      "url": "https://github.com/issacamara/tradvisor/issues/42"
+    },
+    "financial_common": {
+      "number": 43,
+      "url": "https://github.com/issacamara/tradvisor/issues/43"
+    },
+    "capital": {
+      "number": 44,
+      "url": "https://github.com/issacamara/tradvisor/issues/44"
+    },
+    "actions": {
+      "number": 45,
+      "url": "https://github.com/issacamara/tradvisor/issues/45"
+    },
+    "dividends": {
+      "number": 46,
+      "url": "https://github.com/issacamara/tradvisor/issues/46"
+    },
+    "ratings": {
+      "number": 47,
+      "url": "https://github.com/issacamara/tradvisor/issues/47"
+    },
+    "batch": {
+      "number": 48,
+      "url": "https://github.com/issacamara/tradvisor/issues/48"
+    },
+    "setup": {
+      "number": 49,
+      "url": "https://github.com/issacamara/tradvisor/issues/49"
+    },
+    "holding": {
+      "number": 50,
+      "url": "https://github.com/issacamara/tradvisor/issues/50"
+    },
+    "admission_ops": {
+      "number": 51,
+      "url": "https://github.com/issacamara/tradvisor/issues/51"
+    },
+    "command_ui": {
+      "number": 52,
+      "url": "https://github.com/issacamara/tradvisor/issues/52"
+    },
+    "banks": {
+      "number": 53,
+      "url": "https://github.com/issacamara/tradvisor/issues/53"
+    },
+    "insurers": {
+      "number": 54,
+      "url": "https://github.com/issacamara/tradvisor/issues/54"
+    },
+    "execution_prices": {
+      "number": 55,
+      "url": "https://github.com/issacamara/tradvisor/issues/55"
+    },
+    "serving": {
+      "number": 56,
+      "url": "https://github.com/issacamara/tradvisor/issues/56"
+    },
+    "packaging": {
+      "number": 57,
+      "url": "https://github.com/issacamara/tradvisor/issues/57"
+    },
+    "accept": {
+      "number": 58,
+      "url": "https://github.com/issacamara/tradvisor/issues/58"
+    },
+    "workflows": {
+      "number": 59,
+      "url": "https://github.com/issacamara/tradvisor/issues/59"
+    },
+    "fill": {
+      "number": 60,
+      "url": "https://github.com/issacamara/tradvisor/issues/60"
+    },
+    "delivery": {
+      "number": 61,
+      "url": "https://github.com/issacamara/tradvisor/issues/61"
+    },
+    "reset": {
+      "number": 62,
+      "url": "https://github.com/issacamara/tradvisor/issues/62"
+    },
+    "holding_projection": {
+      "number": 63,
+      "url": "https://github.com/issacamara/tradvisor/issues/63"
+    },
+    "reads": {
+      "number": 64,
+      "url": "https://github.com/issacamara/tradvisor/issues/64"
+    },
+    "pipeline_integration": {
+      "number": 65,
+      "url": "https://github.com/issacamara/tradvisor/issues/65"
+    },
+    "retention": {
+      "number": 66,
+      "url": "https://github.com/issacamara/tradvisor/issues/66"
+    },
+    "restore": {
+      "number": 67,
+      "url": "https://github.com/issacamara/tradvisor/issues/67"
+    },
+    "routes": {
+      "number": 68,
+      "url": "https://github.com/issacamara/tradvisor/issues/68"
+    },
+    "coverage": {
+      "number": 69,
+      "url": "https://github.com/issacamara/tradvisor/issues/69"
+    },
+    "ui_integration": {
+      "number": 70,
+      "url": "https://github.com/issacamara/tradvisor/issues/70"
+    },
+    "observability": {
+      "number": 71,
+      "url": "https://github.com/issacamara/tradvisor/issues/71"
+    },
+    "race_tests": {
+      "number": 72,
+      "url": "https://github.com/issacamara/tradvisor/issues/72"
+    },
+    "benchmark": {
+      "number": 73,
+      "url": "https://github.com/issacamara/tradvisor/issues/73"
+    },
+    "accessibility": {
+      "number": 74,
+      "url": "https://github.com/issacamara/tradvisor/issues/74"
+    },
+    "effectiveness": {
+      "number": 75,
+      "url": "https://github.com/issacamara/tradvisor/issues/75"
+    },
+    "restore_drill": {
+      "number": 76,
+      "url": "https://github.com/issacamara/tradvisor/issues/76"
+    },
+    "monitoring_config": {
+      "number": 77,
+      "url": "https://github.com/issacamara/tradvisor/issues/77"
+    },
+    "cost_review": {
+      "number": 78,
+      "url": "https://github.com/issacamara/tradvisor/issues/78"
+    },
+    "release": {
+      "number": 79,
+      "url": "https://github.com/issacamara/tradvisor/issues/79"
+    }
+  },
+  "linked": [
+    "ownership",
+    "shell",
+    "compliance",
+    "bootstrap",
+    "scalars",
+    "preserve",
+    "analysis_models",
+    "preservation_plan",
+    "accounting",
+    "paper_models",
+    "snapshot",
+    "tables",
+    "hosting",
+    "runtime",
+    "grid",
+    "client",
+    "loads",
+    "store_infra",
+    "ema",
+    "rsi",
+    "atr",
+    "liquidity",
+    "growth_core",
+    "growth_risk",
+    "dividend_research",
+    "store",
+    "register",
+    "ci",
+    "company",
+    "calendar",
+    "financial_pipeline",
+    "swing",
+    "growth_advice",
+    "auth",
+    "receipts",
+    "auth_ui",
+    "swing_ui",
+    "long_ui",
+    "paper_ui",
+    "shares",
+    "financial_common",
+    "capital",
+    "actions",
+    "dividends",
+    "ratings",
+    "batch",
+    "setup",
+    "holding",
+    "admission_ops",
+    "command_ui",
+    "banks",
+    "insurers",
+    "execution_prices",
+    "serving",
+    "packaging",
+    "accept",
+    "workflows",
+    "fill",
+    "delivery",
+    "reset",
+    "holding_projection",
+    "reads",
+    "pipeline_integration",
+    "retention",
+    "restore",
+    "routes",
+    "coverage",
+    "ui_integration",
+    "observability",
+    "race_tests",
+    "benchmark",
+    "accessibility",
+    "effectiveness",
+    "restore_drill",
+    "monitoring_config",
+    "cost_review",
+    "release"
+  ],
+  "epic_linked": true
+}

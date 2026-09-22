@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-001 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Api baseline (publication pending): sections/trace 2,3,6,7
-- Architecture baseline (publication pending): sections/trace 8; NFR-03
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 2,3,6,7
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 8; NFR-03
 
 ## Scope
 Implement typed scalar bounds, money strings, UTC instants, identifiers, errors and recovery-aware command metadata.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 2
 Domain: contracts
-Blocked by: V1-075 (number pending)
-Blocks: V1-002 (number pending), V1-003 (number pending), V1-044 (number pending)
+Blocked by: #6
+Blocks: #9, #12, #11
 
 Conflict exclusions (not hard dependencies):
 none

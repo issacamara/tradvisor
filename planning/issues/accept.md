@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-048 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Api baseline (publication pending): sections/trace 5
-- Architecture baseline (publication pending): sections/trace 7; FR-PT-01,FR-PT-03,FR-PT-05
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 5
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; FR-PT-01,FR-PT-03,FR-PT-05
 
 ## Scope
 Validate current recommendation/advice against latest completed session, state and recovery; reserve cash/shares and create pending order and receipt atomically.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 9
 Domain: paper
-Blocked by: V1-043 (number pending), V1-045 (number pending), V1-047 (number pending), V1-046 (number pending)
-Blocks: V1-049 (number pending)
+Blocked by: #49, #50, #56, #55
+Blocks: #60
 
 Conflict exclusions (not hard dependencies):
 none

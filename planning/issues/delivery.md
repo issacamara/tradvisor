@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-028 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 13; BRD-A-05
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 13; BRD-A-05
 
 ## Scope
 Define V1-to-development build and reviewed-plan delivery with immutable artifacts and verified identity trust; no automatic PR apply.
@@ -29,8 +29,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 11
 Domain: ci
-Blocked by: V1-005 (number pending), V1-023 (number pending), V1-024 (number pending), V1-025 (number pending), V1-026 (number pending), V1-027 (number pending)
-Blocks: V1-071 (number pending), V1-074 (number pending)
+Blocked by: #30, #59, #14, #15, #16, #20
+Blocks: #76, #79
 
 Conflict exclusions (not hard dependencies):
 none

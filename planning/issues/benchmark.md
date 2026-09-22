@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-068 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.4,9; NFR-05,NFR-07,BRD-A-03
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4,9; NFR-05,NFR-07,BRD-A-03
 
 ## Scope
 Benchmark representative SQL versus bounded Python exact calculations and pilot read/transaction load; record chosen placement with cost/precision evidence.
@@ -29,8 +29,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 14
 Domain: qa
-Blocked by: V1-062 (number pending), V1-054 (number pending)
-Blocks: V1-070 (number pending), V1-072 (number pending)
+Blocked by: #65, #68
+Blocks: #75, #78
 
 Conflict exclusions (not hard dependencies):
 none

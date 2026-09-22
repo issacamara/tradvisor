@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-007 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9,12,13; BRD-A-05
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9,12,13; BRD-A-05
 
 ## Scope
 Restore compatible declarations and explicit development backend guidance using verified private ownership; retain resource addresses, schedules and existing access.
@@ -29,16 +29,16 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 2
 Domain: infrastructure
-Blocked by: V1-006 (number pending)
-Blocks: V1-008 (number pending)
+Blocked by: #3
+Blocks: #10
 
 Conflict exclusions (not hard dependencies):
-- V1-022 (number pending): `terraform/`
-- V1-023 (number pending): `terraform/`
-- V1-024 (number pending): `terraform/`
-- V1-025 (number pending): `terraform/`
-- V1-026 (number pending): `terraform/`
-- V1-027 (number pending): `terraform/`
-- V1-077 (number pending): `terraform/`
+- #57: `terraform/`
+- #59: `terraform/`
+- #14: `terraform/`
+- #15: `terraform/`
+- #16: `terraform/`
+- #20: `terraform/`
+- #77: `terraform/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

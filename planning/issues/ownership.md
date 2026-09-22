@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-006 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9,11,13; BRD-A-05, ARCH-ASM-09
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9,11,13; BRD-A-05, ARCH-ASM-09
 
 ## Scope
 Perform an explicitly authorized read-only ownership refresh; reconcile current state, live metadata, configuration and deployment identity trust in restricted evidence.
@@ -29,9 +29,9 @@ Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence)
 Wave: 1
 Domain: infrastructure
 Blocked by: none
-Blocks: V1-007 (number pending)
+Blocks: #8
 
 Conflict exclusions (not hard dependencies):
-- V1-008 (number pending): `operator-evidence/infrastructure/`
+- #10: `operator-evidence/infrastructure/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

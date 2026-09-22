@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-063 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 9; NFR-09
-- Api baseline (publication pending): sections/trace 10
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9; NFR-09
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 10
 
 ## Scope
 Implement bounded retryable old-generation deletion, receipt expiry and analytical evidence lifecycle while preserving active references and register exclusions.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 12
 Domain: backend
-Blocked by: V1-051 (number pending), V1-047 (number pending), V1-050 (number pending)
-Blocks: V1-065 (number pending), V1-066 (number pending)
+Blocked by: #62, #56, #29
+Blocks: #71, #72
 
 Conflict exclusions (not hard dependencies):
 none

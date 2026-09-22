@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-057 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.5; FR-SW-01,FR-SW-03,FR-SW-04,NFR-10
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.5; FR-SW-01,FR-SW-03,FR-SW-04,NFR-10
 
 ## Scope
 Use typed fixtures to build table, candlestick/volume and EMA/RSI/ATR/traded-value panels with dated evidence, explanations and separate holding advice.
@@ -29,10 +29,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: frontend
-Blocked by: V1-055 (number pending), V1-004 (number pending)
-Blocks: V1-060 (number pending), V1-061 (number pending)
+Blocked by: #4, #18
+Blocks: #52, #70
 
 Conflict exclusions (not hard dependencies):
-- V1-055 (number pending): `frontend/`
+- #4: `frontend/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

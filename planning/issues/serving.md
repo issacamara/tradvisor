@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-047 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.4,8; NFR-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.4,8; NFR-02
 
 ## Scope
 Copy validated canonical results to bounded immutable serving records and promote one active pointer only after manifest completeness checks.
@@ -29,8 +29,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 8
 Domain: backend
-Blocked by: V1-040 (number pending), V1-039 (number pending)
-Blocks: V1-048 (number pending), V1-053 (number pending), V1-062 (number pending), V1-063 (number pending), V1-064 (number pending)
+Blocked by: #28, #48
+Blocks: #58, #64, #65, #66, #67
 
 Conflict exclusions (not hard dependencies):
 none

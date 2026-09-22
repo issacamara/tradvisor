@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-050 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Integration baseline (publication pending): sections/trace 4
-- Architecture baseline (publication pending): sections/trace 9; NFR-08
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Integration part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901291): sections/trace 4
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9; NFR-08
 
 ## Scope
 Implement immutable restrictive intents, create-only payload identity, predecessor-checked subject heads and completeness verification using a storage adapter.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 5
 Domain: backend
-Blocked by: V1-003 (number pending)
-Blocks: V1-051 (number pending), V1-052 (number pending), V1-063 (number pending)
+Blocked by: #12
+Blocks: #62, #51, #66
 
 Conflict exclusions (not hard dependencies):
 none

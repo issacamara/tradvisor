@@ -1,10 +1,10 @@
 <!-- tradvisor-v1-backlog:V1-002 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Api baseline (publication pending): sections/trace 3,8,9
-- Financial baseline (publication pending): sections/trace 1,2,6
-- Architecture baseline (publication pending): sections/trace 7; DR-01, FR-SW-03, FR-LT-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 3,8,9
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 1,2,6
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; DR-01, FR-SW-03, FR-LT-02
 
 ## Scope
 Define normalized company/session/price/financial/capital/dividend/rating models and immutable result/batch models with fixtures.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 3
 Domain: contracts
-Blocked by: V1-001 (number pending)
-Blocks: V1-003 (number pending), V1-009 (number pending), V1-024 (number pending), V1-029 (number pending)
+Blocked by: #7
+Blocks: #12, #13, #14, #17
 
 Conflict exclusions (not hard dependencies):
 none

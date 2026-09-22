@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-009 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 5.1,6,7; NFR-02
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.1,6,7; NFR-02
 
 ## Scope
 Add immutable source/run snapshots, hashes, parser manifests and import-safe entry points to shared ingestion support.
@@ -29,10 +29,10 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 4
 Domain: ingestion
-Blocked by: V1-002 (number pending)
-Blocks: V1-010 (number pending)
+Blocked by: #9
+Blocks: #19
 
 Conflict exclusions (not hard dependencies):
-- V1-010 (number pending): `archive/legacy-ingestion/scripts/helper.py`
+- #19: `archive/legacy-ingestion/scripts/helper.py`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.

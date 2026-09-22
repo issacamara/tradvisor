@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-014 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 6,11; BRD-I-02
-- Mapping baseline (publication pending): sections/trace MAP-06
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 6,11; BRD-I-02
+- [Mapping part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901667): sections/trace MAP-06
 
 ## Scope
 Reuse and consolidate existing acquisition/extraction/loading stages, repair incremental/initialization signatures, persist accepted artifacts and bound retries.
@@ -32,8 +32,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 6
 Domain: ingestion
-Blocked by: V1-010 (number pending)
-Blocks: V1-015 (number pending)
+Blocked by: #19
+Blocks: #43
 
 Conflict exclusions (not hard dependencies):
 none

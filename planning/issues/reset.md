@@ -1,10 +1,10 @@
 <!-- tradvisor-v1-backlog:V1-051 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Integration baseline (publication pending): sections/trace 4
-- Api baseline (publication pending): sections/trace 5,6,10
-- Architecture baseline (publication pending): sections/trace 7; FR-PT-07
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Integration part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766901291): sections/trace 4
+- [Api part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900607), [Api part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900955): sections/trace 5,6,10
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7; FR-PT-07
 
 ## Scope
 Persist reset intent, revalidate/fence generation, confirm exclusion, then commit replacement/opening balance/receipt; resume uncertain operations under same ID.
@@ -31,8 +31,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 11
 Domain: paper
-Blocked by: V1-043 (number pending), V1-050 (number pending), V1-049 (number pending)
-Blocks: V1-054 (number pending), V1-063 (number pending), V1-064 (number pending)
+Blocked by: #49, #29, #60
+Blocks: #68, #66, #67
 
 Conflict exclusions (not hard dependencies):
 none

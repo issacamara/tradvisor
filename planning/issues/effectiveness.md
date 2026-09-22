@@ -1,9 +1,9 @@
 <!-- tradvisor-v1-backlog:V1-070 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Financial baseline (publication pending): sections/trace 7
-- Architecture baseline (publication pending): sections/trace 11; ARCH-ASM-12
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Financial part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766900132): sections/trace 7
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 11; ARCH-ASM-12
 
 ## Scope
 Run a bounded predeclared holdout evaluation of Swing/exit and Growth behavior using known-at evidence, fees, liquidity and manual next-close limitations.
@@ -30,8 +30,8 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 15
 Domain: qa
-Blocked by: V1-062 (number pending), V1-068 (number pending), V1-069 (number pending)
-Blocks: V1-074 (number pending)
+Blocked by: #65, #73, #69
+Blocks: #79
 
 Conflict exclusions (not hard dependencies):
 none

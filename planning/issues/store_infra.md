@@ -1,8 +1,8 @@
 <!-- tradvisor-v1-backlog:V1-027 -->
 ## Context
-Tracking epic: EPIC_PENDING
-Approved public baseline: BASELINE_PENDING
-- Architecture baseline (publication pending): sections/trace 7,9; NFR-08,NFR-09
+Tracking epic: https://github.com/issacamara/tradvisor/issues/2
+Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
+- [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 7,9; NFR-08,NFR-09
 
 ## Scope
 Define eligible Firestore Native database, query indexes, deny-direct-client rules, seven-day daily backups and private independent register with restricted cleanup permissions.
@@ -31,16 +31,16 @@ Architecture v1.0; financial v1.1; API v0.13; integration v1.0. Coverage amendme
 Estimate: M (2-4 hours of focused work; not elapsed wait for approvals/evidence).
 Wave: 7
 Domain: infrastructure
-Blocked by: V1-008 (number pending), V1-003 (number pending)
-Blocks: V1-028 (number pending), V1-071 (number pending), V1-077 (number pending)
+Blocked by: #10, #12
+Blocks: #61, #76, #77
 
 Conflict exclusions (not hard dependencies):
-- V1-007 (number pending): `terraform/`
-- V1-022 (number pending): `terraform/`
-- V1-023 (number pending): `terraform/`
-- V1-024 (number pending): `terraform/`
-- V1-025 (number pending): `terraform/`
-- V1-026 (number pending): `terraform/`
-- V1-077 (number pending): `terraform/`
+- #8: `terraform/`
+- #57: `terraform/`
+- #59: `terraform/`
+- #14: `terraform/`
+- #15: `terraform/`
+- #16: `terraform/`
+- #77: `terraform/`
 
 Assignment: none. Dispatch is disabled at the stakeholder's request. Before future assignment, verify merged prerequisite artifacts on V1, current state, actual roster and file reservations in the epic. Closure or a wave label alone is not eligibility. Infrastructure plans, provisioning, paid runs, seeding and activation retain separate approval gates.
