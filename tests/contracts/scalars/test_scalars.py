@@ -12,7 +12,9 @@ from pydantic import BaseModel, ValidationError
 from backend.contracts.envelopes import ApiError, CommandMetadata, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.scalars import (
     INT64_MAX,
+    INT64_MIN,
     MAX_COMMAND_BYTES,
+    FeeRatePct,
     NonNegativeMoney,
     Score,
     SignedMoney,
@@ -21,17 +23,21 @@ from backend.contracts.scalars import (
 )
 
 
-def test_money_normalizes_six_places_and_rejects_int64_overflow() -> None:
-    amount = SignedMoney(amount="9223372036854.775807", currency="XOF")
+def test_money_accepts_signed_int64_endpoints_and_rejects_overflow() -> None:
+    maximum = SignedMoney(amount="9223372036854.775807", currency="XOF")
+    minimum = SignedMoney(amount="-9223372036854.775808", currency="XOF")
 
-    assert amount.micros == INT64_MAX
-    assert amount.model_dump(mode="json") == {
+    assert maximum.micros == INT64_MAX
+    assert minimum.micros == INT64_MIN
+    assert maximum.model_dump(mode="json") == {
         "amount": "9223372036854.775807",
         "currency": "XOF",
     }
 
     with pytest.raises(ValidationError):
         SignedMoney(amount="9223372036854.775808", currency="XOF")
+    with pytest.raises(ValidationError):
+        SignedMoney(amount="-9223372036854.775809", currency="XOF")
 
 
 @pytest.mark.parametrize("amount", ["1.0000001", "1e6", "+1", "1,000", "NaN", "Infinity"])
@@ -46,11 +52,48 @@ def test_starting_cash_requires_whole_xof_within_bounds(amount: str) -> None:
         StartingCash(amount=amount, currency="XOF")
 
 
-def test_starting_cash_inclusive_bound_serializes_canonically() -> None:
-    assert StartingCash(amount="100000000", currency="XOF").model_dump(mode="json") == {
-        "amount": "100000000.000000",
+@pytest.mark.parametrize(
+    ("amount", "expected"),
+    [
+        ("100000", "100000.000000"),
+        ("1000000", "1000000.000000"),
+        ("100000000", "100000000.000000"),
+    ],
+)
+def test_starting_cash_valid_boundaries_and_default_serialize_canonically(
+    amount: str, expected: str
+) -> None:
+    assert StartingCash(amount=amount, currency="XOF").model_dump(mode="json") == {
+        "amount": expected,
         "currency": "XOF",
     }
+
+
+class FeePreference(BaseModel):
+    fee_rate_pct: FeeRatePct
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("0", "0"),
+        ("12.340000", "12.34"),
+        ("999999999999.999999", "999999999999.999999"),
+    ],
+)
+def test_fee_rate_pct_serializes_a_canonical_supported_decimal(value: str, expected: str) -> None:
+    assert FeePreference(fee_rate_pct=value).model_dump(mode="json") == {
+        "fee_rate_pct": expected
+    }
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["-0.1", "1e3", "1000000000000", "1.0000001", "NaN", "Infinity"],
+)
+def test_fee_rate_pct_rejects_invalid_or_out_of_range_strings(value: str) -> None:
+    with pytest.raises(ValidationError):
+        FeePreference(fee_rate_pct=value)
 
 
 class ShareCommand(BaseModel):

@@ -5,7 +5,14 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 INT64_MIN: Final = -(2**63)
 INT64_MAX: Final = 2**63 - 1
@@ -15,6 +22,7 @@ MICROS_PER_XOF: Final = 1_000_000
 STARTING_CASH_MIN_XOF: Final = 100_000
 STARTING_CASH_MAX_XOF: Final = 100_000_000
 MAX_WHOLE_SHARES: Final = 1_000_000_000
+FEE_RATE_PCT_MAX_INTEGER_DIGITS: Final = 12
 
 OpaqueIdentifier = Annotated[
     str,
@@ -31,6 +39,25 @@ Score = Annotated[float, Field(strict=True, ge=0, le=100, allow_inf_nan=False)]
 
 _NONNEGATIVE_DECIMAL = r"^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$"
 _SIGNED_DECIMAL = r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$"
+_FEE_RATE_PCT_DECIMAL = r"^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$"
+
+
+def _canonical_fee_rate_pct(value: object) -> str:
+    """Normalize an explicitly supplied API v0.13 fee percentage string."""
+
+    import re
+
+    if not isinstance(value, str) or re.fullmatch(_FEE_RATE_PCT_DECIMAL, value) is None:
+        raise ValueError(
+            "fee_rate_pct must be a nonnegative decimal string with at most "
+            "twelve integer and six fractional digits"
+        )
+    decimal_value = Decimal(value)
+    normalized = format(decimal_value.normalize(), "f")
+    return "0" if normalized in {"-0", ""} else normalized
+
+
+FeeRatePct = Annotated[str, BeforeValidator(_canonical_fee_rate_pct)]
 
 
 def _decimal_to_micros(value: str, *, signed: bool) -> int:
