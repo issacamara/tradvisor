@@ -69,7 +69,6 @@ class CommandMetadata(ContractModel):
 
     idempotency_key: IdempotencyKey
     recovery_id: OpaqueIdentifier
-    request_fingerprint: OpaqueIdentifier
     content_length: Annotated[int, Field(strict=True, ge=0, le=MAX_COMMAND_BYTES)]
     issued_at: datetime
     expected_generation: OpaqueIdentifier | None = None

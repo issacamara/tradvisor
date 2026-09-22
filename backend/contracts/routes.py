@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal, TypeAlias
 
@@ -24,14 +26,34 @@ MAX_PAGE_LIMIT = 100
 CURSOR_MAX_AGE = timedelta(hours=24)
 Cursor = Annotated[str, StringConstraints(min_length=1, max_length=2048, strict=True)]
 HttpMethod: TypeAlias = Literal["GET", "PATCH", "POST"]
-HttpStatus: TypeAlias = Literal[200, 201, 401, 403, 404, 409, 410, 413, 422, 503]
+HttpStatus: TypeAlias = Literal[200, 201, 401, 403, 404, 409, 410, 413, 422, 429, 503]
 PortfolioSetupState: TypeAlias = Literal["setup_required", "configured"]
 RouteErrorCode: TypeAlias = Literal[
+    "unauthenticated",
+    "admission_denied",
+    "not_found",
     "recovery_mismatch",
-    "stale_cursor",
-    "expired_snapshot",
+    "generation_mismatch",
+    "state_version_mismatch",
+    "preference_version_mismatch",
+    "generation_superseded",
+    "already_initialized",
+    "recommendation_stale",
+    "insufficient_cash",
+    "insufficient_shares",
+    "idempotency_conflict",
+    "command_window_expired",
+    "command_clock_ahead",
+    "cursor_stale",
+    "snapshot_expired",
+    "body_too_large",
     "validation_failed",
-    "admission_rejected",
+    "override_acknowledgment_required",
+    "rate_limited",
+    "service_unavailable",
+    "admission_unavailable",
+    "calendar_unavailable",
+    "analysis_not_ready",
 ]
 
 
@@ -130,6 +152,38 @@ class ResetPortfolioRequest(ContractModel):
         return self
 
 
+PaperMutationRequest: TypeAlias = (
+    PatchPreferencesRequest | SetupPortfolioRequest | CreatePaperOrderRequest | ResetPortfolioRequest
+)
+
+
+def canonical_command_fingerprint(method: HttpMethod, path: str, request: PaperMutationRequest) -> str:
+    """Hash validated command intent; transport size, key and send time are not intent."""
+
+    expected_route: tuple[HttpMethod, str]
+    if isinstance(request, PatchPreferencesRequest):
+        expected_route = ("PATCH", "/v1/me/preferences")
+    elif isinstance(request, SetupPortfolioRequest):
+        expected_route = ("POST", "/v1/paper/portfolio")
+    elif isinstance(request, CreatePaperOrderRequest):
+        expected_route = ("POST", "/v1/paper/orders")
+    else:
+        expected_route = ("POST", "/v1/paper/reset")
+    if (method, path) != expected_route:
+        raise ValueError("mutation request does not match the route")
+
+    intent = {
+        "method": method,
+        "path": path,
+        "recovery_id": request.command.recovery_id,
+        "expected_generation": request.command.expected_generation,
+        "expected_state_version": request.command.expected_state_version,
+        "body": request.model_dump(mode="json", exclude={"command"}),
+    }
+    canonical = json.dumps(intent, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class MeResource(ContractModel):
     uid: OpaqueIdentifier
     email: Annotated[str, StringConstraints(min_length=3, max_length=320, strict=True)]
@@ -216,28 +270,39 @@ class RouteErrorOutcome(ContractModel):
     code: RouteErrorCode
 
 
-COMMON_READ_ERRORS = (
-    RouteErrorOutcome(status=401, code="admission_rejected"),
-    RouteErrorOutcome(status=422, code="validation_failed"),
+def _errors(*outcomes: tuple[HttpStatus, RouteErrorCode]) -> tuple[RouteErrorOutcome, ...]:
+    return tuple(RouteErrorOutcome(status=status, code=code) for status, code in outcomes)
+
+
+READ_ERRORS = _errors(
+    (401, "unauthenticated"), (403, "admission_denied"), (429, "rate_limited"),
+    (503, "service_unavailable"), (503, "admission_unavailable"),
 )
-COMMON_MUTATION_ERRORS = COMMON_READ_ERRORS + (
-    RouteErrorOutcome(status=409, code="recovery_mismatch"),
-    RouteErrorOutcome(status=503, code="admission_rejected"),
+MUTATION_ERRORS = READ_ERRORS + _errors(
+    (409, "recovery_mismatch"), (409, "idempotency_conflict"),
+    (409, "command_window_expired"), (409, "command_clock_ahead"),
+    (409, "generation_superseded"), (413, "body_too_large"), (422, "validation_failed"),
 )
-PAGINATION_ERRORS = COMMON_READ_ERRORS + (
-    RouteErrorOutcome(status=409, code="stale_cursor"),
-    RouteErrorOutcome(status=410, code="expired_snapshot"),
+PAGINATION_ERRORS = READ_ERRORS + _errors(
+    (409, "cursor_stale"), (410, "snapshot_expired"), (422, "validation_failed"),
 )
 
 
 PAPER_ROUTES: tuple[RouteContract, ...] = (
-    RouteContract(method="GET", path="/v1/me", success_status=200, mutation=False, error_outcomes=COMMON_READ_ERRORS),
-    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
-    RouteContract(method="GET", path="/v1/paper/portfolio", success_status=200, mutation=False, error_outcomes=COMMON_READ_ERRORS),
-    RouteContract(method="POST", path="/v1/paper/portfolio", success_status=201, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
-    RouteContract(method="POST", path="/v1/paper/orders", success_status=201, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
+    RouteContract(method="GET", path="/v1/me", success_status=200, mutation=False, error_outcomes=READ_ERRORS),
+    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True, error_outcomes=MUTATION_ERRORS + _errors((409, "preference_version_mismatch"))),
+    RouteContract(method="GET", path="/v1/paper/portfolio", success_status=200, mutation=False, error_outcomes=READ_ERRORS + _errors((503, "analysis_not_ready"))),
+    RouteContract(method="POST", path="/v1/paper/portfolio", success_status=201, mutation=True, error_outcomes=MUTATION_ERRORS + _errors((409, "already_initialized"))),
+    RouteContract(method="POST", path="/v1/paper/orders", success_status=201, mutation=True, error_outcomes=MUTATION_ERRORS + _errors(
+        (404, "not_found"), (409, "generation_mismatch"), (409, "state_version_mismatch"),
+        (409, "recommendation_stale"), (409, "insufficient_cash"), (409, "insufficient_shares"),
+        (422, "override_acknowledgment_required"), (503, "calendar_unavailable"),
+        (503, "analysis_not_ready"),
+    )),
     RouteContract(method="GET", path="/v1/paper/orders", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
     RouteContract(method="GET", path="/v1/paper/executions", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
     RouteContract(method="GET", path="/v1/paper/cash-movements", success_status=200, mutation=False, error_outcomes=PAGINATION_ERRORS),
-    RouteContract(method="POST", path="/v1/paper/reset", success_status=200, mutation=True, error_outcomes=COMMON_MUTATION_ERRORS),
+    RouteContract(method="POST", path="/v1/paper/reset", success_status=200, mutation=True, error_outcomes=MUTATION_ERRORS + _errors(
+        (409, "generation_mismatch"), (409, "state_version_mismatch"),
+    )),
 )

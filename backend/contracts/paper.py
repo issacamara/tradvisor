@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal, Protocol
 
-from pydantic import Field, field_serializer, field_validator, model_validator
+from pydantic import Field, StringConstraints, field_serializer, field_validator, model_validator
 
 from backend.contracts.analysis import ImmutableContractModel, Provenance, ReasonCode
 from backend.contracts.envelopes import CommandMetadata, CommandReceipt, ContractModel, IdempotencyKey
@@ -24,6 +24,7 @@ PAPER_ORDER_STATUS = Literal["pending", "executed", "rejected", "expired"]
 PAPER_SIDE = Literal["buy", "sell"]
 UTC = timezone.utc
 RECEIPT_RETENTION = timedelta(days=30)
+RequestFingerprint = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$", strict=True)]
 
 
 def _require_utc(value: datetime) -> datetime:
@@ -301,7 +302,7 @@ class PaperCommandReceipt(CommandReceipt):
 
     owner_uid: OpaqueIdentifier
     idempotency_key: IdempotencyKey
-    request_fingerprint: OpaqueIdentifier
+    request_fingerprint: RequestFingerprint
     recovery_id: OpaqueIdentifier
 
     @model_validator(mode="after")
@@ -310,13 +311,16 @@ class PaperCommandReceipt(CommandReceipt):
             raise ValueError("paper command receipt must retain exactly thirty days")
         return self
 
-    def matches_replay(self, command: CommandMetadata) -> bool:
-        """A handler may replay only an identical command inside the same recovery fence."""
+    def matches_replay(
+        self, command: CommandMetadata, server_fingerprint: str, active_recovery_id: OpaqueIdentifier
+    ) -> bool:
+        """A handler may replay only an identical server-canonicalized command."""
 
         return (
-            self.idempotency_key == command.idempotency_key
+            command.matches_recovery(active_recovery_id)
+            and self.idempotency_key == command.idempotency_key
             and self.recovery_id == command.recovery_id
-            and self.request_fingerprint == command.request_fingerprint
+            and self.request_fingerprint == server_fingerprint
         )
 
 

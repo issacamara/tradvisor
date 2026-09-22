@@ -28,6 +28,7 @@ from backend.contracts.routes import (
     PortfolioResource,
     ResetPortfolioRequest,
     SetupPortfolioRequest,
+    canonical_command_fingerprint,
 )
 from backend.contracts.scalars import NonNegativeMoney, SignedMoney, StartingCash
 
@@ -50,7 +51,6 @@ def command(**overrides: object) -> CommandMetadata:
     values: dict[str, object] = {
         "idempotency_key": "1758542400000.0123456789abcdef0123456789abcdef",
         "recovery_id": "recovery-1",
-        "request_fingerprint": "fingerprint-1",
         "content_length": 128,
         "issued_at": NOW,
     }
@@ -87,17 +87,80 @@ def test_setup_order_reset_and_preferences_have_only_approved_client_fields() ->
 def test_mutation_metadata_fences_stale_recovery_and_replay() -> None:
     current = command(expected_generation="generation-1", expected_state_version=2)
     stale = command(recovery_id="recovery-0", expected_generation="generation-1", expected_state_version=2)
+    request = ResetPortfolioRequest(
+        command=current, expected_generation="generation-1", expected_state_version=2,
+        starting_cash=StartingCash(amount="100000", currency="XOF"),
+    )
+    fingerprint = canonical_command_fingerprint("POST", "/v1/paper/reset", request)
     assert current.matches_recovery("recovery-1")
     assert not stale.matches_recovery("recovery-1")
+    with pytest.raises(ValidationError):
+        command(request_fingerprint=fingerprint)
+    with pytest.raises(ValidationError):
+        CommandMetadata.model_validate(current.model_dump(exclude={"recovery_id"}))
     receipt = PaperCommandReceipt(
         owner_uid="user-1", idempotency_key=current.idempotency_key,
-        request_fingerprint=current.request_fingerprint, recovery_id=current.recovery_id, operation="setup",
+        request_fingerprint=fingerprint, recovery_id=current.recovery_id, operation="reset",
+        outcome_id="generation-1", generation="generation-1", state_version=0, http_status=200,
+        accepted_at=NOW, expires_at=NOW + timedelta(days=30),
+    )
+    assert receipt.matches_replay(current, fingerprint, "recovery-1")
+    assert not receipt.matches_replay(stale, fingerprint, "recovery-1")
+    assert not receipt.matches_replay(current, fingerprint, "recovery-2")
+    assert not receipt.matches_replay(current, "0" * 64, "recovery-1")
+
+
+def test_fingerprint_uses_parsed_canonical_intent_and_route() -> None:
+    first = SetupPortfolioRequest(
+        command=command(), starting_cash=StartingCash(amount="1000000", currency="XOF"), fee_rate_pct="0.500",
+    )
+    equivalent = SetupPortfolioRequest(
+        command=command(content_length=200, issued_at=NOW + timedelta(seconds=1)),
+        starting_cash=StartingCash(amount="1000000.000000", currency="XOF"), fee_rate_pct="0.5",
+    )
+    fingerprint = canonical_command_fingerprint("POST", "/v1/paper/portfolio", first)
+    assert fingerprint == canonical_command_fingerprint("POST", "/v1/paper/portfolio", equivalent)
+    with pytest.raises(ValueError):
+        canonical_command_fingerprint("PATCH", "/v1/paper/portfolio", first)
+    with pytest.raises(ValueError):
+        canonical_command_fingerprint("POST", "/v1/paper/reset", first)
+    changed_fee = first.model_copy(update={"fee_rate_pct": "0.6"})
+    changed_cash = first.model_copy(update={"starting_cash": StartingCash(amount="2000000", currency="XOF")})
+    changed_recovery = first.model_copy(update={"command": command(recovery_id="recovery-2")})
+    for changed in (changed_fee, changed_cash, changed_recovery):
+        assert fingerprint != canonical_command_fingerprint("POST", "/v1/paper/portfolio", changed)
+    receipt = PaperCommandReceipt(
+        owner_uid="user-1", idempotency_key=first.command.idempotency_key,
+        request_fingerprint=fingerprint, recovery_id=first.command.recovery_id, operation="setup",
         outcome_id="generation-1", generation="generation-1", state_version=0, http_status=201,
         accepted_at=NOW, expires_at=NOW + timedelta(days=30),
     )
-    assert receipt.matches_replay(current)
-    assert not receipt.matches_replay(stale)
-    assert not receipt.matches_replay(command(request_fingerprint="different-fingerprint"))
+    assert receipt.matches_replay(equivalent.command, fingerprint, "recovery-1")
+    assert not receipt.matches_replay(
+        changed_fee.command,
+        canonical_command_fingerprint("POST", "/v1/paper/portfolio", changed_fee),
+        "recovery-1",
+    )
+
+    preference = PatchPreferencesRequest(command=command(), expected_preference_version=2, objective="growth")
+    assert canonical_command_fingerprint("PATCH", "/v1/me/preferences", preference) != canonical_command_fingerprint(
+        "PATCH", "/v1/me/preferences", preference.model_copy(update={"expected_preference_version": 3}),
+    )
+
+    order = CreatePaperOrderRequest(
+        command=command(expected_generation="generation-1", expected_state_version=2),
+        expected_generation="generation-1", expected_state_version=2, recommendation_ref="rec-1",
+        batch_id="batch-1", symbol="NSI", side="sell", quantity=2,
+    )
+    order_fingerprint = canonical_command_fingerprint("POST", "/v1/paper/orders", order)
+    assert order_fingerprint != canonical_command_fingerprint(
+        "POST", "/v1/paper/orders", order.model_copy(update={"acknowledge_keep_override": True}),
+    )
+    changed_version = order.model_copy(update={
+        "expected_state_version": 3,
+        "command": command(expected_generation="generation-1", expected_state_version=3),
+    })
+    assert order_fingerprint != canonical_command_fingerprint("POST", "/v1/paper/orders", changed_version)
 
 
 def test_preferences_and_receipts_preserve_versions_recovery_and_minimal_evidence() -> None:
@@ -105,13 +168,15 @@ def test_preferences_and_receipts_preserve_versions_recovery_and_minimal_evidenc
     assert preference.model_dump(mode="json")["updated_at"] == "2026-09-22T12:00:00Z"
     receipt = PaperCommandReceipt(
         owner_uid="user-1", idempotency_key="1758542400000.0123456789abcdef0123456789abcdef",
-        request_fingerprint="fingerprint-1", recovery_id="recovery-1", operation="setup",
+        request_fingerprint="a" * 64, recovery_id="recovery-1", operation="setup",
         outcome_id="generation-1", generation="generation-1", state_version=0, http_status=201,
         accepted_at=NOW, expires_at=NOW + timedelta(days=30),
     )
     assert receipt.generation == "generation-1"
     with pytest.raises(ValidationError):
         PaperCommandReceipt.model_validate(receipt.model_dump() | {"expires_at": NOW + timedelta(days=29)})
+    with pytest.raises(ValidationError):
+        PaperCommandReceipt.model_validate(receipt.model_dump() | {"request_fingerprint": "client-value"})
 
 
 def test_sell_order_retains_derived_advice_and_ledger_evidence() -> None:
@@ -175,8 +240,44 @@ def test_resource_routes_include_only_read_setup_order_reset_and_preference_oper
     forbidden = {"/v1/paper/balance", "/v1/paper/positions", "/v1/admission", "/v1/paper/executions"}
     assert not forbidden & {route.path for route in PAPER_ROUTES if route.mutation}
     errors = {(route.path, error.code) for route in PAPER_ROUTES for error in route.error_outcomes}
-    assert ("/v1/paper/orders", "stale_cursor") in errors
-    assert ("/v1/paper/orders", "expired_snapshot") in errors
+    assert ("/v1/paper/orders", "cursor_stale") in errors
+    assert ("/v1/paper/orders", "snapshot_expired") in errors
     assert ("/v1/paper/reset", "recovery_mismatch") in errors
-    assert ("/v1/paper/portfolio", "validation_failed") in errors
-    assert ("/v1/paper/portfolio", "admission_rejected") in errors
+    assert ("/v1/paper/portfolio", "analysis_not_ready") in errors
+
+
+def test_route_error_outcomes_match_api_contract() -> None:
+    common_read = {
+        (401, "unauthenticated"), (403, "admission_denied"), (429, "rate_limited"),
+        (503, "service_unavailable"), (503, "admission_unavailable"),
+    }
+    common_mutation = common_read | {
+        (409, "recovery_mismatch"), (409, "idempotency_conflict"),
+        (409, "command_window_expired"), (409, "command_clock_ahead"),
+        (409, "generation_superseded"), (413, "body_too_large"), (422, "validation_failed"),
+    }
+    expected = {
+        ("GET", "/v1/me"): common_read,
+        ("PATCH", "/v1/me/preferences"): common_mutation | {(409, "preference_version_mismatch")},
+        ("GET", "/v1/paper/portfolio"): common_read | {(503, "analysis_not_ready")},
+        ("POST", "/v1/paper/portfolio"): common_mutation | {(409, "already_initialized")},
+        ("POST", "/v1/paper/orders"): common_mutation | {
+            (404, "not_found"), (409, "generation_mismatch"), (409, "state_version_mismatch"),
+            (409, "recommendation_stale"), (409, "insufficient_cash"), (409, "insufficient_shares"),
+            (422, "override_acknowledgment_required"), (503, "calendar_unavailable"),
+            (503, "analysis_not_ready"),
+        },
+        ("POST", "/v1/paper/reset"): common_mutation | {
+            (409, "generation_mismatch"), (409, "state_version_mismatch"),
+        },
+    }
+    paginated = common_read | {
+        (409, "cursor_stale"), (410, "snapshot_expired"), (422, "validation_failed"),
+    }
+    for path in ("/v1/paper/orders", "/v1/paper/executions", "/v1/paper/cash-movements"):
+        expected[("GET", path)] = paginated
+    assert set(expected) == {(route.method, route.path) for route in PAPER_ROUTES}
+    for route in PAPER_ROUTES:
+        outcomes = {(error.status, error.code) for error in route.error_outcomes}
+        assert outcomes == expected[(route.method, route.path)]
+        assert len(outcomes) == len(route.error_outcomes)
