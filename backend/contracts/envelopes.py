@@ -89,6 +89,11 @@ class CommandMetadata(ContractModel):
             raise ValueError("expected generation and state version must be supplied together")
         return self
 
+    def matches_recovery(self, active_recovery_id: OpaqueIdentifier) -> bool:
+        """Lets a handler reject a command fenced by a stale portfolio generation."""
+
+        return self.recovery_id == active_recovery_id
+
 
 class CommandReceipt(ContractModel):
     """Minimal replay-safe receipt metadata without financial history."""
