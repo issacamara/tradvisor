@@ -1,21 +1,160 @@
-import os, io
+"""Shared legacy-ingestion helpers and immutable acquisition evidence.
+
+The module intentionally has no client construction or filesystem activity at
+import time.  Entry points that need cloud or parsing libraries import them at
+call time so a scheduler, test runner, or parser manifest inspection is safe.
+"""
+
+from __future__ import annotations
+
+import glob
+import hashlib
+import io
+import json
+import os
+import re
 import shutil
 import time
-from fileinput import filename
-import duckdb
-import re
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
 
-from google.cloud import bigquery
-import pandas as pd
-import glob
-import requests
-from bs4 import BeautifulSoup
-from google.cloud import resourcemanager_v3
-from datetime import datetime
 
-from google.cloud import storage
-from google.auth import default
-from curl_cffi import requests as curl_requests
+class AcquisitionNotCommittable(ValueError):
+    """Raised when acquisition evidence cannot truthfully be committed."""
+
+
+@dataclass(frozen=True)
+class ParserManifest:
+    """Versioned, content-addressed description of the parser that ran."""
+
+    parser_name: str
+    parser_version: str
+    configuration: dict[str, Any]
+    configuration_sha256: str
+
+
+@dataclass(frozen=True)
+class SourceSnapshot:
+    """Immutable evidence created only after a complete successful acquisition."""
+
+    source: str
+    run_id: str
+    acquired_at: str
+    http_status: int
+    payload_sha256: str
+    payload_bytes: int
+    parser_manifest: ParserManifest
+    directory: str
+
+
+def _canonical_json(value: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def _safe_identifier(value: str, field: str) -> str:
+    if not value or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
+        raise ValueError(f"{field} must use only letters, digits, '.', '_' or '-'")
+    return value
+
+
+def build_parser_manifest(
+    parser_name: str,
+    parser_version: str,
+    configuration: Mapping[str, Any] | None = None,
+) -> ParserManifest:
+    """Return a deterministic parser manifest without invoking a parser."""
+
+    _safe_identifier(parser_name, "parser_name")
+    _safe_identifier(parser_version, "parser_version")
+    normalized_configuration = dict(configuration or {})
+    return ParserManifest(
+        parser_name=parser_name,
+        parser_version=parser_version,
+        configuration=normalized_configuration,
+        configuration_sha256=hashlib.sha256(
+            _canonical_json(normalized_configuration)
+        ).hexdigest(),
+    )
+
+
+def new_acquisition_run_id(now: datetime | None = None) -> str:
+    """Create a sortable, collision-resistant run identifier for retry evidence."""
+
+    instant = now or datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    return f"{instant.astimezone(timezone.utc):%Y%m%dT%H%M%S%fZ}-{os.urandom(6).hex()}"
+
+
+def commit_source_snapshot(
+    snapshot_root: str | Path,
+    *,
+    source: str,
+    run_id: str,
+    payload: bytes,
+    parser_manifest: ParserManifest,
+    http_status: int,
+    acquisition_complete: bool,
+    acquired_at: datetime | None = None,
+) -> SourceSnapshot:
+    """Persist one immutable snapshot directory for a complete HTTP acquisition.
+
+    ``run_id`` is part of the path, so retries retain evidence even where the
+    source, calendar date, and payload are identical.  A completed marker is
+    written last and no pre-existing run directory is ever reused.
+    """
+
+    source = _safe_identifier(source, "source")
+    run_id = _safe_identifier(run_id, "run_id")
+    if not 200 <= http_status < 300:
+        raise AcquisitionNotCommittable(
+            f"HTTP status {http_status} cannot be committed as a successful acquisition"
+        )
+    if not acquisition_complete:
+        raise AcquisitionNotCommittable("incomplete acquisition cannot be committed")
+
+    instant = acquired_at or datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        raise ValueError("acquired_at must be timezone-aware")
+    acquired_at_text = instant.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    root = Path(snapshot_root)
+    run_directory = root / source / run_id
+
+    try:
+        run_directory.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise FileExistsError(
+            f"snapshot evidence already exists for source={source!r}, run_id={run_id!r}"
+        ) from error
+
+    snapshot = SourceSnapshot(
+        source=source,
+        run_id=run_id,
+        acquired_at=acquired_at_text,
+        http_status=http_status,
+        payload_sha256=payload_sha256,
+        payload_bytes=len(payload),
+        parser_manifest=parser_manifest,
+        directory=str(run_directory),
+    )
+    try:
+        (run_directory / "payload.bin").write_bytes(payload)
+        (run_directory / "manifest.json").write_bytes(
+            _canonical_json(asdict(snapshot))
+        )
+        # This marker is deliberately last: callers may only treat its presence
+        # as committed success after both evidence files are durable.
+        (run_directory / "COMMITTED").write_text("\n", encoding="ascii")
+    except Exception:
+        shutil.rmtree(run_directory, ignore_errors=True)
+        raise
+
+    return snapshot
 
 
 def get_symbols_from_richbourse(url):
@@ -27,6 +166,9 @@ def get_symbols_from_richbourse(url):
     Returns:
     - List of symbol strings
     """
+    from bs4 import BeautifulSoup
+    from curl_cffi import requests as curl_requests
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -77,8 +219,8 @@ def table_exists(table_name='ratings'):
     Returns:
     - True if table exists, False otherwise
     """
-    from google.cloud import bigquery
     from google.auth import default
+    from google.cloud import bigquery
     
     credentials, project_id = default()
     client = bigquery.Client(credentials=credentials, project=project_id)
@@ -107,6 +249,8 @@ def parse_french_date(date_text):
     return None
 
 def get_project_number(project_id):
+    from google.cloud import resourcemanager_v3
+
     client = resourcemanager_v3.ProjectsClient()
     project = client.get_project(name=f"projects/{project_id}")
     return project.name.split("/")[1]  # Format is "projects/{project_number}"
@@ -121,6 +265,9 @@ def save_dataframe_as_csv(df, fin_asset, conf):
     - gcs_bucket_name (str, optional): The name of the GCS bucket. If provided, the file will be saved to GCS.
       If None, the file will be saved locally.
     """
+    from google.auth import default
+    from google.cloud import storage
+
     today = datetime.now().strftime('%Y-%m-%d')
     filename = f'{fin_asset.lower()}-{today}.csv'
     if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
@@ -143,6 +290,9 @@ def save_dataframe_as_csv(df, fin_asset, conf):
         return(f"File saved locally as '{filename}'.\n")
 
 def scrape(url):
+    import requests
+    from bs4 import BeautifulSoup
+
     params = {
         "hl": "en"  # language
     }
@@ -193,6 +343,8 @@ def move_csv_file(source_dir, destination_dir, file):
 
 
 def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
+    from google.cloud import storage
+
     # Initialize the storage client
     storage_client = storage.Client()
     # Get the source and destination buckets
@@ -216,6 +368,8 @@ def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
         print(f'Moved {blob.name} from {source_bucket_name} to {destination_bucket_name}')
 
 def move_csv_file_gcp(source_bucket_name, destination_bucket_name, filename):
+    from google.cloud import storage
+
     storage_client = storage.Client()
     source_bucket = storage_client.bucket(source_bucket_name)
     destination_bucket = storage_client.bucket(destination_bucket_name)
@@ -226,6 +380,8 @@ def move_csv_file_gcp(source_bucket_name, destination_bucket_name, filename):
 
 # Define a function to insert data into BigQuery
 def insert_into_bigquery(df, project_id, dataset, table):
+    from google.cloud import bigquery
+
     client = bigquery.Client(project=project_id)
     table_id = f"{project_id}.{dataset}.{table}"
     job = client.load_table_from_dataframe(df, table_id)
@@ -242,6 +398,8 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
     - table: BigQuery table name
     - primary_keys: List of column names that form the primary key (e.g., ['symbol', 'rating_year'])
     """
+    from google.cloud import bigquery
+
     client = bigquery.Client(project=project_id)
     table_id = f"{project_id}.{dataset}.{table}"
     
@@ -298,12 +456,16 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
+    import duckdb
 
     with duckdb.connect(os.path.join(os.path.dirname(__file__), '..', db_path)) as con:
         con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df where FALSE")  # Create table if not exists
         con.execute(f"INSERT INTO {table} SELECT * FROM df")
 
 def process_files(conf, files, asset):
+    import pandas as pd
+    from google.auth import default
+
     if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):  # GCP cloud function environment
         for f in files:
             content = f.download_as_text()
@@ -326,6 +488,9 @@ def process_files(conf, files, asset):
 def load_files(config, asset):
 
     if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+        from google.auth import default
+        from google.cloud import storage
+
         credentials, project_id = default()
         project_number = get_project_number(project_id)
         bucket_uri = f"data-{project_number}"
