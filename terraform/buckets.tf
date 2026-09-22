@@ -28,7 +28,11 @@ resource "google_storage_bucket" "data-brvm" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
-  force_destroy               = true
+  force_destroy               = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_storage_bucket" "archive-brvm" {
@@ -37,7 +41,11 @@ resource "google_storage_bucket" "archive-brvm" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
-  force_destroy               = true
+  force_destroy               = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_storage_bucket" "bucket" {
@@ -46,7 +54,11 @@ resource "google_storage_bucket" "bucket" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
-  force_destroy               = true
+  force_destroy               = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 resource "google_storage_bucket_object" "src-code" {
   for_each   = toset(var.functions)
@@ -54,6 +66,10 @@ resource "google_storage_bucket_object" "src-code" {
   name       = "${each.key}.zip"
   bucket     = google_storage_bucket.bucket.name
   source     = data.archive_file.assets[each.key].output_path
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "null_resource" "delete_archive" {
