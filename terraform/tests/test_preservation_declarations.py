@@ -55,6 +55,31 @@ class PreservationDeclarationTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, f"{artifact} must be ignored")
 
+    def test_terraform_backend_configuration_files_are_ignored(self) -> None:
+        backend_configs = (
+            "terraform/backend.hcl",
+            "terraform/backend.tfbackend",
+            "terraform/private.backend.hcl",
+        )
+
+        for backend_config in backend_configs:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(REPOSITORY_ROOT),
+                    "check-ignore",
+                    "--quiet",
+                    backend_config,
+                ],
+                check=False,
+            )
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"{backend_config} must be ignored",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
