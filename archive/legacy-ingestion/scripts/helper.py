@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -387,28 +388,166 @@ def insert_into_bigquery(df, project_id, dataset, table):
     job = client.load_table_from_dataframe(df, table_id)
     job.result()  # Wait for the job to complete
 
+
+def _load_identity(
+    df,
+    project_id: str,
+    dataset: str,
+    table: str,
+    source_keys: Sequence[str],
+    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+) -> str:
+    """Return a stable committed identity, anchored to a snapshot when supplied."""
+
+    columns = sorted(str(column) for column in df.columns)
+    canonical = df.reindex(columns=columns).drop_duplicates()
+    rows = json.loads(
+        canonical.to_json(
+            orient="records",
+            date_format="iso",
+            date_unit="us",
+            double_precision=15,
+            force_ascii=True,
+        )
+    )
+    rows = sorted(_canonical_json(row).decode("utf-8") for row in rows)
+    manifest_identity = None
+    if snapshot_manifest is not None:
+        if isinstance(snapshot_manifest, Mapping):
+            source = snapshot_manifest.get("source")
+            run_id = snapshot_manifest.get("run_id")
+            payload_hash = snapshot_manifest.get("payload_sha256")
+            parser_manifest = snapshot_manifest.get("parser_manifest", {})
+            parser_name = (
+                parser_manifest.get("parser_name")
+                if isinstance(parser_manifest, Mapping)
+                else getattr(parser_manifest, "parser_name", None)
+            )
+            parser_version = (
+                parser_manifest.get("parser_version")
+                if isinstance(parser_manifest, Mapping)
+                else getattr(parser_manifest, "parser_version", None)
+            )
+            parser_hash = (
+                parser_manifest.get("configuration_sha256")
+                if isinstance(parser_manifest, Mapping)
+                else getattr(parser_manifest, "configuration_sha256", None)
+            )
+        else:
+            source = snapshot_manifest.source
+            run_id = snapshot_manifest.run_id
+            payload_hash = snapshot_manifest.payload_sha256
+            parser_name = snapshot_manifest.parser_manifest.parser_name
+            parser_version = snapshot_manifest.parser_manifest.parser_version
+            parser_hash = snapshot_manifest.parser_manifest.configuration_sha256
+        if not all((source, run_id, payload_hash, parser_name, parser_version, parser_hash)):
+            raise ValueError("snapshot manifest lacks committed source identity fields")
+        manifest_identity = {
+            "source": source,
+            "run_id": run_id,
+            "payload_sha256": payload_hash,
+            "parser_name": parser_name,
+            "parser_version": parser_version,
+            "parser_configuration_sha256": parser_hash,
+        }
+
+    identity = {
+        "target": f"{project_id}.{dataset}.{table}",
+        "source_keys": sorted(source_keys),
+        "snapshot": manifest_identity,
+        "columns": columns,
+        "rows": rows,
+    }
+    return hashlib.sha256(_canonical_json(identity)).hexdigest()
+
+
+def _sql_identifier(value: str, field: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+        raise ValueError(f"{field} contains an invalid BigQuery identifier: {value!r}")
+    return f"`{value}`"
+
+
 # Define a function to upsert data into BigQuery (INSERT OR UPDATE)
-def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
-    """Upsert data into BigQuery using MERGE statement.
+def upsert_into_bigquery(
+    df,
+    project_id,
+    dataset,
+    table,
+    primary_keys,
+    *,
+    run_id: str | None = None,
+    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+):
+    """Idempotently merge source rows using explicit keys and an isolated stage.
     
     Parameters:
     - df: DataFrame with data to upsert
     - project_id: GCP project ID
     - dataset: BigQuery dataset name
     - table: BigQuery table name
-    - primary_keys: List of column names that form the primary key (e.g., ['symbol', 'rating_year'])
+    - primary_keys: Explicit source identity columns for this adapter
+    - run_id: Optional unique staging identity, primarily for retry orchestration
+    - snapshot_manifest: Immutable acquisition manifest anchoring committed-load identity
+
+    Rows with the same source keys are updated in place. To preserve multiple
+    observations as revisions, the adapter must include the revision or
+    observation identity in ``primary_keys``.
     """
     from google.cloud import bigquery
 
+    if not primary_keys:
+        raise ValueError("primary_keys must contain at least one explicit source key")
+    if len(set(primary_keys)) != len(primary_keys):
+        raise ValueError("primary_keys must not contain duplicates")
+    columns = [str(column) for column in df.columns]
+    if len(columns) != len(set(columns)):
+        raise ValueError("DataFrame columns must be unique")
+    for column in columns:
+        _sql_identifier(column, "column")
+    for key in primary_keys:
+        if key not in columns:
+            raise ValueError(f"source key {key!r} is missing from the DataFrame")
+
+    if df.empty:
+        return _load_identity(
+            df, project_id, dataset, table, primary_keys, snapshot_manifest
+        )
+
+    if df[list(primary_keys)].isna().any(axis=None):
+        raise ValueError("source keys must not contain null values")
+    duplicated_keys = df.duplicated(subset=list(primary_keys), keep=False)
+    if duplicated_keys.any():
+        conflicting = df.loc[duplicated_keys].duplicated(keep=False)
+        if not conflicting.all():
+            raise ValueError("staging rows contain conflicting values for the same source key")
+    staged_df = df.drop_duplicates(subset=list(primary_keys)).copy()
+    committed_load_id = _load_identity(
+        staged_df,
+        project_id,
+        dataset,
+        table,
+        primary_keys,
+        snapshot_manifest,
+    )
+    run_id = _safe_identifier(run_id or new_acquisition_run_id(), "run_id")
     client = bigquery.Client(project=project_id)
     table_id = f"{project_id}.{dataset}.{table}"
-    
-    # Create a temporary table
-    temp_table_id = f"{table_id}_temp"
-    job = client.load_table_from_dataframe(df, temp_table_id)
-    job.result()
-    
+    staging_table_id = f"{table_id}__stage_{run_id}"
+    run_label = re.sub(r"[^a-z0-9_-]", "_", run_id.lower())[:63]
+    labels = {
+        "tradvisor_load_id": committed_load_id[:63],
+        "tradvisor_run_id": run_label,
+    }
+    load_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        labels=labels,
+    )
     try:
+        job = client.load_table_from_dataframe(
+            staged_df, staging_table_id, job_config=load_config
+        )
+        job.result()
+
         # For columns that might be dates, cast them properly
         def get_cast_expression(col):
             col_lower = col.lower()
@@ -416,43 +555,81 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
             # Check if column is a datetime (using more specific suffixes/names instead of a broad 'at' check)
             if col_lower.endswith('_at') or 'time' in col_lower:
                 # collected_at is in format 'YYYY-MM-DD HH:MM:SS' - use PARSE_TIMESTAMP
-                return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
+                return (
+                    "PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', "
+                    f"CAST(source.{_sql_identifier(col, 'column')} AS STRING))"
+                )
             # Check if column is a date (announcement_date, payment_date)
             elif 'date' in col_lower:
-                return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
-            return f"source.{col}"
+                return (
+                    "PARSE_DATE('%Y-%m-%d', "
+                    f"CAST(source.{_sql_identifier(col, 'column')} AS STRING))"
+                )
+            return f"source.{_sql_identifier(col, 'column')}"
 
-        # Build the MERGE statement with proper type casting for primary keys
-        primary_key_conditions = ' AND '.join([f"target.{pk} = {get_cast_expression(pk)}" for pk in primary_keys])
-        update_columns = [col for col in df.columns if col not in primary_keys]
-
-    
-        update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
-        
-        # For INSERT, also cast date columns
-        insert_values = ', '.join([get_cast_expression(col) for col in df.columns])
+        # Source identity is explicit; include revision fields when the source
+        # contract requires corrected observations to coexist.
+        key_conditions = " AND ".join(
+            f"target.{_sql_identifier(key, 'key')} = {get_cast_expression(key)}"
+            for key in primary_keys
+        )
+        update_columns = [column for column in columns if column not in primary_keys]
+        update_clause = ""
+        if update_columns:
+            update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(
+                f"target.{_sql_identifier(column, 'column')} = {get_cast_expression(column)}"
+                for column in update_columns
+            )
+        insert_columns = ", ".join(_sql_identifier(col, "column") for col in columns)
+        insert_values = ", ".join(get_cast_expression(col) for col in columns)
         
         merge_query = f"""
         MERGE `{table_id}` target
-        USING `{temp_table_id}` source
-        ON {primary_key_conditions}
-        WHEN MATCHED THEN
-          UPDATE SET {update_set}
+        USING `{staging_table_id}` source
+        ON {key_conditions}
+        {update_clause}
         WHEN NOT MATCHED THEN
-          INSERT ({', '.join(df.columns)})
+          INSERT ({insert_columns})
           VALUES ({insert_values})
         """
         
         # Execute the merge
-        client.query(merge_query).result()
+        merge_config = bigquery.QueryJobConfig(labels=labels)
+        client.query(merge_query, job_config=merge_config).result()
+        return committed_load_id
         
     finally:
-        # Always delete the temporary table, even if an error occurs
+        # Staging is disposable; committed analytical rows are never cleaned up here.
         try:
-            client.delete_table(temp_table_id, not_found_ok=True)
-            print(f"Deleted temporary table: {temp_table_id}")
+            client.delete_table(staging_table_id, not_found_ok=True)
         except Exception as e:
-            print(f"Warning: Failed to delete temporary table {temp_table_id}: {e}")
+            print(f"Warning: Failed to delete staging table {staging_table_id}: {e}")
+
+
+def upsert_and_archive(
+    df,
+    project_id,
+    dataset,
+    table,
+    primary_keys,
+    archive: Callable[[], Any],
+    *,
+    run_id: str | None = None,
+    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+):
+    """Commit an idempotent load before archiving its source evidence."""
+
+    committed_load_id = upsert_into_bigquery(
+        df,
+        project_id,
+        dataset,
+        table,
+        primary_keys,
+        run_id=run_id,
+        snapshot_manifest=snapshot_manifest,
+    )
+    archive()
+    return committed_load_id
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
