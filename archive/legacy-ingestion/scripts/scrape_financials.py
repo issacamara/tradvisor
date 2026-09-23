@@ -23,7 +23,7 @@ FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/et
 
 
 def get_existing_symbols_and_years():
-    """Read canonical financials and committed revision status in one query.
+    """Read existing canonical rows to avoid unnecessary report processing.
     
     Returns a dict mapping (symbol, fiscal_year) tuples to announcement_date.
     Used for smart PDF download - skips if we already have data from this announcement.
@@ -34,24 +34,17 @@ def get_existing_symbols_and_years():
     credentials, project_id = default()
     client = bigquery.Client(credentials=credentials, project=project_id)
     query = f"""
-        SELECT financial.symbol, financial.fiscal_year,
-               financial.announcement_date, financial.document_link,
-               EXISTS (
-                 SELECT 1
-                 FROM `{project_id}.stocks.financial_report_revisions` report_revision
-                 WHERE report_revision.symbol = financial.symbol
-                   AND report_revision.fiscal_year = financial.fiscal_year
-                   AND report_revision.document_link = financial.document_link
-               ) AS revision_committed
-        FROM `{project_id}.stocks.financials` financial
+        SELECT symbol, fiscal_year, announcement_date, document_link
+        FROM `{project_id}.stocks.financials`
     """
-
-    results = client.query(query).result()
-    return {(row.symbol, row.fiscal_year): {
-        'announcement_date': str(row.announcement_date) if row.announcement_date else None,
-        'document_link': row.document_link,
-        'revision_committed': row.revision_committed,
-    } for row in results}
+    try:
+        results = client.query(query).result()
+        return {(row.symbol, row.fiscal_year): {
+            'announcement_date': str(row.announcement_date) if row.announcement_date else None,
+            'document_link': row.document_link,
+        } for row in results}
+    except Exception:
+        return {}
 
 
 def extract_year_from_title(title):
@@ -523,17 +516,11 @@ def scrape_financials(url, openrouter_api_key=None):
             fiscal_year = ann['fiscal_year']
             existing_financials = existing_data.get(key)
             
-            # SMART PDF DOWNLOAD: Skip if we already have data from this exact announcement date
-            # This avoids re-downloading PDFs unnecessarily when there are multiple announcements
-            # for the same fiscal year (we always keep the most recent one)
-            if (
+            current_matches_announcement = bool(
                 existing_financials
                 and existing_financials.get('announcement_date') == ann['announcement_date']
                 and existing_financials.get('document_link') == ann['url']
-                and existing_financials.get('revision_committed')
-            ):
-                print(f"  FY {fiscal_year} - already up to date, skipping")
-                continue
+            )
             
             # Download PDF
             try:
@@ -572,6 +559,11 @@ def scrape_financials(url, openrouter_api_key=None):
                     document_revision,
                     project_id,
                 )
+                if current_matches_announcement and financial_data is not None:
+                    print(f"  FY {fiscal_year} - already up to date, skipping")
+                    del pdf_content
+                    session.close()
+                    continue
                 if financial_data is None:
                     financial_data = extract_financials_from_pdf(
                         pdf_content, openrouter_api_key

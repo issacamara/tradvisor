@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -584,6 +585,70 @@ def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch
     current = client.tables["project.stocks.financials"][0]
     revision = client.tables["project.stocks.financial_report_revisions"][0]
     assert current["net_income"] == revision["net_income"] == 125
+
+
+def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper, client = loader
+    scraper = _load_monthly_scraper(monkeypatch, helper)
+    source_url = "https://reports.example/annual.pdf"
+    report_bytes = b"monthly annual report"
+    previous_hash = hashlib.sha256(b"previous PDF bytes").hexdigest()
+    client.tables["project.stocks.financials"] = [{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "announcement_date": "2026-04-01",
+        "document_link": source_url,
+        "net_income": 100,
+    }]
+    client.tables["project.stocks.financial_report_revisions"] = [{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "document_link": source_url,
+        "document_revision": previous_hash,
+        "net_income": 100,
+    }]
+    announcement = {
+        "fiscal_year": 2025,
+        "announcement_date": "2026-04-01",
+        "url": source_url,
+    }
+    monkeypatch.setattr(scraper, "table_exists", lambda name: True)
+    monkeypatch.setattr(
+        scraper,
+        "get_existing_symbols_and_years",
+        lambda: {("ABC", 2025): {
+            "announcement_date": "2026-04-01", "document_link": source_url
+        }},
+    )
+    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(
+        scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
+    )
+    monkeypatch.setattr(
+        scraper,
+        "extract_financials_from_pdf",
+        lambda content, api_key: {
+            "revenue": 500,
+            "net_income": 125,
+            "total_debt": 80,
+            "cash_and_cash_equivalents": 40,
+            "total_equity": 200,
+        },
+    )
+
+    scraper.scrape_financials("https://reports.example", "test-key")
+
+    current = client.tables["project.stocks.financials"][0]
+    revisions = client.tables["project.stocks.financial_report_revisions"]
+    assert current["net_income"] == 125
+    assert len(revisions) == 2
+    assert {row["document_revision"] for row in revisions} == {
+        previous_hash,
+        hashlib.sha256(report_bytes).hexdigest(),
+    }
 
 
 def test_financial_pdf_caller_commits_revision_before_retryable_archive(
