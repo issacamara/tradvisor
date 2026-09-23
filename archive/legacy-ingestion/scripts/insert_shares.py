@@ -43,6 +43,28 @@ def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
         malformed = rows[column].notna() & rows[column].astype(str).str.strip().ne("") & parsed_values[column].isna()
         numeric_valid &= ~malformed
     numeric_valid &= parsed_values["close"].notna()
+    for column in ("open", "high", "low", "close"):
+        supplied = rows[column].notna() & rows[column].astype(str).str.strip().ne("")
+        positive = pd.Series(
+            [value is None or value > 0 for value in parsed_values[column]], index=rows.index
+        )
+        numeric_valid &= ~supplied | positive
+
+    candle_valid = pd.Series(
+        [
+            (high is None) == (low is None)
+            and (high is None or (close is not None and low <= close <= high))
+            and (opening is None or (high is not None and low <= opening <= high))
+            for opening, high, low, close in zip(
+                parsed_values["open"],
+                parsed_values["high"],
+                parsed_values["low"],
+                parsed_values["close"],
+            )
+        ],
+        index=rows.index,
+    )
+    numeric_valid &= candle_valid
     eligible = verified & has_date & traded & numeric_valid
     missing_date_count = int((~verified | ~has_date).sum())
     unknown_trade_count = int((verified & has_date & ~traded).sum())

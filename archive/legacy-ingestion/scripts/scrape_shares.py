@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import re
 from datetime import datetime, timezone
@@ -131,14 +132,65 @@ def scrape_brvm_shares(url: str, *, collected_at: datetime | None = None) -> pd.
     return pd.DataFrame(observations)
 
 
+def _save_raw_observations(frame, collected_at: datetime) -> str:
+    """Write each scrape as a new object; a retry must never replace evidence."""
+    import pandas as pd
+
+    if collected_at.tzinfo is None or collected_at.utcoffset() is None:
+        raise ValueError("collected_at must be timezone-aware")
+    stamp = collected_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%S%fZ")
+    csv_text = frame.to_csv(index=False, sep="|")
+    cloud_runtime = os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")
+
+    if cloud_runtime:
+        from google.api_core.exceptions import PreconditionFailed
+        from google.auth import default
+        from google.cloud import storage
+        from helper import get_project_number
+
+        credentials, project_id = default()
+        project_number = get_project_number(project_id)
+        bucket = storage.Client().bucket(f"data-{project_number}")
+        for suffix in range(1000):
+            suffix_text = "" if suffix == 0 else f"-{suffix}"
+            filename = f"shares-{stamp}{suffix_text}.csv"
+            try:
+                bucket.blob(filename).upload_from_string(
+                    csv_text, content_type="text/csv", if_generation_match=0
+                )
+            except PreconditionFailed:
+                continue
+            return f"File saved to GCS bucket '{bucket.name}' as '{filename}'.\n"
+        raise FileExistsError("could not allocate a unique share observation object")
+
+    data_directory = os.path.join(os.path.dirname(__file__), "..", "data")
+    for suffix in range(1000):
+        suffix_text = "" if suffix == 0 else f"-{suffix}"
+        filename = f"shares-{stamp}{suffix_text}.csv"
+        path = os.path.join(data_directory, filename)
+        try:
+            with open(path, "x", encoding="utf-8", newline="") as raw_file:
+                raw_file.write(csv_text)
+        except FileExistsError:
+            continue
+        except Exception:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+            raise
+        return f"File saved locally as '{filename}'.\n"
+    raise FileExistsError("could not allocate a unique share observation file")
+
+
 def entry_point(request=None):
     import yaml
-    from helper import save_dataframe_as_csv
 
     with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
-    df = scrape_brvm_shares(config["url"]["shares"])
-    return save_dataframe_as_csv(df, "shares", config)
+    collected_at = datetime.now(timezone.utc)
+    df = scrape_brvm_shares(config["url"]["shares"], collected_at=collected_at)
+    return _save_raw_observations(df, collected_at)
 
 
 if __name__ == "__main__" and not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):

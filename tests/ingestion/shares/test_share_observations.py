@@ -105,6 +105,31 @@ def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> 
     assert row["numeric_parse_errors"] == "high"
 
 
+def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch) -> None:
+    scripts = tmp_path / "scripts"
+    data = tmp_path / "data"
+    scripts.mkdir()
+    data.mkdir()
+    monkeypatch.setattr(scraper, "__file__", str(scripts / "scrape_shares.py"))
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+    collected_at = datetime(2026, 9, 22, 8, tzinfo=timezone.utc)
+
+    first_result = scraper._save_raw_observations(
+        pd.DataFrame([{"symbol": "ABC", "close": "1 050,75"}]), collected_at
+    )
+    second_result = scraper._save_raw_observations(
+        pd.DataFrame([{"symbol": "ABC", "close": "1 051,00"}]), collected_at
+    )
+    files = sorted(data.glob("shares-2026-09-22*.csv"))
+    contents = {path.read_text() for path in files}
+
+    assert first_result != second_result
+    assert len(files) == 2
+    assert any("1 050,75" in content for content in contents)
+    assert any("1 051,00" in content for content in contents)
+
+
 def _row(**updates):
     row = {
         "symbol": "ABC",
@@ -187,6 +212,39 @@ def test_unsupported_price_precision_is_not_rounded_into_contract() -> None:
 
     assert normalized.empty
     assert evidence["invalid_numeric_observation"] == 1
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"close": "0"},
+        {"open": "0"},
+        {"high": "0"},
+        {"low": "0"},
+        {"close": "1 200,00"},
+        {"high": "850,00"},
+        {"low": "1 200,00"},
+        {"open": "1 200,00"},
+        {"high": "", "low": "900,00"},
+        {"high": "1 100,50", "low": "", "open": ""},
+    ],
+)
+def test_nonpositive_or_impossible_ohlc_is_withheld(updates) -> None:
+    normalized, evidence = loader.prepare_normalized_rows(pd.DataFrame([_row(**updates)]))
+
+    assert normalized.empty
+    assert evidence["invalid_numeric_observation"] == 1
+
+
+def test_close_only_observation_keeps_permitted_missing_candle_fields() -> None:
+    normalized, evidence = loader.prepare_normalized_rows(
+        pd.DataFrame([_row(open="", high="", low="")])
+    )
+
+    assert evidence["loadable"] == 1
+    assert pd.isna(normalized.loc[0, "open"])
+    assert pd.isna(normalized.loc[0, "high"])
+    assert pd.isna(normalized.loc[0, "low"])
 
 
 def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> None:
