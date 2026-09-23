@@ -48,9 +48,20 @@ class _FakeBigQueryClient:
         self.load_calls: list[tuple[str, Any]] = []
         self.merge_queries: list[str] = []
         self.deleted_tables: list[str] = []
-        self.keys = ["symbol", "fiscal_year", "document_link"]
         self.load_error: Exception | None = None
         self.merge_error: Exception | None = None
+
+    def get_table(self, table_id: str) -> Any:
+        return SimpleNamespace(
+            schema=[
+                SimpleNamespace(name=name)
+                for name in ("symbol", "fiscal_year", "document_link", "net_income")
+            ]
+        )
+
+    def create_table(self, table: Any, *, exists_ok: bool) -> Any:
+        self.created_table = table
+        return table
 
     def load_table_from_dataframe(
         self, dataframe: pd.DataFrame, table_id: str, *, job_config: Any
@@ -68,13 +79,15 @@ class _FakeBigQueryClient:
             return _Job(error=self.merge_error)
 
         target_rows = self.tables.setdefault(target_id.group(1), [])
+        on_clause = sql.split("WHEN", maxsplit=1)[0]
+        keys = re.findall(r"target\.`([^`]+)` = source\.`[^`]+`", on_clause)
         for incoming in self.stages[staging_id.group(1)]:
-            key = tuple(incoming[column] for column in self.keys)
+            key = tuple(incoming[column] for column in keys)
             current = next(
                 (
                     row
                     for row in target_rows
-                    if tuple(row[column] for column in self.keys) == key
+                    if tuple(row[column] for column in keys) == key
                 ),
                 None,
             )
@@ -95,6 +108,8 @@ def loader(monkeypatch: pytest.MonkeyPatch) -> tuple[ModuleType, _FakeBigQueryCl
     client = _FakeBigQueryClient()
     bigquery = SimpleNamespace(
         Client=lambda project: client,
+        SchemaField=lambda name, field_type: SimpleNamespace(name=name, type=field_type),
+        Table=lambda table_id, schema: SimpleNamespace(table_id=table_id, schema=schema),
         LoadJobConfig=lambda **values: SimpleNamespace(**values),
         QueryJobConfig=lambda **values: SimpleNamespace(**values),
         WriteDisposition=SimpleNamespace(WRITE_TRUNCATE="WRITE_TRUNCATE"),
@@ -340,6 +355,67 @@ def test_changed_row_is_revision_only_when_revision_identity_is_a_source_key(
     history = client.tables["project.stocks.financials"]
     assert len(history) == 2
     assert {row["net_income"] for row in history} == {100, 125}
+
+
+def test_financial_revision_uses_document_content_identity_and_keeps_current_schema(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    first = pd.DataFrame([{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "document_link": "https://reports.example/annual.pdf",
+        "net_income": 100,
+        "document_revision": "a" * 64,
+    }])
+    corrected = first.assign(net_income=125, document_revision="b" * 64)
+
+    helper.upsert_financial_report_revision(first, "project")
+    helper.upsert_financial_report_revision(corrected, "project")
+
+    revision_table = client.created_table
+    assert revision_table.table_id == "project.stocks.financial_report_revisions"
+    assert any(
+        field.name == "document_revision" and field.type == "STRING"
+        for field in revision_table.schema
+    )
+    assert len(client.tables["project.stocks.financial_report_revisions"]) == 2
+
+
+def test_financial_pdf_caller_commits_revision_before_retryable_archive(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    current = pd.DataFrame([{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "document_link": "gs://archive/annual.pdf",
+        "net_income": 125,
+    }])
+    revision = current.assign(document_revision="c" * 64)
+    archive_calls = 0
+
+    def archive_once_fails() -> None:
+        nonlocal archive_calls
+        archive_calls += 1
+        if archive_calls == 1:
+            raise OSError("archive unavailable")
+
+    with pytest.raises(OSError, match="archive unavailable"):
+        helper.upsert_financial_report_and_archive(
+            current, revision, "project", archive_once_fails, dataset="stocks"
+        )
+
+    assert len(client.merge_queries) == 2
+    assert "MERGE `project.stocks.financials`" in client.merge_queries[0]
+    assert "MERGE `project.stocks.financial_report_revisions`" in client.merge_queries[1]
+    helper.upsert_financial_report_and_archive(
+        current, revision, "project", archive_once_fails, dataset="stocks"
+    )
+
+    assert len(client.tables["project.stocks.financials"]) == 1
+    assert len(client.tables["project.stocks.financial_report_revisions"]) == 1
+    assert archive_calls == 2
 
 
 @pytest.mark.parametrize("failure_stage", ["load", "merge"])

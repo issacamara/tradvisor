@@ -1,7 +1,7 @@
 from curl_cffi import requests
 import yaml
 import pandas as pd
-from helper import save_dataframe_as_csv, upsert_into_bigquery, get_symbols_from_richbourse, table_exists
+from helper import save_dataframe_as_csv, upsert_into_bigquery, upsert_financial_report_revision, get_symbols_from_richbourse, table_exists
 from datetime import datetime
 from bs4 import BeautifulSoup
 import functions_framework
@@ -9,6 +9,7 @@ import os
 import re
 import json
 import io
+import hashlib
 from google.auth import default
 
 
@@ -27,14 +28,15 @@ def get_existing_symbols_and_years():
     credentials, project_id = default()
     client = bigquery.Client(credentials=credentials, project=project_id)
     query = f"""
-        SELECT symbol, fiscal_year, announcement_date
+        SELECT symbol, fiscal_year, announcement_date, document_link
         FROM `{project_id}.stocks.financials`
     """
     
     try:
         results = client.query(query).result()
         return {(row.symbol, row.fiscal_year): {
-            'announcement_date': str(row.announcement_date) if row.announcement_date else None
+            'announcement_date': str(row.announcement_date) if row.announcement_date else None,
+            'document_link': row.document_link,
         } for row in results}
     except Exception:
         # Table might not exist or be empty
@@ -511,7 +513,11 @@ def scrape_financials(url, openrouter_api_key=None):
             # SMART PDF DOWNLOAD: Skip if we already have data from this exact announcement date
             # This avoids re-downloading PDFs unnecessarily when there are multiple announcements
             # for the same fiscal year (we always keep the most recent one)
-            if existing_financials and existing_financials.get('announcement_date') == ann['announcement_date']:
+            if (
+                existing_financials
+                and existing_financials.get('announcement_date') == ann['announcement_date']
+                and existing_financials.get('document_link') == ann['url']
+            ):
                 print(f"  FY {fiscal_year} - already up to date, skipping")
                 continue
             
@@ -544,6 +550,7 @@ def scrape_financials(url, openrouter_api_key=None):
                 
                 # Extract financial data from PDF
                 pdf_content = pdf_response.content
+                document_revision = hashlib.sha256(pdf_content).hexdigest()
                 financial_data = extract_financials_from_pdf(pdf_content, openrouter_api_key)
                 
                 # CRITICAL: Delete PDF content from memory immediately after processing
@@ -567,6 +574,7 @@ def scrape_financials(url, openrouter_api_key=None):
                     'total_equity': financial_data.get('total_equity'),
                     'announcement_date': ann['announcement_date'],  # String format "YYYY-MM-DD"
                     'document_link': ann['url'],
+                    'document_revision': document_revision,
                     'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 })
                 print(f"    Extracted: revenue={financial_data.get('revenue')}, net_income={financial_data.get('net_income')}")
@@ -586,7 +594,9 @@ def scrape_financials(url, openrouter_api_key=None):
             df_symbol = pd.DataFrame(symbol_data)
             try:
                 credentials, project_id = default()
-                upsert_into_bigquery(df_symbol, project_id, 'stocks', 'financials', ['symbol', 'fiscal_year'])
+                upsert_financial_report_revision(df_symbol, project_id)
+                current_df = df_symbol.drop(columns=['document_revision'])
+                upsert_into_bigquery(current_df, project_id, 'stocks', 'financials', ['symbol', 'fiscal_year'])
                 print(f"  Upserted {len(df_symbol)} records to BigQuery.")
                 total_processed += len(df_symbol)
             except Exception as e:

@@ -491,7 +491,9 @@ def upsert_into_bigquery(
 
     Rows with the same source keys are updated in place. To preserve multiple
     observations as revisions, the adapter must include the revision or
-    observation identity in ``primary_keys``.
+    observation identity in ``primary_keys``. Callers must serialize commits
+    for a target/key set: BigQuery MERGE does not enforce unique keys across
+    simultaneous insert-first jobs.
     """
     from google.cloud import bigquery
 
@@ -630,6 +632,51 @@ def upsert_and_archive(
     )
     archive()
     return committed_load_id
+
+
+def upsert_financial_report_revision(df, project_id, dataset="stocks"):
+    """Persist a report revision separately from the canonical current result."""
+    from google.cloud import bigquery
+
+    client = bigquery.Client(project=project_id)
+    current = client.get_table(f"{project_id}.{dataset}.financials")
+    revision_id = f"{project_id}.{dataset}.financial_report_revisions"
+    revision_schema = list(current.schema)
+    current_names = {field.name for field in revision_schema}
+    if "document_revision" not in current_names:
+        revision_schema.append(bigquery.SchemaField("document_revision", "STRING"))
+    client.create_table(
+        bigquery.Table(revision_id, schema=revision_schema), exists_ok=True
+    )
+    revision_rows = df.copy()
+    if "document_revision" not in revision_rows.columns:
+        raise ValueError("financial report revision requires document_revision")
+    return upsert_into_bigquery(
+        revision_rows,
+        project_id,
+        dataset,
+        "financial_report_revisions",
+        ["symbol", "fiscal_year", "document_link", "document_revision"],
+    )
+
+
+def upsert_financial_report_and_archive(
+    current_df, revision_df, project_id, archive, *, dataset="stocks"
+):
+    """Commit current and immutable revision rows before archiving the PDF."""
+
+    def commit_revision_and_archive():
+        upsert_financial_report_revision(revision_df, project_id, dataset)
+        archive()
+
+    return upsert_and_archive(
+        current_df,
+        project_id,
+        dataset,
+        "financials",
+        ["symbol", "fiscal_year"],
+        commit_revision_and_archive,
+    )
 
 # Define a function to insert data into DuckDB
 def insert_into_duckdb(df, db_path, table):
