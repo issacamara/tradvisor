@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from enum import StrEnum
-from typing import Iterable
+from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 
@@ -144,6 +144,14 @@ class CalendarVersion:
         raise KeyError(session_date)
 
 
+@dataclass(frozen=True)
+class CalendarInputs:
+    schedules: tuple[DatedScheduleEvidence, ...]
+    holidays: tuple[HolidayEvidence, ...]
+    coverage: tuple[CoveragePeriod, ...]
+    exceptions: tuple[CalendarException, ...]
+
+
 def parse_explicit_date(value: str) -> date:
     """Parse only a fully qualified ISO date; never borrow a year from context."""
     try:
@@ -153,6 +161,147 @@ def parse_explicit_date(value: str) -> date:
     if parsed.isoformat() != value:
         raise ValueError(f"date must use YYYY-MM-DD: {value!r}")
     return parsed
+
+
+def _required(row: Mapping[str, object], field: str) -> object:
+    if field not in row or row[field] is None or row[field] == "":
+        raise ValueError(f"required calendar row field is missing: {field}")
+    return row[field]
+
+
+def _row_date(row: Mapping[str, object], field: str) -> date:
+    value = _required(row, field)
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be an explicit YYYY-MM-DD string")
+    return parse_explicit_date(value)
+
+
+def _row_text(row: Mapping[str, object], field: str) -> str:
+    value = _required(row, field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _row_verification(row: Mapping[str, object]) -> VerificationStatus:
+    value = _required(row, "verification")
+    try:
+        return VerificationStatus(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("verification must be verified, provisional, or unverified") from error
+
+
+def _row_source(row: Mapping[str, object]) -> SourceReference:
+    return SourceReference(
+        source_id=_row_text(row, "source_id"),
+        source_url=_row_text(row, "source_url"),
+        source_date=_row_date(row, "source_date"),
+        evidence_sha256=_row_text(row, "evidence_sha256"),
+    )
+
+
+def _row_time(row: Mapping[str, object], field: str) -> time | None:
+    if field not in row:
+        raise ValueError(f"required calendar row field is missing: {field}")
+    value = row[field]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be an explicit HH:MM[:SS] string or null")
+    try:
+        parsed = time.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{field} must be an explicit HH:MM[:SS] string or null") from error
+    if value not in {parsed.strftime("%H:%M"), parsed.strftime("%H:%M:%S")}:
+        raise ValueError(f"{field} must use canonical ISO time notation")
+    return parsed
+
+
+def _row_bool(row: Mapping[str, object], field: str) -> bool:
+    value = _required(row, field)
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+    return value
+
+
+def _row_nonnegative_int(row: Mapping[str, object], field: str) -> int:
+    value = _required(row, field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _row_recorded_at(row: Mapping[str, object]) -> datetime:
+    value = _required(row, "recorded_at")
+    if not isinstance(value, str):
+        raise ValueError("recorded_at must be a timezone-aware ISO datetime string")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError("recorded_at must be a timezone-aware ISO datetime string") from error
+    if parsed.tzinfo is None:
+        raise ValueError("recorded_at must be a timezone-aware ISO datetime string")
+    return parsed
+
+
+def parse_calendar_rows(
+    *,
+    schedule_rows: Iterable[Mapping[str, object]],
+    holiday_rows: Iterable[Mapping[str, object]],
+    coverage_rows: Iterable[Mapping[str, object]],
+    exception_rows: Iterable[Mapping[str, object]] = (),
+) -> CalendarInputs:
+    """Parse stored/extracted mappings without fetching or interpreting source documents.
+
+    Schedule rows require session_date, is_open, officialization_time, verification,
+    timing_tolerance_seconds, source_id, source_url, source_date, and evidence_sha256.
+    Holiday rows require session_date, verification, and the four source fields.
+    Coverage rows require start_date, end_date, verification, and the four source fields.
+    Exception rows require session_date, is_open, officialization_time, verification,
+    timing_tolerance_seconds, recorded_at, operator_id, and the four source fields.
+    Dates use YYYY-MM-DD; times use HH:MM[:SS]; recorded_at includes a UTC offset.
+    A closed row supplies null for officialization_time. Extra columns are ignored.
+    """
+    schedules = tuple(
+        DatedScheduleEvidence(
+            _row_date(row, "session_date"),
+            _row_bool(row, "is_open"),
+            _row_time(row, "officialization_time"),
+            _row_source(row),
+            _row_verification(row),
+            _row_nonnegative_int(row, "timing_tolerance_seconds"),
+        )
+        for row in schedule_rows
+    )
+    holidays = tuple(
+        HolidayEvidence(
+            _row_date(row, "session_date"), _row_source(row), _row_verification(row)
+        )
+        for row in holiday_rows
+    )
+    coverage = tuple(
+        CoveragePeriod(
+            _row_date(row, "start_date"),
+            _row_date(row, "end_date"),
+            _row_verification(row),
+            _row_source(row),
+        )
+        for row in coverage_rows
+    )
+    exceptions = tuple(
+        CalendarException(
+            _row_date(row, "session_date"),
+            _row_bool(row, "is_open"),
+            _row_time(row, "officialization_time"),
+            _row_source(row),
+            _row_recorded_at(row),
+            _row_text(row, "operator_id"),
+            _row_nonnegative_int(row, "timing_tolerance_seconds"),
+            _row_verification(row),
+        )
+        for row in exception_rows
+    )
+    return CalendarInputs(schedules, holidays, coverage, exceptions)
 
 
 def _as_utc_instant(session_date: date, officialization: time) -> datetime:
@@ -209,12 +358,20 @@ def _make_entry(
     exception: CalendarException | None,
 ) -> CalendarEntry:
     if exception is not None:
-        status = SessionStatus.OPEN if exception.is_open else SessionStatus.CLOSED
-        verification = exception.verification
+        verified_exception = exception.verification is VerificationStatus.VERIFIED
+        status = (
+            (SessionStatus.OPEN if exception.is_open else SessionStatus.CLOSED)
+            if verified_exception
+            else SessionStatus.UNKNOWN
+        )
+        verification = _verification(
+            exception.verification,
+            coverage.verification if coverage else VerificationStatus.UNVERIFIED,
+        )
         coverage_status = CoverageStatus.KNOWN if coverage else CoverageStatus.MISSING
         officialization = (
             _as_utc_instant(session_date, exception.officialization_time)
-            if exception.officialization_time
+            if verified_exception and exception.officialization_time
             else None
         )
         sources = tuple(
@@ -233,7 +390,7 @@ def _make_entry(
             verification,
             coverage_status,
             officialization,
-            exception.timing_tolerance_seconds if exception.is_open else None,
+            exception.timing_tolerance_seconds if officialization else None,
             officialization + OFFICIALIZATION_BUFFER if officialization else None,
             sources,
             exception.source_notice,
@@ -348,6 +505,36 @@ def build_calendar_version(
     ).encode()
     digest = hashlib.sha256(canonical).hexdigest()
     return CalendarVersion(version, parent_version, tuple(entries), digest)
+
+
+def build_calendar_version_from_rows(
+    *,
+    version: str,
+    start_date: date,
+    end_date: date,
+    schedule_rows: Iterable[Mapping[str, object]],
+    holiday_rows: Iterable[Mapping[str, object]],
+    coverage_rows: Iterable[Mapping[str, object]],
+    exception_rows: Iterable[Mapping[str, object]] = (),
+    parent_version: str | None = None,
+) -> CalendarVersion:
+    """Parse evidence rows and publish one immutable, content-addressed version."""
+    inputs = parse_calendar_rows(
+        schedule_rows=schedule_rows,
+        holiday_rows=holiday_rows,
+        coverage_rows=coverage_rows,
+        exception_rows=exception_rows,
+    )
+    return build_calendar_version(
+        version=version,
+        parent_version=parent_version,
+        start_date=start_date,
+        end_date=end_date,
+        schedules=inputs.schedules,
+        holidays=inputs.holidays,
+        coverage=inputs.coverage,
+        exceptions=inputs.exceptions,
+    )
 
 
 def is_session_complete(entry: CalendarEntry, now: datetime) -> bool:

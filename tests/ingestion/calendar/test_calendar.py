@@ -79,6 +79,164 @@ def test_date_parser_requires_explicit_four_digit_year() -> None:
             calendar.parse_explicit_date(value)
 
 
+def row_source(**updates: object) -> dict[str, object]:
+    return {
+        "source_id": "official-calendar",
+        "source_url": "https://example.test/calendar",
+        "source_date": "2026-01-01",
+        "evidence_sha256": "a" * 64,
+        **updates,
+    }
+
+
+def test_row_parser_requires_explicit_years_and_declared_fields() -> None:
+    schedule_row = row_source(
+        session_date="2026-09-23",
+        is_open=True,
+        officialization_time="15:00",
+        timing_tolerance_seconds=60,
+        verification="verified",
+    )
+    coverage_row = row_source(
+        start_date="2026-09-01", end_date="2026-09-30", verification="verified"
+    )
+
+    parsed = calendar.parse_calendar_rows(
+        schedule_rows=(schedule_row,), holiday_rows=(), coverage_rows=(coverage_row,)
+    )
+    assert parsed.schedules[0].session_date == date(2026, 9, 23)
+
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        calendar.parse_calendar_rows(
+            schedule_rows=({**schedule_row, "session_date": "09-23"},),
+            holiday_rows=(),
+            coverage_rows=(coverage_row,),
+        )
+    with pytest.raises(ValueError, match="required calendar row field.*officialization_time"):
+        calendar.parse_calendar_rows(
+            schedule_rows=({key: value for key, value in schedule_row.items()
+                            if key != "officialization_time"},),
+            holiday_rows=(),
+            coverage_rows=(coverage_row,),
+        )
+    with pytest.raises(ValueError, match="required calendar row field.*source_url"):
+        calendar.parse_calendar_rows(
+            schedule_rows=(),
+            holiday_rows=({key: value for key, value in row_source(
+                session_date="2026-09-23", verification="verified"
+            ).items() if key != "source_url"},),
+            coverage_rows=(),
+        )
+
+
+def test_row_parser_preserves_provisional_holiday_and_missing_coverage() -> None:
+    day = date(2026, 9, 23)
+    schedule_row = row_source(
+        session_date=day.isoformat(),
+        is_open=True,
+        officialization_time="15:00",
+        timing_tolerance_seconds=60,
+        verification="verified",
+    )
+    holiday_row = row_source(session_date=day.isoformat(), verification="provisional")
+    coverage_row = row_source(
+        start_date=day.isoformat(), end_date=day.isoformat(), verification="verified"
+    )
+    parsed_version = calendar.build_calendar_version_from_rows(
+        version="rows-v1",
+        start_date=day,
+        end_date=day,
+        schedule_rows=(schedule_row,),
+        holiday_rows=(holiday_row,),
+        coverage_rows=(coverage_row,),
+    )
+    entry = parsed_version.for_date(day)
+    assert entry.status is calendar.SessionStatus.UNKNOWN
+    assert entry.verification is calendar.VerificationStatus.PROVISIONAL
+    assert entry.coverage_status is calendar.CoverageStatus.KNOWN
+
+    uncovered = calendar.build_calendar_version_from_rows(
+        version="rows-v2",
+        start_date=day,
+        end_date=day,
+        schedule_rows=(schedule_row,),
+        holiday_rows=(),
+        coverage_rows=(),
+    ).for_date(day)
+    assert uncovered.status is calendar.SessionStatus.OPEN
+    assert uncovered.coverage_status is calendar.CoverageStatus.MISSING
+
+
+def test_unverified_exception_retains_audit_fields_without_changing_status_or_cutoff() -> None:
+    day = date(2026, 9, 23)
+    rows = {
+        **row_source(
+            session_date=day.isoformat(),
+            is_open=True,
+            officialization_time="12:00",
+            timing_tolerance_seconds=60,
+            verification="provisional",
+            recorded_at="2026-09-20T10:00:00+00:00",
+            operator_id="operator-7",
+        )
+    }
+    entry = calendar.build_calendar_version_from_rows(
+        version="rows-exception",
+        start_date=day,
+        end_date=day,
+        schedule_rows=(row_source(
+            session_date=day.isoformat(),
+            is_open=True,
+            officialization_time="15:00",
+            timing_tolerance_seconds=60,
+            verification="verified",
+        ),),
+        holiday_rows=(),
+        coverage_rows=(row_source(
+            start_date=day.isoformat(), end_date=day.isoformat(), verification="verified"
+        ),),
+        exception_rows=(rows,),
+    ).for_date(day)
+
+    assert entry.status is calendar.SessionStatus.UNKNOWN
+    assert entry.verification is calendar.VerificationStatus.PROVISIONAL
+    assert entry.coverage_status is calendar.CoverageStatus.KNOWN
+    assert entry.scheduled_officialization is None
+    assert entry.completion_cutoff is None
+    assert entry.exception_source == calendar.SourceReference(
+        "official-calendar", "https://example.test/calendar", date(2026, 1, 1), "a" * 64
+    )
+    assert entry.exception_recorded_at == datetime(2026, 9, 20, 10, tzinfo=timezone.utc)
+    assert entry.exception_operator_id == "operator-7"
+
+
+def test_row_calendar_content_identity_is_stable_for_identical_evidence() -> None:
+    day = date(2026, 9, 23)
+    schedule_row = row_source(
+        session_date=day.isoformat(),
+        is_open=True,
+        officialization_time="15:00",
+        timing_tolerance_seconds=60,
+        verification="verified",
+    )
+    coverage_row = row_source(
+        start_date=day.isoformat(), end_date=day.isoformat(), verification="verified"
+    )
+    versions = [
+        calendar.build_calendar_version_from_rows(
+            version=version,
+            start_date=day,
+            end_date=day,
+            schedule_rows=(schedule_row,),
+            holiday_rows=(),
+            coverage_rows=(coverage_row,),
+        )
+        for version in ("content-v1", "content-v2")
+    ]
+    assert versions[0].content_sha256 == versions[1].content_sha256
+    assert versions[0].entries == versions[1].entries
+
+
 def test_provisional_holiday_does_not_certify_a_closure() -> None:
     day = date(2026, 8, 17)
     holiday = calendar.HolidayEvidence(
