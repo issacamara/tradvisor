@@ -26,6 +26,20 @@ def test_seed_boundaries_and_first_wilder_recurrence() -> None:
     assert flat.points[14].value == 50.0
 
 
+def test_mixed_gain_loss_seed_and_wilder_recurrence_match_the_formula() -> None:
+    closes = [0]
+    for _ in range(7):
+        closes.extend((closes[-1] + 2, closes[-1] + 1))
+    closes.append(closes[-1] - 1)
+    series = calculate_rsi14(snapshot(closes), rule_version="rsi-v1")
+    seeded = 100.0 - 100.0 / (1.0 + 1.0 / 0.5)
+    next_gain = 13.0 / 14.0
+    next_loss = (13.0 * 0.5 + 1.0) / 14.0
+    recurred = 100.0 - 100.0 / (1.0 + next_gain / next_loss)
+    assert series.points[14].value == pytest.approx(seeded, rel=1e-8, abs=1e-8)
+    assert series.points[15].value == pytest.approx(recurred, rel=1e-8, abs=1e-8)
+
+
 def test_carried_close_counts_and_unknown_interrupts_segment() -> None:
     values = list(range(1, 15)) + [14, None] + list(range(30, 45))
     segments = [1] * 15 + [None] + [2] * 15
@@ -46,7 +60,11 @@ def test_maturity_and_checkpoint_correction_fence() -> None:
     corrected = list(range(1, 251)); corrected[-1] = 999
     suffix = calculate_rsi14(snapshot(corrected, snapshot_id="corrected"), rule_version="rsi-v1", checkpoint=anchor)
     corrected_full = calculate_rsi14(snapshot(corrected, snapshot_id="corrected"), rule_version="rsi-v1")
-    assert [point.value for point in suffix.points] == pytest.approx([point.value for point in corrected_full.points if point.session_index > anchor.session_index])
+    assert [point.value for point in suffix.points] == pytest.approx(
+        [point.value for point in corrected_full.points if point.session_index > anchor.session_index],
+        rel=1e-8,
+        abs=1e-8,
+    )
     stale = list(range(1, 251)); stale[0] = 999
     with pytest.raises(RsiCalculationError, match="prefix differs"):
         calculate_rsi14(snapshot(stale, snapshot_id="stale"), rule_version="rsi-v1", checkpoint=anchor)
