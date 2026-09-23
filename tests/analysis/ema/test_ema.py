@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Literal, cast
+from typing import Literal, Sequence, cast
 
 import pytest
 
@@ -12,10 +12,10 @@ from backend.analysis.inputs import AnalyticalInputSnapshot, SessionInput
 
 
 def snapshot(
-    closes: list[int | None],
+    closes: Sequence[int | None],
     *,
-    segments: list[int | None] | None = None,
-    close_states: list[Literal["traded", "carried", "unknown"]] | None = None,
+    segments: Sequence[int | None] | None = None,
+    close_states: Sequence[Literal["traded", "carried", "unknown"]] | None = None,
     snapshot_id: str = "snapshot-1",
 ) -> AnalyticalInputSnapshot:
     if segments is None:
@@ -88,18 +88,36 @@ def test_maturity_is_session_based_at_250_not_249() -> None:
     assert series.points[249].value == 100.0
 
 
-def test_checkpoint_suffix_replay_agrees_with_full_replay_and_keeps_new_snapshot_evidence() -> None:
+def test_checkpoint_suffix_replay_agrees_after_a_later_correction_and_keeps_new_snapshot_evidence() -> None:
     original = snapshot([100 + index for index in range(30)])
     full = calculate_ema(original, period=20, rule_version="ema-v1")
     anchor = full.checkpoints[4]
-    corrected = snapshot([100 + index for index in range(30)], snapshot_id="snapshot-corrected")
+    corrected_closes = [100 + index for index in range(30)]
+    corrected_closes[-1] = 999
+    corrected = snapshot(corrected_closes, snapshot_id="snapshot-corrected")
+    corrected_full = calculate_ema(corrected, period=20, rule_version="ema-v1")
     suffix = calculate_ema(corrected, period=20, rule_version="ema-v1", checkpoint=anchor)
 
     assert [point.value for point in suffix.points] == pytest.approx(
-        [point.value for point in full.points if point.session_index > anchor.session_index]
+        [point.value for point in corrected_full.points if point.session_index > anchor.session_index]
     )
     assert suffix.checkpoints[0].input_snapshot_id == "snapshot-corrected"
-    assert suffix.checkpoints[0].value == pytest.approx(full.checkpoints[5].value, rel=1e-8)
+    assert suffix.checkpoints[0].value == pytest.approx(corrected_full.checkpoints[5].value, rel=1e-8)
+
+
+def test_checkpoint_rejects_a_correction_before_its_anchor() -> None:
+    original = snapshot([100 + index for index in range(30)])
+    anchor = calculate_ema(original, period=20, rule_version="ema-v1").checkpoints[4]
+    corrected_closes = [100 + index for index in range(30)]
+    corrected_closes[0] = 999
+
+    with pytest.raises(EmaCalculationError, match="prefix differs"):
+        calculate_ema(
+            snapshot(corrected_closes, snapshot_id="snapshot-corrected"),
+            period=20,
+            rule_version="ema-v1",
+            checkpoint=anchor,
+        )
 
 
 def test_invalid_period_and_incompatible_checkpoint_are_rejected() -> None:

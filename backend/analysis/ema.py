@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal
 
-from backend.analysis.inputs import AnalyticalInputSnapshot, CloseState
+from backend.analysis.inputs import AnalyticalInputSnapshot, CloseState, SessionInput
 from backend.contracts.scalars import OpaqueIdentifier
 
 EMA_PERIODS = (20, 50)
@@ -40,6 +41,7 @@ class EmaCheckpoint:
     close_segment: int
     close_count: int
     value: float
+    prefix_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,17 @@ class EmaSeries:
 
 def _xof(close_micros: int) -> float:
     return close_micros / 1_000_000
+
+
+def _prefix_fingerprint(sessions: tuple[SessionInput, ...], through_session_index: int) -> str:
+    """Bind an anchor to the exact immutable input prefix it summarized."""
+
+    parts = [
+        f"{item.session_index}|{item.close_micros}|{item.close_state}|{item.close_segment}|{item.price_basis_ref}"
+        for item in sessions
+        if item.session_index <= through_session_index
+    ]
+    return sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
 def calculate_ema(
@@ -73,6 +86,10 @@ def calculate_ema(
         raise EmaCalculationError("only approved EMA20 and EMA50 periods are supported")
     if checkpoint is not None and (checkpoint.period != period or checkpoint.rule_version != rule_version):
         raise EmaCalculationError("checkpoint period and rule version must match the requested series")
+    if checkpoint is not None and checkpoint.prefix_fingerprint != _prefix_fingerprint(
+        snapshot.sessions, checkpoint.session_index
+    ):
+        raise EmaCalculationError("checkpoint prefix differs from the requested input snapshot")
 
     multiplier = 2.0 / (period + 1)
     points: list[EmaPoint] = []
@@ -145,6 +162,7 @@ def calculate_ema(
                     close_segment=segment,
                     close_count=close_count,
                     value=value,
+                    prefix_fingerprint=_prefix_fingerprint(snapshot.sessions, session.session_index),
                 )
             )
 
