@@ -11,7 +11,7 @@ from google.auth import default
 from google.cloud import storage
 from google.cloud import bigquery
 from datetime import datetime
-from helper import upsert_financial_report_and_archive
+from helper import get_financial_report_revision, upsert_financial_report_and_archive
 
 
 def is_data_incomplete(data):
@@ -418,21 +418,32 @@ def process_financial_pdfs(openrouter_api_key):
             pdf_content = blob.download_as_bytes()
             document_revision = hashlib.sha256(pdf_content).hexdigest()
             
-            # Extract financial data
-            financial_data = extract_financials_from_pdf(pdf_content, openrouter_api_key)
-            
-            del pdf_content
-            
-            if not financial_data:
-                print(f"    ERROR: Failed to extract data from PDF")
-                total_failed += 1
-                continue
-            
             # Build GCS URL for document_link (pointing to archive location)
             archive_name = (
                 f"financial_report_revisions/{symbol}/{fiscal_year}/{document_revision}.pdf"
             )
             document_link = f"gs://archive-{project_number}/{archive_name}"
+
+            # Reuse committed extraction evidence on archive retries. This avoids
+            # repeating a paid parse and keeps current state aligned with history.
+            financial_data = get_financial_report_revision(
+                symbol,
+                fiscal_year,
+                document_link,
+                document_revision,
+                project_id,
+            )
+            if financial_data is None:
+                financial_data = extract_financials_from_pdf(
+                    pdf_content, openrouter_api_key
+                )
+
+            del pdf_content
+
+            if not financial_data:
+                print(f"    ERROR: Failed to extract data from PDF")
+                total_failed += 1
+                continue
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{

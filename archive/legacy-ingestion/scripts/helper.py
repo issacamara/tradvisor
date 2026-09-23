@@ -477,6 +477,7 @@ def upsert_into_bigquery(
     *,
     run_id: str | None = None,
     snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+    update_matched: bool = True,
 ):
     """Idempotently merge source rows using explicit keys and an isolated stage.
     
@@ -488,12 +489,14 @@ def upsert_into_bigquery(
     - primary_keys: Explicit source identity columns for this adapter
     - run_id: Optional unique staging identity, primarily for retry orchestration
     - snapshot_manifest: Immutable acquisition manifest anchoring committed-load identity
+    - update_matched: Whether an existing source identity may be updated
 
-    Rows with the same source keys are updated in place. To preserve multiple
-    observations as revisions, the adapter must include the revision or
-    observation identity in ``primary_keys``. Callers must serialize commits
-    for a target/key set: BigQuery MERGE does not enforce unique keys across
-    simultaneous insert-first jobs.
+    Preconditions: workflow orchestration must allow at most one active writer
+    per BigQuery target. This helper provides no distributed lock and is not
+    safe for simultaneous insert-first MERGE jobs. Under that serialization,
+    rows with the same source keys are updated in place unless
+    ``update_matched`` is false. Revision adapters must include their revision
+    identity in ``primary_keys`` and disable matched updates.
     """
     from google.cloud import bigquery
 
@@ -577,7 +580,7 @@ def upsert_into_bigquery(
         )
         update_columns = [column for column in columns if column not in primary_keys]
         update_clause = ""
-        if update_columns:
+        if update_matched and update_columns:
             update_clause = "WHEN MATCHED THEN UPDATE SET " + ", ".join(
                 f"target.{_sql_identifier(column, 'column')} = {get_cast_expression(column)}"
                 for column in update_columns
@@ -635,19 +638,13 @@ def upsert_and_archive(
 
 
 def upsert_financial_report_revision(df, project_id, dataset="stocks"):
-    """Persist a report revision separately from the canonical current result."""
-    from google.cloud import bigquery
+    """Insert an immutable report revision into the provisioned history table.
 
-    client = bigquery.Client(project=project_id)
-    current = client.get_table(f"{project_id}.{dataset}.financials")
-    revision_id = f"{project_id}.{dataset}.financial_report_revisions"
-    revision_schema = list(current.schema)
-    current_names = {field.name for field in revision_schema}
-    if "document_revision" not in current_names:
-        revision_schema.append(bigquery.SchemaField("document_revision", "STRING"))
-    client.create_table(
-        bigquery.Table(revision_id, schema=revision_schema), exists_ok=True
-    )
+    The ``financial_report_revisions`` schema is provisioned outside runtime by
+    the approved infrastructure path. A retry of the same revision is a no-op,
+    even if a later parser invocation produces different values.
+    """
+
     revision_rows = df.copy()
     if "document_revision" not in revision_rows.columns:
         raise ValueError("financial report revision requires document_revision")
@@ -657,7 +654,46 @@ def upsert_financial_report_revision(df, project_id, dataset="stocks"):
         dataset,
         "financial_report_revisions",
         ["symbol", "fiscal_year", "document_link", "document_revision"],
+        update_matched=False,
     )
+
+
+def get_financial_report_revision(
+    symbol, fiscal_year, document_link, document_revision, project_id, dataset="stocks"
+):
+    """Return a committed extraction; an unprovisioned history table fails closed."""
+    from google.cloud import bigquery
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", project_id):
+        raise ValueError("project_id contains an invalid BigQuery project identifier")
+    dataset_id = _sql_identifier(dataset, "dataset").strip("`")
+    table_name = _sql_identifier("financial_report_revisions", "table").strip("`")
+    table_id = f"`{project_id}.{dataset_id}.{table_name}`"
+    query = f"""
+    SELECT *
+    FROM {table_id}
+    WHERE symbol = @symbol
+      AND fiscal_year = @fiscal_year
+      AND document_link = @document_link
+      AND document_revision = @document_revision
+    LIMIT 1
+    """
+    client = bigquery.Client(project=project_id)
+    config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("symbol", "STRING", symbol),
+            bigquery.ScalarQueryParameter("fiscal_year", "INT64", fiscal_year),
+            bigquery.ScalarQueryParameter("document_link", "STRING", document_link),
+            bigquery.ScalarQueryParameter(
+                "document_revision", "STRING", document_revision
+            ),
+        ]
+    )
+    rows = list(client.query(query, job_config=config).result())
+    if not rows:
+        return None
+    row = rows[0]
+    return dict(row.items()) if hasattr(row, "items") else dict(row)
 
 
 def upsert_financial_report_and_archive(
