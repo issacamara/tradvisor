@@ -63,6 +63,14 @@ def read_mapping(path: str | Path) -> list[dict[str, str]]:
         return rows
 
 
+def _resolved_classification(correction: Mapping[str, str]) -> tuple[str, str | None]:
+    category = correction.get("financial_category") or "unsupported"
+    has_verified_identity = bool(correction.get("issuer_id") and correction.get("share_class"))
+    if category == "unsupported" or not has_verified_identity:
+        return "unsupported", None
+    return category, correction.get("market_sector") or None
+
+
 def build_company_records(
     catalog: Iterable[Mapping[str, object]],
     corrections: Iterable[Mapping[str, str]],
@@ -92,13 +100,8 @@ def build_company_records(
         end = _parse_date(correction.get("valid_to"), "valid_to")
         if start and end and end < start:
             raise ValueError(f"valid_to precedes valid_from for {symbol}")
-        if (
-            correction.get("issuer_id")
-            or correction.get("share_class")
-            or correction.get("market_sector")
-            or category != "unsupported"
-        ) and not start:
-            raise ValueError(f"valid_from is required for evidenced identity/classification {symbol}")
+        if (correction.get("issuer_id") or correction.get("share_class")) and not start:
+            raise ValueError(f"valid_from is required for evidenced issuer/class identity {symbol}")
         _parse_date(correction.get("source_date"), "source_date")
         by_symbol.setdefault(symbol, []).append(correction)
 
@@ -124,7 +127,7 @@ def build_company_records(
         seen.add(symbol)
         name = str(company.get("name") or "").strip()
         for correction in by_symbol.get(symbol, ()):
-            category = correction.get("financial_category") or "unsupported"
+            category, market_sector = _resolved_classification(correction)
             records.append(
                 CompanyRecord(
                     symbol=symbol,
@@ -133,7 +136,7 @@ def build_company_records(
                     share_class=correction.get("share_class") or None,
                     valid_from=_parse_date(correction.get("valid_from"), "valid_from"),
                     valid_to=_parse_date(correction.get("valid_to"), "valid_to"),
-                    market_sector=correction.get("market_sector") or None,
+                    market_sector=market_sector,
                     financial_category=category,
                     source_url=correction.get("source_url") or None,
                     source_date=_parse_date(correction.get("source_date"), "source_date"),
@@ -161,6 +164,7 @@ def build_company_records(
         if symbol in catalog_symbols:
             continue
         for correction in entries:
+            category, market_sector = _resolved_classification(correction)
             records.append(
                 CompanyRecord(
                     symbol=symbol,
@@ -169,8 +173,8 @@ def build_company_records(
                     share_class=correction.get("share_class") or None,
                     valid_from=_parse_date(correction.get("valid_from"), "valid_from"),
                     valid_to=_parse_date(correction.get("valid_to"), "valid_to"),
-                    market_sector=correction.get("market_sector") or None,
-                    financial_category=correction.get("financial_category") or "unsupported",
+                    market_sector=market_sector,
+                    financial_category=category,
                     source_url=correction.get("source_url") or None,
                     source_date=_parse_date(correction.get("source_date"), "source_date"),
                     correction_reason=correction.get("correction_reason") or None,

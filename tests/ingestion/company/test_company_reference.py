@@ -61,6 +61,26 @@ def test_supported_categories_and_unsupported_do_not_depend_on_names() -> None:
     assert next(record for record in records if record.symbol == "UNKN").source_url is None
 
 
+@pytest.mark.parametrize("missing_field", ["issuer_id", "share_class"])
+def test_classification_without_complete_identity_stays_unsupported(
+    missing_field: str,
+) -> None:
+    correction = evidence("PART", "bank")
+    correction[missing_field] = ""
+
+    records = company_reference.build_company_records(
+        [{"symbol": "PART", "name": "Catalog issuer"}], [correction]
+    )
+
+    assert len(records) == 1
+    assert records[0].financial_category == "unsupported"
+    assert records[0].market_sector is None
+    assert records[0].issuer_id == (None if missing_field == "issuer_id" else "issuer-PART")
+    assert records[0].share_class == (None if missing_field == "share_class" else "ordinary")
+    assert records[0].source_url == correction["source_url"]
+    assert records[0].source_date == date(2024, 6, 30)
+
+
 def test_symbol_history_keeps_validity_provenance_and_old_symbols_reachable() -> None:
     catalog = [{"symbol": "NEW", "name": "Current issuer"}]
     old = evidence("OLD", "non_financial", "2015-01-01")
