@@ -163,8 +163,12 @@ def test_row_parser_preserves_provisional_holiday_and_missing_coverage() -> None
         holiday_rows=(),
         coverage_rows=(),
     ).for_date(day)
-    assert uncovered.status is calendar.SessionStatus.OPEN
+    assert uncovered.status is calendar.SessionStatus.UNKNOWN
     assert uncovered.coverage_status is calendar.CoverageStatus.MISSING
+    assert uncovered.verification is calendar.VerificationStatus.UNVERIFIED
+    assert uncovered.session_index is None
+    assert uncovered.scheduled_officialization is None
+    assert uncovered.completion_cutoff is None
 
 
 def test_unverified_exception_retains_audit_fields_without_changing_status_or_cutoff() -> None:
@@ -357,7 +361,7 @@ def test_verified_date_exception_overrides_base_and_retains_provenance() -> None
     "coverage_verification",
     [None, calendar.VerificationStatus.PROVISIONAL],
 )
-def test_verified_exception_requires_verified_coverage_for_cutoff(
+def test_verified_exception_requires_verified_coverage_for_status_and_timing(
     coverage_verification: object | None,
 ) -> None:
     day = date(2026, 8, 17)
@@ -384,13 +388,12 @@ def test_verified_exception_requires_verified_coverage_for_cutoff(
         exceptions=(exception,),
     ).for_date(day)
 
-    assert entry.status is calendar.SessionStatus.OPEN
+    assert entry.status is calendar.SessionStatus.UNKNOWN
     assert entry.verification is (
         coverage_verification or calendar.VerificationStatus.UNVERIFIED
     )
-    assert entry.scheduled_officialization == datetime(
-        2026, 8, 17, 12, tzinfo=timezone.utc
-    )
+    assert entry.session_index is None
+    assert entry.scheduled_officialization is None
     assert entry.completion_cutoff is None
 
 
@@ -398,9 +401,12 @@ def test_missing_historical_coverage_remains_unverified() -> None:
     day = date(1999, 12, 31)
     entry = build(day, schedules=(schedule(day),), cover=False).for_date(day)
 
-    assert entry.status is calendar.SessionStatus.OPEN
+    assert entry.status is calendar.SessionStatus.UNKNOWN
     assert entry.coverage_status is calendar.CoverageStatus.MISSING
     assert entry.verification is calendar.VerificationStatus.UNVERIFIED
+    assert entry.session_index is None
+    assert entry.scheduled_officialization is None
+    assert entry.completion_cutoff is None
     assert not calendar.is_session_complete(entry, datetime(2000, 1, 1, tzinfo=timezone.utc))
 
 

@@ -362,24 +362,19 @@ def _make_entry(
     exception: CalendarException | None,
 ) -> CalendarEntry:
     if exception is not None:
-        verified_exception = exception.verification is VerificationStatus.VERIFIED
-        verified_coverage = (
-            coverage is not None
-            and coverage.verification is VerificationStatus.VERIFIED
-        )
-        status = (
-            (SessionStatus.OPEN if exception.is_open else SessionStatus.CLOSED)
-            if verified_exception
-            else SessionStatus.UNKNOWN
-        )
         verification = _verification(
             exception.verification,
             coverage.verification if coverage else VerificationStatus.UNVERIFIED,
         )
         coverage_status = CoverageStatus.KNOWN if coverage else CoverageStatus.MISSING
+        status = (
+            (SessionStatus.OPEN if exception.is_open else SessionStatus.CLOSED)
+            if verification is VerificationStatus.VERIFIED
+            else SessionStatus.UNKNOWN
+        )
         officialization = (
             _as_utc_instant(session_date, exception.officialization_time)
-            if verified_exception and exception.officialization_time
+            if status is SessionStatus.OPEN and exception.officialization_time
             else None
         )
         sources = tuple(
@@ -401,11 +396,7 @@ def _make_entry(
             coverage_status,
             officialization,
             exception.timing_tolerance_seconds if officialization else None,
-            (
-                officialization + OFFICIALIZATION_BUFFER
-                if officialization and verified_coverage
-                else None
-            ),
+            officialization + OFFICIALIZATION_BUFFER if officialization else None,
             sources,
             exception.source_notice,
             exception.recorded_at.astimezone(UTC),
@@ -436,13 +427,13 @@ def _make_entry(
     if holiday is not None:
         status = (
             SessionStatus.CLOSED
-            if holiday.verification is VerificationStatus.VERIFIED
+            if verification is VerificationStatus.VERIFIED
             else SessionStatus.UNKNOWN
         )
     elif schedule is not None:
         status = (
             (SessionStatus.OPEN if schedule.is_open else SessionStatus.CLOSED)
-            if schedule.verification is VerificationStatus.VERIFIED
+            if verification is VerificationStatus.VERIFIED
             else SessionStatus.UNKNOWN
         )
     else:
