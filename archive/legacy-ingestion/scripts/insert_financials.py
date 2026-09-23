@@ -1,4 +1,5 @@
 import os
+import hashlib
 import io
 import json
 import re
@@ -10,6 +11,7 @@ from google.auth import default
 from google.cloud import storage
 from google.cloud import bigquery
 from datetime import datetime
+from helper import get_financial_report_revision, upsert_financial_report_and_archive
 
 
 def is_data_incomplete(data):
@@ -334,7 +336,7 @@ def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
             print(f"Warning: Failed to delete temporary table {temp_table_id}: {e}")
 
 
-def move_pdf_to_archive(blob, source_bucket, project_number):
+def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_name=None):
     """Move a processed PDF to the archive bucket.
     
     Returns:
@@ -343,7 +345,7 @@ def move_pdf_to_archive(blob, source_bucket, project_number):
     try:
         archive_bucket = source_bucket.client.bucket(f"archive-{project_number}")
         source_blob = source_bucket.blob(blob.name)
-        destination_blob_name = blob.name
+        destination_blob_name = destination_blob_name or blob.name
         
         # Copy to archive bucket
         source_bucket.copy_blob(source_blob, archive_bucket, destination_blob_name)
@@ -409,32 +411,39 @@ def process_financial_pdfs(openrouter_api_key):
                 total_skipped += 1
                 continue
         
-        # Check if already in BigQuery
-        if (symbol, fiscal_year) in existing_data:
-            print(f"  {symbol} FY{fiscal_year} - already in BigQuery, moving PDF to archive")
-            # Still move PDF to archive even if data exists
-            move_pdf_to_archive(blob, bucket, project_number)
-            total_skipped += 1
-            continue
-        
         print(f"  Processing {symbol} FY{fiscal_year}...")
         
         try:
             # Download PDF
             pdf_content = blob.download_as_bytes()
+            document_revision = hashlib.sha256(pdf_content).hexdigest()
             
-            # Extract financial data
-            financial_data = extract_financials_from_pdf(pdf_content, openrouter_api_key)
-            
+            # Build GCS URL for document_link (pointing to archive location)
+            archive_name = (
+                f"financial_report_revisions/{symbol}/{fiscal_year}/{document_revision}.pdf"
+            )
+            document_link = f"gs://archive-{project_number}/{archive_name}"
+
+            # Reuse committed extraction evidence on archive retries. This avoids
+            # repeating a paid parse and keeps current state aligned with history.
+            financial_data = get_financial_report_revision(
+                symbol,
+                fiscal_year,
+                document_link,
+                document_revision,
+                project_id,
+            )
+            if financial_data is None:
+                financial_data = extract_financials_from_pdf(
+                    pdf_content, openrouter_api_key
+                )
+
             del pdf_content
-            
+
             if not financial_data:
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
                 continue
-            
-            # Build GCS URL for document_link (pointing to archive location)
-            document_link = f"gs://archive-{project_number}/{blob.name}"
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{
@@ -448,13 +457,21 @@ def process_financial_pdfs(openrouter_api_key):
                 'document_link': document_link,
                 'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }])
+            revision_df = df.assign(document_revision=document_revision)
             
-            # Upsert to BigQuery
-            upsert_into_bigquery(df, project_id, 'stocks', 'financials', ['symbol', 'fiscal_year'])
-            print(f"    ✓ Upserted {symbol} FY{fiscal_year} to BigQuery")
-            
-            # Move PDF to archive bucket ONLY after successful BigQuery upsert
-            move_pdf_to_archive(blob, bucket, project_number)
+            def archive_pdf():
+                if not move_pdf_to_archive(
+                    blob, bucket, project_number, destination_blob_name=archive_name
+                ):
+                    raise RuntimeError(f"failed to archive {blob.name}")
+
+            upsert_financial_report_and_archive(
+                df,
+                revision_df,
+                project_id,
+                archive_pdf,
+            )
+            print(f"    ✓ Upserted current result and report revision for {symbol} FY{fiscal_year}")
             
             total_processed += 1
             

@@ -7,7 +7,7 @@ from google.cloud import bigquery
 from google.auth import default
 import pandas as pd
 
-from helper import load_files, upsert_into_bigquery, get_project_number
+from helper import load_files, upsert_and_archive, get_project_number
 
 
 @functions_framework.http
@@ -61,14 +61,20 @@ def process_dividends(conf, asset):
                 df = pd.read_csv(io.StringIO(content), sep='|')
                 rows_count = len(df)  # Get row count before upsert
                 # Upsert with symbol and fiscal_year as primary keys
-                upsert_into_bigquery(df, project_id, 'stocks', asset, ['symbol', 'fiscal_year'])
-                print(f"Upserted {rows_count} rows into {asset} table")
-                # Move to archive
-                from helper import move_csv_file_gcp
-                move_csv_file_gcp(bucket_url1, bucket_url2, blob.name)
+                def archive_csv():
+                    from helper import move_csv_file_gcp
+                    move_csv_file_gcp(bucket_url1, bucket_url2, blob.name)
 
-        # Cleanup old records - keep only last 5 years
-        cleanup_old_dividends(project_id, 'stocks', asset, years_to_keep=5)
+                upsert_and_archive(
+                    df,
+                    project_id,
+                    'stocks',
+                    asset,
+                    ['symbol', 'fiscal_year'],
+                    archive_csv,
+                )
+                print(f"Upserted {rows_count} rows into {asset} table")
+
     else:
         # Local development
         from helper import move_csv_file
@@ -86,4 +92,3 @@ if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
     pass
 else:
     print(entry_point())
-
