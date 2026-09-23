@@ -98,6 +98,29 @@ def test_snapshot_uses_authoritative_sessions_and_explicit_no_trade_model() -> N
     assert second.true_range_micros == 0
 
 
+def test_suspended_sessions_remain_explicit_for_no_trade_and_unknown_inputs() -> None:
+    snapshot = build_analytical_input_snapshot(
+        symbol="NSI",
+        as_of=NOW,
+        sessions=(
+            session(21, 1),
+            session(22, 2, status="suspended"),
+            session(23, 3, status="suspended"),
+        ),
+        prices=(
+            price(21),
+            price(22, close=None, high=None, low=None, status="confirmed_no_trade"),
+        ),
+    )
+
+    first, confirmed_no_trade, unavailable = snapshot.sessions
+    assert [item.session_date.day for item in snapshot.sessions] == [21, 22, 23]
+    assert confirmed_no_trade.close_state == "carried"
+    assert confirmed_no_trade.true_range_state == "modeled_zero_range"
+    assert unavailable.close_state == "unknown"
+    assert unavailable.true_range_state == "unknown"
+
+
 def test_missing_observation_and_price_basis_change_break_only_dependent_chains() -> None:
     snapshot = build_analytical_input_snapshot(
         symbol="NSI",

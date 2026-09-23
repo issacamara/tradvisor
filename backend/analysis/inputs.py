@@ -144,19 +144,23 @@ def build_analytical_input_snapshot(
 
     ordered_sessions = tuple(
         sorted(
-            (session for session in by_date.values() if session.status == "trading"),
+            (
+                session
+                for session in by_date.values()
+                if session.status in {"trading", "suspended"}
+            ),
             key=lambda session: (session.session_index, session.session_date, session.session_id),
         )
     )
     if any(session.status == "unknown" for session in by_date.values()):
         raise InputSnapshotError("calendar contains an unknown session; do not skip it")
     if len({session.session_index for session in ordered_sessions}) != len(ordered_sessions):
-        raise InputSnapshotError("calendar has duplicate trading session indices")
+        raise InputSnapshotError("calendar has duplicate analytical session indices")
     if any(
         earlier.session_index >= later.session_index
         for earlier, later in zip(ordered_sessions, ordered_sessions[1:])
     ):
-        raise InputSnapshotError("calendar trading session indices are not strictly increasing")
+        raise InputSnapshotError("calendar analytical session indices are not strictly increasing")
 
     selected_prices = cast(
         dict[tuple[str, date], NormalizedPrice],
