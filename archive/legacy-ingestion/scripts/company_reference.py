@@ -27,8 +27,9 @@ MAPPING_FIELDS = (
 
 @dataclass(frozen=True)
 class CompanyRecord:
-    symbol: str
+    symbol: str | None
     name: str
+    source_slug: str | None
     issuer_id: str | None
     share_class: str | None
     valid_from: date | None
@@ -75,7 +76,7 @@ def build_company_records(
     catalog: Iterable[Mapping[str, object]],
     corrections: Iterable[Mapping[str, str]],
 ) -> list[CompanyRecord]:
-    """Overlay dated, cited corrections while keeping every catalog symbol reachable."""
+    """Overlay dated, cited corrections while keeping every catalog entry reachable."""
     by_symbol: dict[str, list[Mapping[str, str]]] = {}
     for correction in corrections:
         symbol = (correction.get("symbol") or "").strip().upper()
@@ -119,9 +120,28 @@ def build_company_records(
     records = []
     seen = set()
     for company in catalog:
-        symbol = str(company.get("symbol") or "").strip().upper()
+        symbol = str(company.get("symbol") or "").strip().upper() or None
+        source_slug = str(company.get("source_slug") or "").strip() or None
         if not symbol:
-            raise ValueError("catalog companies require a symbol")
+            if not source_slug:
+                raise ValueError("catalog companies require a symbol or source_slug")
+            records.append(
+                CompanyRecord(
+                    symbol=None,
+                    name=str(company.get("name") or "").strip(),
+                    source_slug=source_slug,
+                    issuer_id=None,
+                    share_class=None,
+                    valid_from=None,
+                    valid_to=None,
+                    market_sector=None,
+                    financial_category="unsupported",
+                    source_url=None,
+                    source_date=None,
+                    correction_reason=None,
+                )
+            )
+            continue
         if symbol in seen:
             raise ValueError(f"duplicate catalog symbol: {symbol}")
         seen.add(symbol)
@@ -132,6 +152,7 @@ def build_company_records(
                 CompanyRecord(
                     symbol=symbol,
                     name=name,
+                    source_slug=source_slug,
                     issuer_id=correction.get("issuer_id") or None,
                     share_class=correction.get("share_class") or None,
                     valid_from=_parse_date(correction.get("valid_from"), "valid_from"),
@@ -148,6 +169,7 @@ def build_company_records(
                 CompanyRecord(
                     symbol=symbol,
                     name=name,
+                    source_slug=source_slug,
                     issuer_id=None,
                     share_class=None,
                     valid_from=None,
@@ -159,7 +181,7 @@ def build_company_records(
                     correction_reason=None,
                 )
             )
-    catalog_symbols = {record.symbol for record in records}
+    catalog_symbols = {record.symbol for record in records if record.symbol}
     for symbol, entries in by_symbol.items():
         if symbol in catalog_symbols:
             continue
@@ -169,6 +191,7 @@ def build_company_records(
                 CompanyRecord(
                     symbol=symbol,
                     name=correction.get("emetteur") or "",
+                    source_slug=None,
                     issuer_id=correction.get("issuer_id") or None,
                     share_class=correction.get("share_class") or None,
                     valid_from=_parse_date(correction.get("valid_from"), "valid_from"),

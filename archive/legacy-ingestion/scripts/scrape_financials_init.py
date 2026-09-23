@@ -1,6 +1,5 @@
 from curl_cffi import requests
 import yaml
-import pandas as pd
 from google.auth import default
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -11,35 +10,33 @@ import gc
 import unicodedata
 from google.cloud import storage
 
+from company_reference import build_company_records, read_mapping
+
 
 # BRVM URLs
 BRVM_LISTING_URL = "https://www.brvm.org/fr/rapports-societes-cotees"
 FINANCIALS_REPORT_TYPE = 57  # field_type_rapport_tid=57 for "Etats Financiers"
 
 
-def load_symbol_mapping(csv_path):
-    """Load symbol mapping from CSV file.
-    
-    CSV format: slug,symbol
-    Example: air-liquide-ci,AIRL
-    
-    Parameters:
-    - csv_path: Path to CSV file. If None, looks for 'mapping.csv' in scripts dir
-    
-    Returns:
-    - Dictionary mapping slug to symbol
-    """
-
-    mapping = {}
+def load_company_mapping(csv_path):
+    """Load the complete company reference mapping without external calls."""
     if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path, sep=';', encoding='latin1')
-        if 'emetteur' in df.columns and 'symbol' in df.columns:
-            mapping = dict(zip(df['emetteur'], df['symbol']))
-        print(f"Loaded {len(mapping)} symbol mappings from {csv_path}")
+        mapping = read_mapping(csv_path)
+        print(f"Loaded {len(mapping)} company mappings from {csv_path}")
     else:
-        print(f"Warning: Symbol mapping file not found at {csv_path}")
-    
+        mapping = []
+        print(f"Warning: Company mapping file not found at {csv_path}")
+
     return mapping
+
+
+def load_symbol_mapping(csv_path):
+    """Return the legacy name-to-symbol view of the complete mapping."""
+    return {
+        row['emetteur']: row['symbol']
+        for row in load_company_mapping(csv_path)
+        if row['emetteur'] and row['symbol']
+    }
 
 
 def normalize_text(text):
@@ -140,6 +137,34 @@ def get_companies_from_brvm():
             break
     
     return companies
+
+
+def discover_company_references(mapping_csv_path):
+    """Discover BRVM listings and adapt all of them into reference records."""
+    print("Fetching all companies from BRVM...")
+    companies = get_companies_from_brvm()
+    print(f"Found {len(companies)} companies on BRVM.")
+
+    corrections = load_company_mapping(mapping_csv_path)
+    symbols_by_name = {}
+    for correction in corrections:
+        name = correction['emetteur']
+        symbol = correction['symbol']
+        if name and symbol:
+            symbols_by_name.setdefault(name, set()).add(symbol)
+
+    catalog = []
+    for slug, name in companies:
+        mapped_symbols = symbols_by_name.get(name, set())
+        catalog.append(
+            {
+                'symbol': next(iter(mapped_symbols)) if len(mapped_symbols) == 1 else None,
+                'name': name,
+                'source_slug': slug,
+            }
+        )
+
+    return build_company_records(catalog, corrections)
 
 
 def get_financial_reports_for_company(slug, max_year):
@@ -321,13 +346,9 @@ def scrape_financials_init(url=None):
     
     print(f"Collecting financial PDFs from BRVM (last 5 years: {max_year}-{current_year})...")
     
-    # Load symbol mapping (same directory as config.yml)
+    # Build company references from discovery and the local evidence mapping.
     mapping_csv_path = os.path.join(os.path.dirname(__file__), 'mapping.csv')
-    symbol_mapping = load_symbol_mapping(mapping_csv_path)
-    
-    print("Fetching all companies from BRVM...")
-    companies = get_companies_from_brvm()
-    print(f"Found {len(companies)} companies on BRVM.")
+    company_records = discover_company_references(mapping_csv_path)
     
     # Get storage bucket name
     bucket_name = get_bucket_name()
@@ -336,13 +357,24 @@ def scrape_financials_init(url=None):
     total_downloaded = 0
     total_failed = 0
     
-    for slug, company_name in companies:
-        # Get symbol from mapping
-        symbol = symbol_mapping.get(company_name)
-
-        if not symbol:
-            print(f"  Warning: No symbol mapping for slug '{slug}' ({company_name}), skipping...")
+    processed_listings = set()
+    for company in company_records:
+        if not company.source_slug:
             continue
+        slug = company.source_slug
+        company_name = company.name
+        symbol = company.symbol
+        if not symbol:
+            print(
+                f"  Warning: No verified symbol mapping for slug '{slug}' "
+                f"({company_name}); retained as unsupported."
+            )
+            continue
+
+        listing_key = (slug, symbol)
+        if listing_key in processed_listings:
+            continue
+        processed_listings.add(listing_key)
         
         print(f"Processing {symbol} ({company_name})...")
         

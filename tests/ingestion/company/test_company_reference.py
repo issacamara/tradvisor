@@ -132,6 +132,20 @@ def test_catalog_symbols_without_reference_are_retained_and_unclassified() -> No
     assert all(record.market_sector is None for record in records)
 
 
+def test_unmapped_discovered_listing_uses_source_slug_without_inventing_symbol() -> None:
+    records = company_reference.build_company_records(
+        [{"symbol": None, "name": "Mystery Bank", "source_slug": "mystery-bank"}],
+        [],
+    )
+
+    assert len(records) == 1
+    assert records[0].symbol is None
+    assert records[0].name == "Mystery Bank"
+    assert records[0].source_slug == "mystery-bank"
+    assert records[0].financial_category == "unsupported"
+    assert records[0].market_sector is None
+
+
 def test_legacy_mapping_still_loads_with_optional_reference_columns(tmp_path: Path) -> None:
     path = tmp_path / "mapping.csv"
     path.write_text(
