@@ -1,0 +1,1 @@
+"""Wilder ATR tests."""
