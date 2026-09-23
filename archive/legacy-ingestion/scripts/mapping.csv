@@ -1,4 +1,4 @@
-symbol;emetteur
+symbol;emetteur;issuer_id;share_class;valid_from;valid_to;market_sector;financial_category;source_url;source_date;correction_reason
 ABJC;SERVAIR ABIDJAN CI
 BNBC;BERNABE CI
 BICB;BICI CI
