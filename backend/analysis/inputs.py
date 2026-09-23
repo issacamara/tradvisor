@@ -95,6 +95,12 @@ def _session_key(session: NormalizedSession) -> str:
     return session.session_id
 
 
+def _known_session_index(session: NormalizedSession) -> int:
+    if session.status == "unknown" or session.session_index is None:
+        raise InputSnapshotError("calendar contains an unknown session; do not skip it")
+    return session.session_index
+
+
 def _input_snapshot_id(
     *, symbol: str, as_of: datetime, sessions: Iterable[NormalizedSession], prices: dict[tuple[str, date], NormalizedPrice]
 ) -> str:
@@ -142,6 +148,8 @@ def build_analytical_input_snapshot(
         if existing.session_id != session.session_id:
             raise InputSnapshotError(f"ambiguous calendar session for {session.session_date.isoformat()}")
 
+    if any(session.status == "unknown" for session in by_date.values()):
+        raise InputSnapshotError("calendar contains an unknown session; do not skip it")
     ordered_sessions = tuple(
         sorted(
             (
@@ -149,15 +157,13 @@ def build_analytical_input_snapshot(
                 for session in by_date.values()
                 if session.status in {"trading", "suspended"}
             ),
-            key=lambda session: (session.session_index, session.session_date, session.session_id),
+            key=lambda session: (_known_session_index(session), session.session_date, session.session_id),
         )
     )
-    if any(session.status == "unknown" for session in by_date.values()):
-        raise InputSnapshotError("calendar contains an unknown session; do not skip it")
-    if len({session.session_index for session in ordered_sessions}) != len(ordered_sessions):
+    if len({_known_session_index(session) for session in ordered_sessions}) != len(ordered_sessions):
         raise InputSnapshotError("calendar has duplicate analytical session indices")
     if any(
-        earlier.session_index >= later.session_index
+        _known_session_index(earlier) >= _known_session_index(later)
         for earlier, later in zip(ordered_sessions, ordered_sessions[1:])
     ):
         raise InputSnapshotError("calendar analytical session indices are not strictly increasing")
@@ -222,7 +228,7 @@ def build_analytical_input_snapshot(
             SessionInput(
                 session_id=session.session_id,
                 session_date=session.session_date,
-                session_index=session.session_index,
+                session_index=_known_session_index(session),
                 price_basis_ref=price_basis_ref,
                 close_micros=close_micros,
                 close_state=close_state,

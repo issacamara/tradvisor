@@ -111,7 +111,7 @@ class NormalizedSession(ImmutableContractModel):
     calendar_version: OpaqueIdentifier
     session_id: OpaqueIdentifier
     session_date: date
-    session_index: NonNegativeVersion
+    session_index: NonNegativeVersion | None
     exchange_timezone: Literal["Africa/Abidjan"]
     status: Literal["trading", "holiday", "suspended", "unknown"]
     official_close_at: datetime | None
@@ -132,6 +132,8 @@ class NormalizedSession(ImmutableContractModel):
     def require_reason_for_non_trading_session(self) -> "NormalizedSession":
         if not self.source_evidence:
             raise ValueError("session requires source evidence")
+        if (self.status == "unknown") != (self.session_index is None):
+            raise ValueError("unknown session status requires no index; known status requires an index")
         if self.status == "trading" and self.official_close_at is None:
             raise ValueError("trading session requires an official close instant")
         if self.status != "trading" and not self.reason_codes:

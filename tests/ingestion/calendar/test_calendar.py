@@ -445,6 +445,35 @@ def test_grid_has_no_weekday_or_holiday_eve_inference() -> None:
     assert grid.for_date(tuesday).verification is calendar.VerificationStatus.UNVERIFIED
 
 
+def test_mixed_known_and_unknown_entries_index_only_verified_known_states() -> None:
+    first = date(2026, 9, 21)
+    unknown = first + timedelta(days=1)
+    holiday = first + timedelta(days=2)
+    provisional = first + timedelta(days=3)
+    grid = calendar.build_calendar_version(
+        version="mixed-v1",
+        start_date=first,
+        end_date=provisional,
+        schedules=(
+            schedule(first),
+            schedule(provisional, state=calendar.VerificationStatus.PROVISIONAL),
+        ),
+        holidays=(calendar.HolidayEvidence(holiday, source("verified-holiday")),),
+        coverage=(period(first, provisional),),
+    )
+
+    assert [entry.session_id for entry in grid.entries] == [
+        day.isoformat() for day in (first, unknown, holiday, provisional)
+    ]
+    assert [entry.status for entry in grid.entries] == [
+        calendar.SessionStatus.OPEN,
+        calendar.SessionStatus.UNKNOWN,
+        calendar.SessionStatus.CLOSED,
+        calendar.SessionStatus.UNKNOWN,
+    ]
+    assert [entry.session_index for entry in grid.entries] == [0, None, 1, None]
+
+
 def test_correction_publishes_new_version_without_mutating_retained_version() -> None:
     day = date(2026, 9, 23)
     initial = build(day, schedules=(schedule(day),), version="v1")
@@ -467,6 +496,9 @@ def test_correction_publishes_new_version_without_mutating_retained_version() ->
 
     assert corrected.parent_version == initial.version
     assert corrected.version != initial.version
+    assert corrected.for_date(day).session_id == initial.for_date(day).session_id
+    assert corrected.for_date(day).session_id == day.isoformat()
+    assert corrected.for_date(day).session_index == initial.for_date(day).session_index == 0
     assert corrected.content_sha256 != initial.content_sha256
     assert corrected.for_date(day).completion_cutoff == datetime(
         2026, 9, 23, 12, 1, tzinfo=timezone.utc

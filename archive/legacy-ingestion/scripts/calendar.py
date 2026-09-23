@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from enum import StrEnum
 from typing import Iterable, Mapping
@@ -118,6 +118,8 @@ class CoveragePeriod:
 @dataclass(frozen=True)
 class CalendarEntry:
     session_date: date
+    session_id: str
+    session_index: int | None
     status: SessionStatus
     verification: VerificationStatus
     coverage_status: CoverageStatus
@@ -329,6 +331,8 @@ def _reference_payload(source: SourceReference) -> dict[str, str]:
 def _entry_payload(entry: CalendarEntry) -> dict[str, object]:
     return {
         "session_date": entry.session_date.isoformat(),
+        "session_id": entry.session_id,
+        "session_index": entry.session_index,
         "status": entry.status.value,
         "verification": entry.verification.value,
         "coverage_status": entry.coverage_status.value,
@@ -390,6 +394,8 @@ def _make_entry(
         )
         return CalendarEntry(
             session_date,
+            session_date.isoformat(),
+            None,
             status,
             verification,
             coverage_status,
@@ -415,10 +421,16 @@ def _make_entry(
         )
         if source is not None
     )
+    state_verification = (
+        holiday.verification
+        if holiday is not None
+        else schedule.verification
+        if schedule is not None
+        else VerificationStatus.UNVERIFIED
+    )
     verification = _verification(
         coverage.verification if coverage else VerificationStatus.UNVERIFIED,
-        schedule.verification if schedule else VerificationStatus.UNVERIFIED,
-        holiday.verification if holiday else VerificationStatus.VERIFIED,
+        state_verification,
     )
     coverage_status = CoverageStatus.KNOWN if coverage else CoverageStatus.MISSING
     if holiday is not None:
@@ -443,6 +455,8 @@ def _make_entry(
     )
     return CalendarEntry(
         session_date,
+        session_date.isoformat(),
+        None,
         status,
         verification,
         coverage_status,
@@ -493,6 +507,7 @@ def build_calendar_version(
             raise ValueError("coverage period falls outside the requested grid")
 
     entries: list[CalendarEntry] = []
+    next_session_index = 0
     current = start_date
     while current <= end_date:
         matching_coverage = [period for period in coverage_periods if period.includes(current)]
@@ -505,6 +520,12 @@ def build_calendar_version(
             matching_coverage[0] if matching_coverage else None,
             exception_by_date.get(current),
         )
+        if (
+            entry.verification is VerificationStatus.VERIFIED
+            and entry.status is not SessionStatus.UNKNOWN
+        ):
+            entry = replace(entry, session_index=next_session_index)
+            next_session_index += 1
         entries.append(entry)
         current += timedelta(days=1)
 
