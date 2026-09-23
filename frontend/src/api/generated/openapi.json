@@ -1,0 +1,7128 @@
+{
+  "components": {
+    "schemas": {
+      "AnalyticalMetric_Annotated_float__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0___Le_le_100____PydanticGeneralMetadata_allow_inf_nan_False_____": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "actual",
+                  "estimated",
+                  "modeled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Basis"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effective Date"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "assessable",
+              "warming_up",
+              "missing_inputs",
+              "unsupported_basis",
+              "deferred_scope"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "status",
+          "value",
+          "unit"
+        ],
+        "title": "AnalyticalMetric[Annotated[float, FieldInfo(annotation=NoneType, required=True, metadata=[Strict(strict=True), Ge(ge=0), Le(le=100), _PydanticGeneralMetadata(allow_inf_nan=False)])]]",
+        "type": "object"
+      },
+      "ApiError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "request_id"
+        ],
+        "title": "ApiError",
+        "type": "object"
+      },
+      "CalendarCorrectionEvidence": {
+        "additionalProperties": false,
+        "description": "Evidence for rejecting, rather than silently rescheduling, affected orders.",
+        "properties": {
+          "corrected_at": {
+            "title": "Corrected At",
+            "type": "string"
+          },
+          "correcting_calendar_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Correcting Calendar Version",
+            "type": "string"
+          },
+          "correcting_session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Correcting Session Id",
+            "type": "string"
+          },
+          "original_calendar_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Original Calendar Version",
+            "type": "string"
+          },
+          "original_session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Original Session Id",
+            "type": "string"
+          },
+          "source_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Source Evidence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "original_calendar_version",
+          "original_session_id",
+          "correcting_calendar_version",
+          "correcting_session_id",
+          "corrected_at",
+          "source_evidence"
+        ],
+        "title": "CalendarCorrectionEvidence",
+        "type": "object"
+      },
+      "CashMovement": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Execution Id"
+          },
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "movement_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Movement Id",
+            "type": "string"
+          },
+          "movement_type": {
+            "enum": [
+              "opening_cash",
+              "buy_execution",
+              "sell_execution"
+            ],
+            "title": "Movement Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "owner_uid": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Owner Uid",
+            "type": "string"
+          },
+          "processed_at": {
+            "title": "Processed At",
+            "type": "string"
+          },
+          "signed_amount": {
+            "$ref": "#/components/schemas/SignedMoney"
+          }
+        },
+        "required": [
+          "movement_id",
+          "owner_uid",
+          "generation",
+          "movement_type",
+          "signed_amount",
+          "occurred_at",
+          "processed_at"
+        ],
+        "title": "CashMovement",
+        "type": "object"
+      },
+      "CashMovementListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "CashMovementListRequest",
+        "type": "object"
+      },
+      "CashMovementListResource": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CashMovement"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CashMovementListResource",
+        "type": "object"
+      },
+      "CashMovementListResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CashMovementListResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[CashMovementListResource]",
+        "type": "object"
+      },
+      "ChartPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "analytical_carried_close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "high": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indicators": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumericMetric"
+            },
+            "propertyNames": {
+              "enum": [
+                "ema20",
+                "ema50",
+                "rsi14",
+                "atr14",
+                "traded_value20"
+              ]
+            },
+            "title": "Indicators",
+            "type": "object"
+          },
+          "last_traded_close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "low": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session_date": {
+            "format": "date",
+            "title": "Session Date",
+            "type": "string"
+          },
+          "source_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Source Evidence",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "traded",
+              "confirmed_no_trade",
+              "unknown",
+              "missing_price"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "session_date",
+          "status",
+          "open",
+          "high",
+          "low",
+          "close",
+          "last_traded_close",
+          "analytical_carried_close",
+          "volume",
+          "indicators",
+          "source_evidence"
+        ],
+        "title": "ChartPoint",
+        "type": "object"
+      },
+      "ChartQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Batch Id"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "series": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "ohlcv",
+                    "ema20",
+                    "ema50",
+                    "rsi14",
+                    "atr14",
+                    "traded_value20"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Series"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "ChartQuery",
+        "type": "object"
+      },
+      "CommandAcknowledgement": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Preference Version",
+            "type": "integer"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation",
+          "generation",
+          "state_version",
+          "preference_version",
+          "replayed"
+        ],
+        "title": "CommandAcknowledgement",
+        "type": "object"
+      },
+      "CommandAcknowledgementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CommandAcknowledgement"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[CommandAcknowledgement]",
+        "type": "object"
+      },
+      "CommandMetadata": {
+        "additionalProperties": false,
+        "description": "Required mutation metadata, including the restore-safe command fence.",
+        "properties": {
+          "content_length": {
+            "maximum": 16384,
+            "minimum": 0,
+            "title": "Content Length",
+            "type": "integer"
+          },
+          "expected_generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Generation",
+            "x-default": null
+          },
+          "expected_state_version": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected State Version",
+            "x-default": null
+          },
+          "idempotency_key": {
+            "pattern": "^[0-9]{13}\\.[0-9a-f]{32}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "issued_at": {
+            "title": "Issued At",
+            "type": "string"
+          },
+          "recovery_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Recovery Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "recovery_id",
+          "content_length",
+          "issued_at"
+        ],
+        "title": "CommandMetadata",
+        "type": "object"
+      },
+      "CommandMetadataBody": {
+        "additionalProperties": false,
+        "description": "Restore-safe command metadata. Idempotency-Key is carried in the HTTP header per API v0.13.",
+        "properties": {
+          "content_length": {
+            "maximum": 16384,
+            "minimum": 0,
+            "title": "Content Length",
+            "type": "integer"
+          },
+          "expected_generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Generation",
+            "x-default": null
+          },
+          "expected_state_version": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected State Version",
+            "x-default": null
+          },
+          "issued_at": {
+            "title": "Issued At",
+            "type": "string"
+          },
+          "recovery_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Recovery Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recovery_id",
+          "content_length",
+          "issued_at"
+        ],
+        "title": "CommandMetadata",
+        "type": "object"
+      },
+      "CreatePaperOrderRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_keep_override": {
+            "title": "Acknowledge Keep Override",
+            "type": "boolean",
+            "x-default": false
+          },
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "command": {
+            "$ref": "#/components/schemas/CommandMetadataBody"
+          },
+          "expected_generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Expected Generation",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Expected State Version",
+            "type": "integer"
+          },
+          "quantity": {
+            "maximum": 1000000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "recommendation_ref": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Recommendation Ref",
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "expected_generation",
+          "expected_state_version",
+          "recommendation_ref",
+          "batch_id",
+          "symbol",
+          "side",
+          "quantity"
+        ],
+        "title": "CreatePaperOrderRequest",
+        "type": "object"
+      },
+      "CreatePaperOrderResource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "order": {
+            "$ref": "#/components/schemas/PaperOrder"
+          },
+          "preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Preference Version",
+            "type": "integer"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation",
+          "generation",
+          "state_version",
+          "preference_version",
+          "replayed",
+          "order"
+        ],
+        "title": "CreatePaperOrderResource",
+        "type": "object"
+      },
+      "CreatePaperOrderResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreatePaperOrderResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[CreatePaperOrderResource]",
+        "type": "object"
+      },
+      "DividendResearch": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedDividendCoverage"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "dividend_score": {
+            "$ref": "#/components/schemas/ScoreMetric"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedDividend"
+            },
+            "title": "Payments",
+            "type": "array"
+          },
+          "trailing_ordinary_yield": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NumericMetric"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "payments",
+          "coverage",
+          "trailing_ordinary_yield",
+          "dividend_score"
+        ],
+        "title": "DividendResearch",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ApiError"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "ExecutionListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ExecutionListRequest",
+        "type": "object"
+      },
+      "ExecutionListResource": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaperExecution"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ExecutionListResource",
+        "type": "object"
+      },
+      "ExecutionListResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ExecutionListResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[ExecutionListResource]",
+        "type": "object"
+      },
+      "ExecutionPrice": {
+        "additionalProperties": false,
+        "description": "The immutable, timely price evidence selected for a paper fill.",
+        "properties": {
+          "close": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "price_revision_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Price Revision Id",
+            "type": "string"
+          },
+          "session_date": {
+            "format": "date",
+            "title": "Session Date",
+            "type": "string"
+          },
+          "source_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Source Evidence",
+            "type": "array"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "validated_available_at": {
+            "title": "Validated Available At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "price_revision_id",
+          "symbol",
+          "session_date",
+          "close",
+          "validated_available_at",
+          "source_evidence"
+        ],
+        "title": "ExecutionPrice",
+        "type": "object"
+      },
+      "GrowthAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "advisory_state": {
+            "enum": [
+              "candidate",
+              "watchlist",
+              "low_score",
+              "review_required",
+              "insufficient_evidence"
+            ],
+            "title": "Advisory State",
+            "type": "string"
+          },
+          "dimension_contributions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreMetric"
+            },
+            "title": "Dimension Contributions",
+            "type": "object"
+          },
+          "growth_score": {
+            "$ref": "#/components/schemas/ScoreMetric"
+          },
+          "overall_score": {
+            "$ref": "#/components/schemas/ScoreMetric"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonExplanation"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "growth_score",
+          "overall_score",
+          "dimension_contributions",
+          "advisory_state",
+          "reasons"
+        ],
+        "title": "GrowthAnalysis",
+        "type": "object"
+      },
+      "HoldingAdvice": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "keep",
+              "sell",
+              "insufficient_data",
+              "not_applicable"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "evaluation_session": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Session"
+          },
+          "exit_policy_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Policy Version"
+          },
+          "generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonExplanation"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "state_version": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Version"
+          },
+          "unavailable_checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonExplanation"
+            },
+            "title": "Unavailable Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "generation",
+          "state_version",
+          "exit_policy_version",
+          "evaluation_session",
+          "reasons",
+          "unavailable_checks"
+        ],
+        "title": "HoldingAdvice",
+        "type": "object"
+      },
+      "LongTermObjectiveState": {
+        "additionalProperties": false,
+        "description": "An objective-specific overall score without conflating deferred and missing states.",
+        "properties": {
+          "objective": {
+            "enum": [
+              "growth",
+              "dividend",
+              "balanced"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "overall_score": {
+            "$ref": "#/components/schemas/AnalyticalMetric_Annotated_float__FieldInfo_annotation_NoneType__required_True__metadata__Strict_strict_True___Ge_ge_0___Le_le_100____PydanticGeneralMetadata_allow_inf_nan_False_____"
+          }
+        },
+        "required": [
+          "objective",
+          "overall_score"
+        ],
+        "title": "LongTermObjectiveState",
+        "type": "object"
+      },
+      "LongTermRankedCompany": {
+        "additionalProperties": false,
+        "properties": {
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "dividend_research": {
+            "$ref": "#/components/schemas/DividendResearch"
+          },
+          "growth": {
+            "$ref": "#/components/schemas/GrowthAnalysis"
+          },
+          "result": {
+            "$ref": "#/components/schemas/LongTermResult"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_id",
+          "symbol",
+          "result",
+          "growth",
+          "dividend_research"
+        ],
+        "title": "LongTermRankedCompany",
+        "type": "object"
+      },
+      "LongTermRankingsData": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "input_snapshot_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Input Snapshot Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LongTermRankedCompany"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "market_session": {
+            "format": "date",
+            "title": "Market Session",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "objective": {
+            "enum": [
+              "growth",
+              "dividend",
+              "balanced"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreMetric"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "rule_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "strategy_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective",
+          "batch_id",
+          "market_session",
+          "published_at",
+          "input_snapshot_id",
+          "rule_version",
+          "strategy_id",
+          "items",
+          "next_cursor"
+        ],
+        "title": "LongTermRankingsData",
+        "type": "object"
+      },
+      "LongTermRankingsDataResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LongTermRankingsData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[LongTermRankingsData]",
+        "type": "object"
+      },
+      "LongTermResult": {
+        "additionalProperties": false,
+        "description": "Published Long-Term results with isolated objective-specific score states.",
+        "properties": {
+          "balanced": {
+            "$ref": "#/components/schemas/LongTermObjectiveState"
+          },
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "dividend": {
+            "$ref": "#/components/schemas/LongTermObjectiveState"
+          },
+          "growth": {
+            "$ref": "#/components/schemas/LongTermObjectiveState"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "company_id",
+          "growth",
+          "dividend",
+          "balanced",
+          "revision"
+        ],
+        "title": "LongTermResult",
+        "type": "object"
+      },
+      "MeResource": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "portfolio_setup_state": {
+            "enum": [
+              "setup_required",
+              "configured"
+            ],
+            "title": "Portfolio Setup State",
+            "type": "string"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PaperPreferences"
+          },
+          "starting_cash_default_xof": {
+            "title": "Starting Cash Default Xof",
+            "type": "integer"
+          },
+          "starting_cash_max_xof": {
+            "title": "Starting Cash Max Xof",
+            "type": "integer"
+          },
+          "starting_cash_min_xof": {
+            "title": "Starting Cash Min Xof",
+            "type": "integer"
+          },
+          "uid": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Uid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "email",
+          "preferences",
+          "portfolio_setup_state",
+          "starting_cash_min_xof",
+          "starting_cash_default_xof",
+          "starting_cash_max_xof"
+        ],
+        "title": "MeResource",
+        "type": "object"
+      },
+      "MeResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MeResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[MeResource]",
+        "type": "object"
+      },
+      "NonNegativeMoney": {
+        "additionalProperties": false,
+        "description": "Exact XOF value for request fields that cannot be negative.",
+        "properties": {
+          "amount": {
+            "maxLength": 20,
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$",
+            "title": "Amount",
+            "type": "string",
+            "x-money-currency": "XOF",
+            "x-response-pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{6}$"
+          },
+          "currency": {
+            "const": "XOF",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "NonNegativeMoney",
+        "type": "object"
+      },
+      "NormalizedCompany": {
+        "additionalProperties": false,
+        "properties": {
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "financial_category": {
+            "enum": [
+              "bank",
+              "insurer",
+              "non_financial",
+              "unsupported"
+            ],
+            "title": "Financial Category",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sector"
+          },
+          "share_class": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Share Class"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "company_id",
+          "symbol",
+          "name",
+          "financial_category",
+          "revision"
+        ],
+        "title": "NormalizedCompany",
+        "type": "object"
+      },
+      "NormalizedDividend": {
+        "additionalProperties": false,
+        "properties": {
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "dividend_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Dividend Id",
+            "type": "string"
+          },
+          "dividend_type": {
+            "enum": [
+              "ordinary",
+              "exceptional",
+              "unclassified"
+            ],
+            "title": "Dividend Type",
+            "type": "string"
+          },
+          "fiscal_period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fiscal Period End"
+          },
+          "gross_amount_per_share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "gross_total_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "installment_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Installment Id",
+            "type": "string"
+          },
+          "net_amount_per_share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "net_total_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "payment_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Date"
+          },
+          "payment_status": {
+            "enum": [
+              "paid",
+              "declared",
+              "unknown"
+            ],
+            "title": "Payment Status",
+            "type": "string"
+          },
+          "per_share_semantics": {
+            "enum": [
+              "gross",
+              "net",
+              "unknown"
+            ],
+            "title": "Per Share Semantics",
+            "type": "string"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "total_semantics": {
+            "enum": [
+              "gross",
+              "net",
+              "unknown"
+            ],
+            "title": "Total Semantics",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dividend_id",
+          "company_id",
+          "installment_id",
+          "payment_date",
+          "per_share_semantics",
+          "total_semantics",
+          "payment_status",
+          "dividend_type",
+          "revision"
+        ],
+        "title": "NormalizedDividend",
+        "type": "object"
+      },
+      "NormalizedDividendCoverage": {
+        "additionalProperties": false,
+        "description": "Source-backed coverage for an interval, independent of payment events.",
+        "properties": {
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "coverage_basis": {
+            "enum": [
+              "fiscal_year",
+              "trailing_12_months",
+              "source_observed",
+              "unknown"
+            ],
+            "title": "Coverage Basis",
+            "type": "string"
+          },
+          "coverage_status": {
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ],
+            "title": "Coverage Status",
+            "type": "string"
+          },
+          "covered_interval_end": {
+            "format": "date",
+            "title": "Covered Interval End",
+            "type": "string"
+          },
+          "covered_interval_start": {
+            "format": "date",
+            "title": "Covered Interval Start",
+            "type": "string"
+          },
+          "payment_outcome": {
+            "enum": [
+              "confirmed_no_payment",
+              "payments_recorded",
+              "unresolved"
+            ],
+            "title": "Payment Outcome",
+            "type": "string"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "company_id",
+          "covered_interval_start",
+          "covered_interval_end",
+          "coverage_basis",
+          "coverage_status",
+          "payment_outcome",
+          "revision"
+        ],
+        "title": "NormalizedDividendCoverage",
+        "type": "object"
+      },
+      "NormalizedPrice": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_xof_turnover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "basis": {
+            "enum": [
+              "actual",
+              "estimated",
+              "modeled"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "high": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "liquidity_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "actual",
+                  "estimated",
+                  "modeled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Liquidity Basis"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "original_source_date": {
+            "format": "date",
+            "title": "Original Source Date",
+            "type": "string"
+          },
+          "price_basis_ref": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Price Basis Ref",
+            "type": "string"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "session_date": {
+            "format": "date",
+            "title": "Session Date",
+            "type": "string"
+          },
+          "suspension_evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Suspension Evidence",
+            "type": "array"
+          },
+          "suspension_status": {
+            "enum": [
+              "not_suspended",
+              "suspended",
+              "unknown"
+            ],
+            "title": "Suspension Status",
+            "type": "string"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "trade_status": {
+            "enum": [
+              "traded",
+              "confirmed_no_trade",
+              "unknown"
+            ],
+            "title": "Trade Status",
+            "type": "string"
+          },
+          "validated_available_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Available At"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "symbol",
+          "session_date",
+          "close",
+          "trade_status",
+          "basis",
+          "original_source_date",
+          "price_basis_ref",
+          "validated_available_at",
+          "suspension_status",
+          "revision"
+        ],
+        "title": "NormalizedPrice",
+        "type": "object"
+      },
+      "NormalizedRating": {
+        "additionalProperties": false,
+        "properties": {
+          "agency": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency"
+          },
+          "collected_at": {
+            "title": "Collected At",
+            "type": "string"
+          },
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "label": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rating_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Rating Id",
+            "type": "string"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "rating_id",
+          "company_id",
+          "agency",
+          "scale",
+          "subject",
+          "label",
+          "effective_date",
+          "collected_at",
+          "revision"
+        ],
+        "title": "NormalizedRating",
+        "type": "object"
+      },
+      "NumericMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "actual",
+                  "estimated",
+                  "modeled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Basis"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effective Date"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "assessable",
+              "warming_up",
+              "missing_inputs",
+              "unsupported_basis",
+              "deferred_scope"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "status",
+          "value",
+          "unit"
+        ],
+        "title": "NumericMetric",
+        "type": "object"
+      },
+      "OrderListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "executed",
+                  "rejected",
+                  "expired"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          }
+        },
+        "title": "OrderListRequest",
+        "type": "object"
+      },
+      "OrderListResource": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaperOrder"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "OrderListResource",
+        "type": "object"
+      },
+      "OrderListResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/OrderListResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[OrderListResource]",
+        "type": "object"
+      },
+      "PageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "PageRequest",
+        "type": "object"
+      },
+      "PaperExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "allocated_cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allocated_purchase_fees": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "execution_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "execution_price": {
+            "$ref": "#/components/schemas/ExecutionPrice"
+          },
+          "fee_amount": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "gross_amount": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "owner_uid": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Owner Uid",
+            "type": "string"
+          },
+          "processed_at": {
+            "title": "Processed At",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 1000000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "signed_cash_effect": {
+            "$ref": "#/components/schemas/SignedMoney"
+          }
+        },
+        "required": [
+          "execution_id",
+          "order_id",
+          "owner_uid",
+          "generation",
+          "quantity",
+          "execution_price",
+          "gross_amount",
+          "fee_amount",
+          "allocated_cost",
+          "allocated_purchase_fees",
+          "signed_cash_effect",
+          "processed_at"
+        ],
+        "title": "PaperExecution",
+        "type": "object"
+      },
+      "PaperOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "accepted_calendar_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Accepted Calendar Version",
+            "type": "string"
+          },
+          "accepted_session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Accepted Session Id",
+            "type": "string"
+          },
+          "accepted_session_index": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Accepted Session Index",
+            "type": "integer"
+          },
+          "acknowledged_keep_override": {
+            "default": false,
+            "title": "Acknowledged Keep Override",
+            "type": "boolean"
+          },
+          "advice_action_at_acceptance": {
+            "anyOf": [
+              {
+                "enum": [
+                  "keep",
+                  "sell"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Advice Action At Acceptance"
+          },
+          "advice_evaluation_session": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Advice Evaluation Session"
+          },
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "calendar_correction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarCorrectionEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "exit_policy_ref": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit Policy Ref"
+          },
+          "fee_rate_pct": {
+            "pattern": "^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$",
+            "title": "Fee Rate Pct",
+            "type": "string"
+          },
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "grace_deadline_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Deadline At"
+          },
+          "intended_session": {
+            "format": "date",
+            "title": "Intended Session",
+            "type": "string"
+          },
+          "is_advice_override": {
+            "default": false,
+            "title": "Is Advice Override",
+            "type": "boolean"
+          },
+          "order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "owner_uid": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Owner Uid",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 1000000000,
+            "minimum": 1,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "recommendation_ref": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Recommendation Ref",
+            "type": "string"
+          },
+          "reserved_cash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "reserved_sell_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reserved Sell Quantity"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "state_version_at_acceptance": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version At Acceptance",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "executed",
+              "rejected",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "terminal_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal At"
+          },
+          "terminal_reason": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-z0-9_]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Terminal Reason"
+          }
+        },
+        "required": [
+          "order_id",
+          "owner_uid",
+          "generation",
+          "recommendation_ref",
+          "batch_id",
+          "symbol",
+          "side",
+          "quantity",
+          "accepted_at",
+          "intended_session",
+          "accepted_calendar_version",
+          "accepted_session_id",
+          "accepted_session_index",
+          "grace_deadline_at",
+          "fee_rate_pct",
+          "status",
+          "state_version_at_acceptance"
+        ],
+        "title": "PaperOrder",
+        "type": "object"
+      },
+      "PaperPosition": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluated_through_session": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated Through Session"
+          },
+          "exit_policy_ref": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Exit Policy Ref",
+            "type": "string"
+          },
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "high_water_close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NonNegativeMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opening_session": {
+            "format": "date",
+            "title": "Opening Session",
+            "type": "string"
+          },
+          "purchase_fees": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "quantity": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "remaining_gross_cost": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "reserved_sell_quantity": {
+            "minimum": 0,
+            "title": "Reserved Sell Quantity",
+            "type": "integer"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "trail_activated": {
+            "title": "Trail Activated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generation",
+          "symbol",
+          "quantity",
+          "reserved_sell_quantity",
+          "remaining_gross_cost",
+          "purchase_fees",
+          "opening_session",
+          "high_water_close",
+          "evaluated_through_session",
+          "trail_activated",
+          "exit_policy_ref"
+        ],
+        "title": "PaperPosition",
+        "type": "object"
+      },
+      "PaperPreferences": {
+        "additionalProperties": false,
+        "description": "User-editable research objective and prospective paper fee only.",
+        "properties": {
+          "fee_rate_pct": {
+            "pattern": "^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$",
+            "title": "Fee Rate Pct",
+            "type": "string"
+          },
+          "objective": {
+            "enum": [
+              "growth",
+              "dividend"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Preference Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective",
+          "fee_rate_pct",
+          "preference_version",
+          "updated_at"
+        ],
+        "title": "PaperPreferences",
+        "type": "object"
+      },
+      "PatchPreferencesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/CommandMetadataBody"
+          },
+          "expected_preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Expected Preference Version",
+            "type": "integer"
+          },
+          "fee_rate_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "pattern": "^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$",
+            "title": "Fee Rate Pct",
+            "x-default": null
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "enum": [
+                  "growth",
+                  "dividend"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective",
+            "x-default": null
+          }
+        },
+        "required": [
+          "command",
+          "expected_preference_version"
+        ],
+        "title": "PatchPreferencesRequest",
+        "type": "object"
+      },
+      "PortfolioResource": {
+        "additionalProperties": false,
+        "properties": {
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PaperPosition"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "setup_state": {
+            "enum": [
+              "setup_required",
+              "configured"
+            ],
+            "title": "Setup State",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valuation_batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Batch Id"
+          },
+          "valuation_session": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Session"
+          },
+          "valuation_status": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "not_available"
+            ],
+            "title": "Valuation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setup_state",
+          "summary",
+          "positions",
+          "valuation_batch_id",
+          "valuation_session",
+          "valuation_status"
+        ],
+        "title": "PortfolioResource",
+        "type": "object"
+      },
+      "PortfolioResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PortfolioResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[PortfolioResource]",
+        "type": "object"
+      },
+      "PortfolioSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "cash": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "pending_order_count": {
+            "minimum": 0,
+            "title": "Pending Order Count",
+            "type": "integer"
+          },
+          "reserved_cash": {
+            "$ref": "#/components/schemas/NonNegativeMoney"
+          },
+          "starting_cash": {
+            "$ref": "#/components/schemas/StartingCash"
+          },
+          "state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generation",
+          "starting_cash",
+          "cash",
+          "reserved_cash",
+          "pending_order_count",
+          "state_version",
+          "created_at",
+          "active"
+        ],
+        "title": "PortfolioSummary",
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "description": "Sanitized origin evidence retained with each normalized observation.",
+        "properties": {
+          "basis": {
+            "enum": [
+              "actual",
+              "estimated",
+              "modeled"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "collected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "original_unit": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Original Unit"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "source_id",
+          "collected_at",
+          "basis"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "RankingQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Batch Id"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "objective": {
+            "enum": [
+              "growth",
+              "dividend",
+              "balanced"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sector"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "objective"
+        ],
+        "title": "RankingQuery",
+        "type": "object"
+      },
+      "ReasonExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReasonExplanation",
+        "type": "object"
+      },
+      "RecommendationQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Batch Id"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sector"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Symbol"
+          }
+        },
+        "title": "RecommendationQuery",
+        "type": "object"
+      },
+      "ResetPortfolioRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/CommandMetadataBody"
+          },
+          "expected_generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Expected Generation",
+            "type": "string"
+          },
+          "expected_state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Expected State Version",
+            "type": "integer"
+          },
+          "starting_cash": {
+            "$ref": "#/components/schemas/StartingCash"
+          }
+        },
+        "required": [
+          "command",
+          "expected_generation",
+          "expected_state_version",
+          "starting_cash"
+        ],
+        "title": "ResetPortfolioRequest",
+        "type": "object"
+      },
+      "ResetPortfolioResource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Preference Version",
+            "type": "integer"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PortfolioSummary"
+          }
+        },
+        "required": [
+          "operation",
+          "generation",
+          "state_version",
+          "preference_version",
+          "replayed",
+          "summary"
+        ],
+        "title": "ResetPortfolioResource",
+        "type": "object"
+      },
+      "ResetPortfolioResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ResetPortfolioResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[ResetPortfolioResource]",
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "recovery_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Recovery Id"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "server_time",
+          "schema_version"
+        ],
+        "title": "ResponseMeta",
+        "type": "object"
+      },
+      "Revision": {
+        "additionalProperties": false,
+        "description": "The deterministic identity of a corrected normalized observation.",
+        "properties": {
+          "known_at": {
+            "title": "Known At",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "known_at",
+          "provenance"
+        ],
+        "title": "Revision",
+        "type": "object"
+      },
+      "ScoreMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "actual",
+                  "estimated",
+                  "modeled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Basis"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effective Date"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "reason_codes": {
+            "default": [],
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "assessable",
+              "warming_up",
+              "missing_inputs",
+              "unsupported_basis",
+              "deferred_scope"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "status",
+          "value",
+          "unit"
+        ],
+        "title": "ScoreMetric",
+        "type": "object"
+      },
+      "SetupPortfolioRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/CommandMetadataBody"
+          },
+          "fee_rate_pct": {
+            "pattern": "^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$",
+            "title": "Fee Rate Pct",
+            "type": "string"
+          },
+          "starting_cash": {
+            "$ref": "#/components/schemas/StartingCash"
+          }
+        },
+        "required": [
+          "command",
+          "starting_cash",
+          "fee_rate_pct"
+        ],
+        "title": "SetupPortfolioRequest",
+        "type": "object"
+      },
+      "SetupPortfolioResource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "opening_cash_movement": {
+            "$ref": "#/components/schemas/CashMovement"
+          },
+          "operation": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "preference_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Preference Version",
+            "type": "integer"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state_version": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "State Version",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PortfolioSummary"
+          }
+        },
+        "required": [
+          "operation",
+          "generation",
+          "state_version",
+          "preference_version",
+          "replayed",
+          "summary",
+          "opening_cash_movement"
+        ],
+        "title": "SetupPortfolioResource",
+        "type": "object"
+      },
+      "SetupPortfolioResourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetupPortfolioResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[SetupPortfolioResource]",
+        "type": "object"
+      },
+      "SignedMoney": {
+        "additionalProperties": false,
+        "description": "Exact XOF value for cash movements and P&L that may be negative.",
+        "properties": {
+          "amount": {
+            "maxLength": 21,
+            "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$",
+            "title": "Amount",
+            "type": "string",
+            "x-money-currency": "XOF",
+            "x-response-pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{6}$"
+          },
+          "currency": {
+            "const": "XOF",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "SignedMoney",
+        "type": "object"
+      },
+      "StartingCash": {
+        "additionalProperties": false,
+        "description": "Whole-XOF setup/reset cash within the approved inclusive bounds.",
+        "properties": {
+          "amount": {
+            "description": "Whole-XOF amount from 100000 through 100000000 inclusive; response values use six decimal places.",
+            "maxLength": 20,
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.0{1,6})?$",
+            "title": "Amount",
+            "type": "string",
+            "x-money-currency": "XOF",
+            "x-whole-xof-maximum": 100000000,
+            "x-whole-xof-minimum": 100000
+          },
+          "currency": {
+            "const": "XOF",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "StartingCash",
+        "type": "object"
+      },
+      "StockChartData": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ChartPoint"
+            },
+            "maxItems": 1000,
+            "title": "Points",
+            "type": "array"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "from",
+          "to",
+          "batch_id",
+          "points"
+        ],
+        "title": "StockChartData",
+        "type": "object"
+      },
+      "StockChartDataResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StockChartData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[StockChartData]",
+        "type": "object"
+      },
+      "StockDetailData": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "company": {
+            "$ref": "#/components/schemas/NormalizedCompany"
+          },
+          "dividend_research": {
+            "$ref": "#/components/schemas/DividendResearch"
+          },
+          "growth": {
+            "$ref": "#/components/schemas/GrowthAnalysis"
+          },
+          "input_snapshot_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Input Snapshot Id",
+            "type": "string"
+          },
+          "long_term": {
+            "$ref": "#/components/schemas/LongTermResult"
+          },
+          "market_session": {
+            "format": "date",
+            "title": "Market Session",
+            "type": "string"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedPrice"
+            },
+            "title": "Prices",
+            "type": "array"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "ratings": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedRating"
+            },
+            "title": "Ratings",
+            "type": "array"
+          },
+          "rule_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "source_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Source Evidence",
+            "type": "array"
+          },
+          "strategy_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "swing": {
+            "$ref": "#/components/schemas/SwingRecommendation"
+          }
+        },
+        "required": [
+          "company",
+          "batch_id",
+          "market_session",
+          "published_at",
+          "input_snapshot_id",
+          "rule_version",
+          "strategy_id",
+          "swing",
+          "long_term",
+          "growth",
+          "dividend_research",
+          "prices",
+          "source_evidence",
+          "ratings"
+        ],
+        "title": "StockDetailData",
+        "type": "object"
+      },
+      "StockDetailDataResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StockDetailData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[StockDetailData]",
+        "type": "object"
+      },
+      "StockQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Batch Id"
+          }
+        },
+        "title": "StockQuery",
+        "type": "object"
+      },
+      "SwingGuard": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "required": [
+          "code",
+          "status",
+          "observed",
+          "threshold",
+          "evidence_refs"
+        ],
+        "title": "SwingGuard",
+        "type": "object"
+      },
+      "SwingRecommendation": {
+        "additionalProperties": false,
+        "properties": {
+          "buy_strength": {
+            "$ref": "#/components/schemas/ScoreMetric"
+          },
+          "eligibility_guards": {
+            "items": {
+              "$ref": "#/components/schemas/SwingGuard"
+            },
+            "title": "Eligibility Guards",
+            "type": "array"
+          },
+          "entry_action": {
+            "enum": [
+              "buy",
+              "no_clear_signal",
+              "insufficient_data"
+            ],
+            "title": "Entry Action",
+            "type": "string"
+          },
+          "holding_advice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HoldingAdvice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indicators": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumericMetric"
+            },
+            "propertyNames": {
+              "enum": [
+                "ema20",
+                "ema50",
+                "rsi14",
+                "atr14",
+                "traded_value20"
+              ]
+            },
+            "title": "Indicators",
+            "type": "object"
+          },
+          "symbol": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "entry_action",
+          "buy_strength",
+          "indicators",
+          "eligibility_guards",
+          "holding_advice"
+        ],
+        "title": "SwingRecommendation",
+        "type": "object"
+      },
+      "SwingRecommendationsData": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[\\x21-\\x7e]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation"
+          },
+          "input_snapshot_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Input Snapshot Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SwingRecommendation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "market_session": {
+            "format": "date",
+            "title": "Market Session",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "rule_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "state_version": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Version"
+          },
+          "strategy_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "market_session",
+          "published_at",
+          "input_snapshot_id",
+          "rule_version",
+          "strategy_id",
+          "generation",
+          "state_version",
+          "items",
+          "next_cursor"
+        ],
+        "title": "SwingRecommendationsData",
+        "type": "object"
+      },
+      "SwingRecommendationsDataResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SwingRecommendationsData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ResponseEnvelope[SwingRecommendationsData]",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "API and data contract v0.13. Authenticated application routes; no live transport is included in this package.",
+    "title": "Tradvisor API",
+    "version": "0.13"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/long-term/rankings": {
+      "get": {
+        "operationId": "getLongTermRankings",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sector"
+            }
+          },
+          {
+            "in": "query",
+            "name": "objective",
+            "required": true,
+            "schema": {
+              "enum": [
+                "growth",
+                "dividend",
+                "balanced"
+              ],
+              "title": "Objective",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LongTermRankingsDataResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "cursor_stale"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Growth rankings or dividend research with deferred Balanced compatibility"
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read the authenticated user's profile and preferences"
+      }
+    },
+    "/v1/me/preferences": {
+      "patch": {
+        "operationId": "patchMePreferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{13}\\.[0-9a-f]{32}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPreferencesRequest"
+              }
+            }
+          },
+          "description": "Command bodies are limited to 16 KiB.",
+          "required": true,
+          "x-max-bytes": 16384
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcknowledgementResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "command_clock_ahead",
+              "command_window_expired",
+              "generation_superseded",
+              "idempotency_conflict",
+              "preference_version_mismatch",
+              "recovery_mismatch"
+            ]
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "body_too_large"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update user preferences"
+      }
+    },
+    "/v1/paper/cash-movements": {
+      "get": {
+        "operationId": "listPaperCashMovements",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashMovementListResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "cursor_stale"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List bounded paper cash ledger"
+      }
+    },
+    "/v1/paper/executions": {
+      "get": {
+        "operationId": "listPaperExecutions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionListResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "cursor_stale"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List bounded paper execution history"
+      }
+    },
+    "/v1/paper/orders": {
+      "get": {
+        "operationId": "listPaperOrders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "executed",
+                    "rejected",
+                    "expired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderListResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "cursor_stale"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List bounded paper order history"
+      },
+      "post": {
+        "operationId": "createPaperOrder",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{13}\\.[0-9a-f]{32}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaperOrderRequest"
+              }
+            }
+          },
+          "description": "Command bodies are limited to 16 KiB.",
+          "required": true,
+          "x-max-bytes": 16384
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePaperOrderResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "command_clock_ahead",
+              "command_window_expired",
+              "generation_mismatch",
+              "generation_superseded",
+              "idempotency_conflict",
+              "insufficient_cash",
+              "insufficient_shares",
+              "recommendation_stale",
+              "recovery_mismatch",
+              "state_version_mismatch"
+            ]
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "body_too_large"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "override_acknowledgment_required",
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "calendar_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create a manual recommendation-linked paper order"
+      }
+    },
+    "/v1/paper/portfolio": {
+      "get": {
+        "operationId": "getPaperPortfolio",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read the active paper portfolio"
+      },
+      "post": {
+        "operationId": "setupPaperPortfolio",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{13}\\.[0-9a-f]{32}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupPortfolioRequest"
+              }
+            }
+          },
+          "description": "Command bodies are limited to 16 KiB.",
+          "required": true,
+          "x-max-bytes": 16384
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupPortfolioResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "already_initialized",
+              "command_clock_ahead",
+              "command_window_expired",
+              "generation_superseded",
+              "idempotency_conflict",
+              "recovery_mismatch"
+            ]
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "body_too_large"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Set up a paper portfolio"
+      }
+    },
+    "/v1/paper/reset": {
+      "post": {
+        "operationId": "resetPaperPortfolio",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{13}\\.[0-9a-f]{32}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPortfolioRequest"
+              }
+            }
+          },
+          "description": "Command bodies are limited to 16 KiB.",
+          "required": true,
+          "x-max-bytes": 16384
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetPortfolioResourceResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "command_clock_ahead",
+              "command_window_expired",
+              "generation_mismatch",
+              "generation_superseded",
+              "idempotency_conflict",
+              "recovery_mismatch",
+              "state_version_mismatch"
+            ]
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "body_too_large"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Reset the active paper portfolio"
+      }
+    },
+    "/v1/stocks/{symbol}": {
+      "get": {
+        "operationId": "getStock",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockDetailDataResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "not_found"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read company evidence and both analysis workflows"
+      }
+    },
+    "/v1/stocks/{symbol}/chart": {
+      "get": {
+        "operationId": "getStockChart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "series",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "ohlcv",
+                      "ema20",
+                      "ema50",
+                      "rsi14",
+                      "atr14",
+                      "traded_value20"
+                    ],
+                    "type": "string"
+                  },
+                  "maxItems": 6,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Series"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockChartDataResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "not_found"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read up to 1,000 exchange-session chart observations",
+        "x-max-exchange-sessions": 1000
+      }
+    },
+    "/v1/swing/recommendations": {
+      "get": {
+        "operationId": "getSwingRecommendations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[\\x21-\\x7e]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Sector"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwingRecommendationsDataResponse"
+                }
+              }
+            },
+            "description": "Successful response",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "unauthenticated"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_denied"
+            ]
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "cursor_stale"
+            ]
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "snapshot_expired"
+            ]
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "validation_failed"
+            ]
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Bounded by the configured per-endpoint rate limit.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            },
+            "x-error-codes": [
+              "rate_limited"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "API error",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": [
+              "admission_unavailable",
+              "analysis_not_ready",
+              "service_unavailable"
+            ]
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read shared Swing entry results and separate holding advice"
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ]
+}
