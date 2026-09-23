@@ -66,7 +66,7 @@ class _FakeBigQueryClient:
         return _Job(error=self.load_error)
 
     def query(self, sql: str, *, job_config: Any) -> _Job:
-        if "SELECT *" in sql:
+        if "FROM `project.stocks.financial_report_revisions`" in sql:
             self.select_queries.append(sql)
             parameters = {
                 parameter.name: parameter.value
@@ -82,8 +82,11 @@ class _FakeBigQueryClient:
                     if row.get("symbol") == parameters["symbol"]
                     and row.get("fiscal_year") == parameters["fiscal_year"]
                     and row.get("document_link") == parameters["document_link"]
-                    and row.get("document_revision")
-                    == parameters["document_revision"]
+                    and (
+                        "document_revision" not in parameters
+                        or row.get("document_revision")
+                        == parameters["document_revision"]
+                    )
                 ),
                 None,
             )
@@ -213,6 +216,51 @@ def _load_financial_processor(
     sys.modules[specification.name] = module
     specification.loader.exec_module(module)
     monkeypatch.setattr(module, "get_existing_data_in_bigquery", lambda project_id: set())
+    return module
+
+
+def _load_monthly_scraper(
+    monkeypatch: pytest.MonkeyPatch,
+    helper: ModuleType,
+) -> ModuleType:
+    requests = SimpleNamespace(
+        Session=lambda: SimpleNamespace(
+            get=lambda *args, **kwargs: SimpleNamespace(
+                status_code=200, content=b"monthly annual report"
+            ),
+            close=lambda: None,
+        )
+    )
+    curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.requests = requests  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "curl_cffi", curl_cffi)
+    yaml = ModuleType("yaml")
+    yaml.safe_load = lambda value: {}  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "yaml", yaml)
+    bs4 = ModuleType("bs4")
+    bs4.BeautifulSoup = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "bs4", bs4)
+    functions_framework = ModuleType("functions_framework")
+    functions_framework.http = lambda function: function  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "functions_framework", functions_framework)
+
+    google = sys.modules["google"]
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")  # type: ignore[attr-defined]
+    google.auth = google_auth  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setitem(sys.modules, "helper", helper)
+
+    scripts = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+    path = scripts / "scrape_financials.py"
+    specification = importlib.util.spec_from_file_location(
+        "ingestion_monthly_scraper_loads", path
+    )
+    assert specification is not None
+    assert specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[specification.name] = module
+    specification.loader.exec_module(module)
     return module
 
 
@@ -460,6 +508,82 @@ def test_financial_revision_is_insert_only_and_requires_provisioned_schema(
         if "financial_report_revisions`" in query
     ]
     assert all("WHEN MATCHED THEN UPDATE SET" not in query for query in revision_queries)
+
+
+def test_monthly_scrape_commit_order_keeps_current_and_revision_consistent(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    first = pd.DataFrame([{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "document_link": "https://reports.example/annual.pdf",
+        "document_revision": "a" * 64,
+        "revenue": 500,
+        "net_income": 100,
+    }])
+    client.merge_error = RuntimeError("current-table merge failed")
+    with pytest.raises(RuntimeError, match="current-table merge failed"):
+        helper.upsert_financial_report_current_and_revision(first, "project")
+
+    assert "project.stocks.financial_report_revisions" not in client.tables
+    client.merge_error = None
+    retried = first.assign(document_revision="b" * 64, net_income=125)
+    helper.upsert_financial_report_current_and_revision(retried, "project")
+
+    assert client.tables["project.stocks.financials"][0]["net_income"] == 125
+    assert client.tables["project.stocks.financial_report_revisions"][0]["net_income"] == 125
+    assert client.merge_queries[0].startswith("\n        MERGE `project.stocks.financials`")
+    assert client.merge_queries[1].startswith("\n        MERGE `project.stocks.financials`")
+    assert client.merge_queries[2].startswith("\n        MERGE `project.stocks.financial_report_revisions`")
+
+
+def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper, client = loader
+    scraper = _load_monthly_scraper(monkeypatch, helper)
+    source_url = "https://reports.example/annual.pdf"
+    announcement = {
+        "fiscal_year": 2025,
+        "announcement_date": "2026-04-01",
+        "url": source_url,
+    }
+    monkeypatch.setattr(scraper, "table_exists", lambda name: True)
+    monkeypatch.setattr(
+        scraper,
+        "get_existing_symbols_and_years",
+        lambda: {("OTHER", 2024): {"announcement_date": "2025-01-01"}},
+    )
+    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(
+        scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
+    )
+    parsed_results = iter(
+        [
+            {"revenue": 500, "net_income": 100, "total_debt": 80,
+             "cash_and_cash_equivalents": 40, "total_equity": 200},
+            {"revenue": 500, "net_income": 125, "total_debt": 80,
+             "cash_and_cash_equivalents": 40, "total_equity": 200},
+        ]
+    )
+    monkeypatch.setattr(
+        scraper,
+        "extract_financials_from_pdf",
+        lambda content, api_key: next(parsed_results),
+    )
+
+    client.merge_error = RuntimeError("current-table merge failed")
+    scraper.scrape_financials("https://reports.example", "test-key")
+    assert "project.stocks.financial_report_revisions" not in client.tables
+
+    client.merge_error = None
+    scraper.scrape_financials("https://reports.example", "test-key")
+
+    current = client.tables["project.stocks.financials"][0]
+    revision = client.tables["project.stocks.financial_report_revisions"][0]
+    assert current["net_income"] == revision["net_income"] == 125
 
 
 def test_financial_pdf_caller_commits_revision_before_retryable_archive(

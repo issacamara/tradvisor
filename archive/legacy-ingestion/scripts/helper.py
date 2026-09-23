@@ -659,7 +659,12 @@ def upsert_financial_report_revision(df, project_id, dataset="stocks"):
 
 
 def get_financial_report_revision(
-    symbol, fiscal_year, document_link, document_revision, project_id, dataset="stocks"
+    symbol,
+    fiscal_year,
+    document_link,
+    document_revision,
+    project_id,
+    dataset="stocks",
 ):
     """Return a committed extraction; an unprovisioned history table fails closed."""
     from google.cloud import bigquery
@@ -669,31 +674,53 @@ def get_financial_report_revision(
     dataset_id = _sql_identifier(dataset, "dataset").strip("`")
     table_name = _sql_identifier("financial_report_revisions", "table").strip("`")
     table_id = f"`{project_id}.{dataset_id}.{table_name}`"
+    revision_clause = (
+        "AND document_revision = @document_revision"
+        if document_revision is not None
+        else ""
+    )
     query = f"""
-    SELECT *
+    SELECT revenue, net_income, total_debt, cash_and_cash_equivalents, total_equity
     FROM {table_id}
     WHERE symbol = @symbol
       AND fiscal_year = @fiscal_year
       AND document_link = @document_link
-      AND document_revision = @document_revision
+      {revision_clause}
     LIMIT 1
     """
     client = bigquery.Client(project=project_id)
-    config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("symbol", "STRING", symbol),
-            bigquery.ScalarQueryParameter("fiscal_year", "INT64", fiscal_year),
-            bigquery.ScalarQueryParameter("document_link", "STRING", document_link),
+    parameters = [
+        bigquery.ScalarQueryParameter("symbol", "STRING", symbol),
+        bigquery.ScalarQueryParameter("fiscal_year", "INT64", fiscal_year),
+        bigquery.ScalarQueryParameter("document_link", "STRING", document_link),
+    ]
+    if document_revision is not None:
+        parameters.append(
             bigquery.ScalarQueryParameter(
                 "document_revision", "STRING", document_revision
-            ),
-        ]
-    )
+            )
+        )
+    config = bigquery.QueryJobConfig(query_parameters=parameters)
     rows = list(client.query(query, job_config=config).result())
     if not rows:
         return None
     row = rows[0]
     return dict(row.items()) if hasattr(row, "items") else dict(row)
+
+
+def upsert_financial_report_current_and_revision(df, project_id, dataset="stocks"):
+    """Write the current projection before its immutable source revision."""
+    if "document_revision" not in df.columns:
+        raise ValueError("financial report revision requires document_revision")
+    current_rows = df.drop(columns=["document_revision"])
+    upsert_into_bigquery(
+        current_rows,
+        project_id,
+        dataset,
+        "financials",
+        ["symbol", "fiscal_year"],
+    )
+    return upsert_financial_report_revision(df, project_id, dataset)
 
 
 def upsert_financial_report_and_archive(
