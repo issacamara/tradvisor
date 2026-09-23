@@ -28,7 +28,7 @@ def revision(number: int, known_at: datetime = NOW) -> Revision:
 
 def session(
     day: int,
-    index: int,
+    index: int | None,
     *,
     status: Literal["trading", "holiday", "suspended", "unknown"] = "trading",
     known_at: datetime = NOW,
@@ -43,7 +43,7 @@ def session(
         official_close_at=NOW if status == "trading" else None,
         source_evidence=(Provenance(source_id="calendar-source", collected_at=known_at, basis="actual"),),
         reason_codes=() if status == "trading" else ("calendar_status",),
-        revision=revision(index, known_at),
+        revision=revision(day if index is None else index, known_at),
     )
 
 
@@ -178,7 +178,7 @@ def test_other_symbols_cannot_multiply_or_fill_the_requested_symbol_grid() -> No
 def test_unknown_calendar_and_ambiguous_revisions_never_silently_choose_or_skip() -> None:
     with pytest.raises(InputSnapshotError, match="unknown session"):
         build_analytical_input_snapshot(
-            symbol="NSI", as_of=NOW, sessions=(session(21, 1, status="unknown"),), prices=()
+            symbol="NSI", as_of=NOW, sessions=(session(21, None, status="unknown"),), prices=()
         )
 
     with pytest.raises(InputSnapshotError, match="ambiguous revision"):

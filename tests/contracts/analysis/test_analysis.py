@@ -259,6 +259,72 @@ def test_session_calendar_identity_and_price_execution_provenance_boundaries(
         )
 
 
+def test_session_index_is_nullable_only_for_unknown_status(revision: Revision) -> None:
+    base = {
+        "calendar_version": "calendar-1",
+        "session_id": "2026-09-22",
+        "session_date": date(2026, 9, 22),
+        "exchange_timezone": "Africa/Abidjan",
+        "source_evidence": (revision.provenance,),
+        "revision": revision,
+    }
+    unknown = NormalizedSession.model_validate(
+        base
+        | {
+            "session_index": None,
+            "status": "unknown",
+            "official_close_at": None,
+            "reason_codes": ("calendar_unavailable",),
+        }
+    )
+    assert unknown.session_index is None
+
+    for status in ("trading", "holiday", "suspended"):
+        known = NormalizedSession.model_validate(
+            base
+            | {
+                "session_index": 0,
+                "status": status,
+                "official_close_at": (
+                    datetime(2026, 9, 22, 15, 1, tzinfo=timezone.utc)
+                    if status == "trading"
+                    else None
+                ),
+                "reason_codes": () if status == "trading" else (f"{status}_session",),
+            }
+        )
+        assert known.session_index == 0
+
+    invalid_pairs = (
+        ("unknown", 0, None, ("calendar_unavailable",)),
+        ("trading", None, datetime(2026, 9, 22, 15, 1, tzinfo=timezone.utc), ()),
+        ("holiday", None, None, ("holiday_session",)),
+        ("suspended", None, None, ("suspended_session",)),
+    )
+    for status, session_index, official_close_at, reason_codes in invalid_pairs:
+        with pytest.raises(ValidationError, match="unknown session status requires no index"):
+            NormalizedSession.model_validate(
+                base
+                | {
+                    "session_index": session_index,
+                    "status": status,
+                    "official_close_at": official_close_at,
+                    "reason_codes": reason_codes,
+                }
+            )
+
+    with pytest.raises(ValidationError):
+        NormalizedSession.model_validate(
+            base
+            | {
+                "session_index": -1,
+                "status": "holiday",
+                "official_close_at": None,
+                "reason_codes": ("holiday_session",),
+            }
+        )
+
+
 def test_dividend_and_capital_preserve_matching_basis_and_payment_semantics(
     capital: object, dividend: object, financial: object, price: object
 ) -> None:
