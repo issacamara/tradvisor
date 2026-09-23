@@ -359,6 +359,10 @@ def _make_entry(
 ) -> CalendarEntry:
     if exception is not None:
         verified_exception = exception.verification is VerificationStatus.VERIFIED
+        verified_coverage = (
+            coverage is not None
+            and coverage.verification is VerificationStatus.VERIFIED
+        )
         status = (
             (SessionStatus.OPEN if exception.is_open else SessionStatus.CLOSED)
             if verified_exception
@@ -391,7 +395,11 @@ def _make_entry(
             coverage_status,
             officialization,
             exception.timing_tolerance_seconds if officialization else None,
-            officialization + OFFICIALIZATION_BUFFER if officialization else None,
+            (
+                officialization + OFFICIALIZATION_BUFFER
+                if officialization and verified_coverage
+                else None
+            ),
             sources,
             exception.source_notice,
             exception.recorded_at.astimezone(UTC),
@@ -420,7 +428,11 @@ def _make_entry(
             else SessionStatus.UNKNOWN
         )
     elif schedule is not None:
-        status = SessionStatus.OPEN if schedule.is_open else SessionStatus.CLOSED
+        status = (
+            (SessionStatus.OPEN if schedule.is_open else SessionStatus.CLOSED)
+            if schedule.verification is VerificationStatus.VERIFIED
+            else SessionStatus.UNKNOWN
+        )
     else:
         status = SessionStatus.UNKNOWN
 

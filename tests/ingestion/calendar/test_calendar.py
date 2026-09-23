@@ -251,6 +251,81 @@ def test_provisional_holiday_does_not_certify_a_closure() -> None:
     assert holiday.source in entry.source_references
 
 
+@pytest.mark.parametrize(
+    ("is_open", "verification"),
+    [
+        (True, calendar.VerificationStatus.PROVISIONAL),
+        (False, calendar.VerificationStatus.PROVISIONAL),
+        (True, calendar.VerificationStatus.UNVERIFIED),
+        (False, calendar.VerificationStatus.UNVERIFIED),
+    ],
+)
+def test_unconfirmed_schedule_rows_remain_unknown_without_timing(
+    is_open: bool, verification: object
+) -> None:
+    day = date(2026, 9, 23)
+    evidence = calendar.DatedScheduleEvidence(
+        day,
+        is_open,
+        time(15) if is_open else None,
+        source(),
+        verification,
+    )
+    entry = build(day, schedules=(evidence,)).for_date(day)
+
+    assert entry.status is calendar.SessionStatus.UNKNOWN
+    assert entry.verification is verification
+    assert entry.coverage_status is calendar.CoverageStatus.KNOWN
+    assert entry.scheduled_officialization is None
+    assert entry.timing_tolerance_seconds is None
+    assert entry.completion_cutoff is None
+
+
+@pytest.mark.parametrize(
+    ("is_open", "expected_status", "expected_officialization", "expected_cutoff"),
+    [
+        (
+            True,
+            calendar.SessionStatus.OPEN,
+            datetime(2026, 9, 23, 15, tzinfo=timezone.utc),
+            datetime(2026, 9, 23, 15, 1, tzinfo=timezone.utc),
+        ),
+        (False, calendar.SessionStatus.CLOSED, None, None),
+    ],
+)
+def test_verified_schedule_rows_retain_status_and_timing(
+    is_open: bool,
+    expected_status: object,
+    expected_officialization: datetime | None,
+    expected_cutoff: datetime | None,
+) -> None:
+    day = date(2026, 9, 23)
+    evidence = calendar.DatedScheduleEvidence(
+        day,
+        is_open,
+        time(15) if is_open else None,
+        source(),
+        calendar.VerificationStatus.VERIFIED,
+    )
+    entry = build(day, schedules=(evidence,)).for_date(day)
+
+    assert entry.status is expected_status
+    assert entry.verification is calendar.VerificationStatus.VERIFIED
+    assert entry.scheduled_officialization == expected_officialization
+    assert entry.completion_cutoff == expected_cutoff
+
+
+def test_verified_holiday_still_overrides_verified_open_schedule() -> None:
+    day = date(2026, 9, 23)
+    holiday = calendar.HolidayEvidence(day, source("verified-holiday"))
+    entry = build(day, schedules=(schedule(day),), holidays=(holiday,)).for_date(day)
+
+    assert entry.status is calendar.SessionStatus.CLOSED
+    assert entry.verification is calendar.VerificationStatus.VERIFIED
+    assert entry.scheduled_officialization is None
+    assert entry.completion_cutoff is None
+
+
 def test_verified_date_exception_overrides_base_and_retains_provenance() -> None:
     day = date(2026, 8, 17)
     notice = source("official-notice")
@@ -276,6 +351,47 @@ def test_verified_date_exception_overrides_base_and_retains_provenance() -> None
     assert entry.exception_recorded_at == recorded
     assert entry.exception_operator_id == "trusted-operator"
     assert provisional_holiday.source in entry.source_references
+
+
+@pytest.mark.parametrize(
+    "coverage_verification",
+    [None, calendar.VerificationStatus.PROVISIONAL],
+)
+def test_verified_exception_requires_verified_coverage_for_cutoff(
+    coverage_verification: object | None,
+) -> None:
+    day = date(2026, 8, 17)
+    exception = calendar.CalendarException(
+        day,
+        True,
+        time(12),
+        source("official-notice"),
+        datetime(2026, 8, 1, 10, tzinfo=timezone.utc),
+        "trusted-operator",
+    )
+    coverage = (
+        (period(day, day, coverage_verification),)
+        if coverage_verification is not None
+        else ()
+    )
+    entry = calendar.build_calendar_version(
+        version="exception-without-verified-coverage",
+        start_date=day,
+        end_date=day,
+        schedules=(schedule(day),),
+        holidays=(),
+        coverage=coverage,
+        exceptions=(exception,),
+    ).for_date(day)
+
+    assert entry.status is calendar.SessionStatus.OPEN
+    assert entry.verification is (
+        coverage_verification or calendar.VerificationStatus.UNVERIFIED
+    )
+    assert entry.scheduled_officialization == datetime(
+        2026, 8, 17, 12, tzinfo=timezone.utc
+    )
+    assert entry.completion_cutoff is None
 
 
 def test_missing_historical_coverage_remains_unverified() -> None:
