@@ -1,14 +1,35 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import os
+import re
 from collections.abc import Iterable
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import pandas as pd
 from scrape_shares import parse_localized_decimal
 
 
-NORMALIZED_COLUMNS = ("symbol", "name", "open", "high", "low", "volume", "close", "date")
+NORMALIZED_COLUMNS = (
+    "symbol",
+    "name",
+    "open",
+    "high",
+    "low",
+    "volume",
+    "close",
+    "date",
+    "revision_id",
+    "source_observation_id",
+    "source_revision_id",
+    "collected_at",
+    "session_date_status",
+    "trade_status",
+)
+REVISION_KEYS = ("symbol", "date", "revision_id")
 
 
 def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -22,6 +43,7 @@ def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
             "missing_session_evidence": len(frame),
             "unknown_trade_status": 0,
             "duplicate_or_revision_unknown": 0,
+            "exact_retry_duplicates": 0,
             "invalid_numeric_observation": 0,
             "loadable": 0,
         }
@@ -31,12 +53,14 @@ def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     dates = pd.to_datetime(rows["session_date"], errors="coerce", format="%Y-%m-%d")
     has_date = rows["session_date"].notna() & rows["session_date"].astype(str).str.strip().ne("") & dates.notna()
     status = rows.get("trade_status", pd.Series("unknown", index=rows.index))
-    volume = rows["volume"].map(lambda value: parse_localized_decimal(str(value)))
-    traded = status.eq("traded") & volume.gt(0) & volume.mod(1).eq(0)
+    volume = rows["volume"].map(_parse_optional_decimal)
+    reported_traded = status.eq("traded")
+    valid_traded_volume = volume.notna() & volume.gt(0) & volume.mod(1).eq(0)
 
     numeric_valid = rows.get(
         "numeric_parse_status", pd.Series("valid", index=rows.index)
     ).ne("invalid")
+    numeric_valid &= ~reported_traded | valid_traded_volume
     parsed_values = {}
     for column in ("open", "high", "low", "close"):
         parsed_values[column] = rows[column].map(_parse_optional_decimal)
@@ -65,28 +89,48 @@ def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
         index=rows.index,
     )
     numeric_valid &= candle_valid
-    eligible = verified & has_date & traded & numeric_valid
+    eligible = verified & has_date & reported_traded & numeric_valid
     missing_date_count = int((~verified | ~has_date).sum())
-    unknown_trade_count = int((verified & has_date & ~traded).sum())
-    invalid_numeric_count = int((verified & has_date & traded & ~numeric_valid).sum())
+    unknown_trade_count = int((verified & has_date & ~reported_traded).sum())
+    invalid_numeric_count = int(
+        (verified & has_date & reported_traded & ~numeric_valid).sum()
+    )
     candidates = rows.loc[eligible].copy()
     candidates["_session_date"] = dates.loc[candidates.index].dt.date
-
-    duplicate_mask = candidates.duplicated(["symbol", "_session_date"], keep=False)
-    duplicate_count = int(duplicate_mask.sum())
-    candidates = candidates.loc[~duplicate_mask]
     candidates["date"] = candidates.pop("_session_date")
     for column in ("open", "high", "low", "close"):
         candidates[column] = parsed_values[column].loc[candidates.index]
-    candidates["volume"] = candidates["volume"].map(
-        lambda value: int(parse_localized_decimal(str(value)))
-    )
+    candidates["volume"] = volume.loc[candidates.index].map(int)
+
+    source_observation = candidates.get(
+        "observation_id", pd.Series("", index=candidates.index)
+    ).map(_clean_evidence_text)
+    source_revision = candidates.get(
+        "source_revision_id", pd.Series("", index=candidates.index)
+    ).map(_clean_evidence_text)
+    collected_at = candidates.get(
+        "collected_at", pd.Series("", index=candidates.index)
+    ).map(_normalize_collected_at)
+    traceable = (source_observation.ne("") | source_revision.ne("")) & collected_at.ne("")
+    untraceable_count = int((~traceable).sum())
+    candidates = candidates.loc[traceable].copy()
+    candidates["source_observation_id"] = source_observation.loc[candidates.index]
+    candidates["source_revision_id"] = source_revision.loc[candidates.index]
+    candidates["collected_at"] = collected_at.loc[candidates.index]
+    candidates["session_date_status"] = "verified"
+    candidates["trade_status"] = "traded"
+    candidates["revision_id"] = candidates.apply(_revision_id, axis=1)
+
+    exact_retry_mask = candidates.duplicated(list(REVISION_KEYS), keep="first")
+    exact_retry_count = int(exact_retry_mask.sum())
+    candidates = candidates.loc[~exact_retry_mask]
 
     normalized = candidates.loc[:, list(NORMALIZED_COLUMNS)].reset_index(drop=True)
     return normalized, {
         "missing_session_evidence": missing_date_count,
         "unknown_trade_status": unknown_trade_count,
-        "duplicate_or_revision_unknown": duplicate_count,
+        "duplicate_or_revision_unknown": untraceable_count,
+        "exact_retry_duplicates": exact_retry_count,
         "invalid_numeric_observation": invalid_numeric_count,
         "loadable": len(normalized),
     }
@@ -107,85 +151,153 @@ def _parse_optional_decimal(value: object):
     return parsed
 
 
+def _clean_evidence_text(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _normalize_collected_at(value: object) -> str:
+    text = _clean_evidence_text(value)
+    if not text:
+        return ""
+    try:
+        instant = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        return ""
+    return instant.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _revision_id(row: pd.Series) -> str:
+    """Bind a revision to every persisted value so matched writes are immutable."""
+    payload = {
+        column: _revision_value(row[column])
+        for column in NORMALIZED_COLUMNS
+        if column != "revision_id"
+    }
+    encoded = json.dumps(
+        payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _revision_value(value: object) -> object:
+    if pd.isna(value):
+        return None
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
 def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: str) -> dict[str, int]:
     from helper import (
         get_project_number,
-        insert_into_bigquery,
-        insert_into_duckdb,
         move_csv_file,
         move_csv_file_gcp,
+        upsert_into_bigquery,
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
-    existing_keys = _existing_observation_keys(config, asset) if not normalized.empty else set()
-    if not normalized.empty:
-        keys = list(zip(normalized["symbol"], normalized["date"].astype(str)))
-        duplicate_mask = pd.Series([key in existing_keys for key in keys], index=normalized.index)
-        duplicate_count = int(duplicate_mask.sum())
-        if duplicate_count:
-            normalized = normalized.loc[~duplicate_mask].reset_index(drop=True)
-            evidence["loadable"] -= duplicate_count
-            evidence["duplicate_or_revision_unknown"] += duplicate_count
 
     if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
         from google.auth import default
 
-        credentials, project_id = default()
+        _, project_id = default()
         if not normalized.empty:
-            if existing_keys:
-                from helper import upsert_into_bigquery
-
-                upsert_into_bigquery(
-                    normalized,
-                    project_id,
-                    "stocks",
-                    asset,
-                    ["symbol", "date"],
-                    update_matched=False,
-                )
-            else:
-                insert_into_bigquery(normalized, project_id, "stocks", asset)
+            upsert_into_bigquery(
+                normalized, project_id, "stocks", asset, list(REVISION_KEYS)
+            )
         project_number = get_project_number(project_id)
         move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)
     else:
         if not normalized.empty:
-            insert_into_duckdb(normalized, config["duckdb"]["database"], asset)
+            _insert_revisions_into_duckdb(
+                normalized, config["duckdb"]["database"], asset
+            )
         move_csv_file(config["csv_directory"], config["archive"], file)
     return evidence
 
 
-def _existing_observation_keys(config, asset: str) -> set[tuple[str, str]]:
-    """Read committed keys so a raw-file retry cannot append the same session."""
-    if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
-        from google.auth import default
-        from google.api_core.exceptions import NotFound
-        from google.cloud import bigquery
+def _insert_revisions_into_duckdb(
+    frame: pd.DataFrame, db_path: str, table: str, *, connect=None
+) -> None:
+    """Insert revision rows behind a storage-enforced uniqueness boundary."""
+    if connect is None:
+        import duckdb
 
-        _, project_id = default()
-        client = bigquery.Client(project=project_id)
-        table_id = f"{project_id}.stocks.{asset}"
+        connect = duckdb.connect
+
+    quoted_table = _quoted_identifier(table)
+    database_path = os.path.join(os.path.dirname(__file__), "..", db_path)
+    column_definitions = {
+        "symbol": "VARCHAR NOT NULL",
+        "name": "VARCHAR NOT NULL",
+        "open": "DECIMAL(38, 6)",
+        "high": "DECIMAL(38, 6)",
+        "low": "DECIMAL(38, 6)",
+        "volume": "BIGINT NOT NULL",
+        "close": "DECIMAL(38, 6) NOT NULL",
+        "date": "DATE NOT NULL",
+        "revision_id": "VARCHAR NOT NULL",
+        "source_observation_id": "VARCHAR NOT NULL",
+        "source_revision_id": "VARCHAR NOT NULL",
+        "collected_at": "TIMESTAMP NOT NULL",
+        "session_date_status": "VARCHAR NOT NULL",
+        "trade_status": "VARCHAR NOT NULL",
+    }
+    definitions = ", ".join(
+        f"{_quoted_identifier(column)} {column_definitions[column]}"
+        for column in NORMALIZED_COLUMNS
+    )
+    unique_columns = ", ".join(_quoted_identifier(column) for column in REVISION_KEYS)
+    unique_index = _quoted_identifier(f"{table}_symbol_date_revision_uidx")
+    columns = ", ".join(_quoted_identifier(column) for column in NORMALIZED_COLUMNS)
+    placeholders = ", ".join("?" for _ in NORMALIZED_COLUMNS)
+    records = [
+        tuple(_database_value(row[column]) for column in NORMALIZED_COLUMNS)
+        for _, row in frame.iterrows()
+    ]
+
+    with connect(database_path) as connection:
         try:
-            client.get_table(table_id)
-        except NotFound:
-            return set()
-        query = f"SELECT symbol, date FROM `{table_id}`"
-        return {_observation_key(row.symbol, row.date) for row in client.query(query).result()}
+            connection.execute(
+                f"CREATE TABLE IF NOT EXISTS {quoted_table} "
+                f"({definitions}, UNIQUE ({unique_columns}))"
+            )
+            connection.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {unique_index} "
+                f"ON {quoted_table} ({unique_columns})"
+            )
+            connection.executemany(
+                f"INSERT OR IGNORE INTO {quoted_table} ({columns}) VALUES ({placeholders})",
+                records,
+            )
+        except Exception as error:
+            raise RuntimeError(
+                f"{table} must expose the normalized share revision schema"
+            ) from error
 
-    import duckdb
 
-    database_path = os.path.join(os.path.dirname(__file__), "..", config["duckdb"]["database"])
-    with duckdb.connect(database_path) as connection:
-        table_exists = connection.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [asset]
-        ).fetchone()
-        if table_exists is None:
-            return set()
-        rows = connection.execute(f'SELECT symbol, date FROM "{asset}"').fetchall()
-    return {_observation_key(symbol, date) for symbol, date in rows}
+def _quoted_identifier(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+        raise ValueError(f"invalid table or column identifier: {value!r}")
+    return f'"{value}"'
 
 
-def _observation_key(symbol: object, date: object) -> tuple[str, str]:
-    return str(symbol), pd.to_datetime(date).date().isoformat()
+def _database_value(value: object) -> object:
+    if pd.isna(value):
+        return None
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 
 def process_share_files(config, files: Iterable[object]) -> list[dict[str, int]]:

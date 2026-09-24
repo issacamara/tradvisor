@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import importlib.util
+import sqlite3
 import sys
-from types import ModuleType
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -25,6 +28,7 @@ def _load_script(name: str, filename: str):
 
 scraper = _load_script("share_scraper_for_tests", "scrape_shares.py")
 loader = _load_script("share_loader_for_tests", "insert_shares.py")
+actual_helper = _load_script("share_helper_for_signature_tests", "helper.py")
 
 
 @pytest.mark.parametrize(
@@ -212,11 +216,15 @@ def test_unique_verified_traded_observation_normalizes_exactly() -> None:
     assert normalized.loc[0, "date"].isoformat() == "2026-09-21"
     assert str(normalized.loc[0, "open"]) == "1000.25"
     assert normalized.loc[0, "volume"] == 12
+    assert normalized.loc[0, "source_observation_id"] == "observation-1"
+    assert normalized.loc[0, "collected_at"] == "2026-09-22 08:00:00"
+    assert len(normalized.loc[0, "revision_id"]) == 64
 
 
-def test_duplicate_or_revision_rows_are_withheld_with_explicit_evidence() -> None:
+def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> None:
     rows = pd.DataFrame(
         [
+            _row(observation_id="revision-a", source_revision_id="source-a"),
             _row(observation_id="revision-a", source_revision_id="source-a"),
             _row(close="1 051,00", observation_id="revision-b", source_revision_id="source-b"),
         ]
@@ -224,13 +232,36 @@ def test_duplicate_or_revision_rows_are_withheld_with_explicit_evidence() -> Non
 
     normalized, evidence = loader.prepare_normalized_rows(rows)
 
+    assert evidence["loadable"] == 2
+    assert evidence["exact_retry_duplicates"] == 1
+    assert evidence["duplicate_or_revision_unknown"] == 0
+    assert normalized[["symbol", "date"]].drop_duplicates().shape[0] == 1
+    assert normalized["revision_id"].nunique() == 2
+    assert set(normalized["source_revision_id"]) == {"source-a", "source-b"}
+    assert {str(value) for value in normalized["close"]} == {"1050.75", "1051.00"}
+
+
+def test_untraceable_revision_is_withheld_without_inventing_evidence() -> None:
+    normalized, evidence = loader.prepare_normalized_rows(
+        pd.DataFrame([_row(observation_id="", source_revision_id="")])
+    )
+
     assert normalized.empty
-    assert evidence["duplicate_or_revision_unknown"] == 2
+    assert evidence["duplicate_or_revision_unknown"] == 1
 
 
 def test_invalid_numeric_values_are_withheld_from_normalized_load() -> None:
     normalized, evidence = loader.prepare_normalized_rows(
         pd.DataFrame([_row(high="unavailable", numeric_parse_status="invalid")])
+    )
+
+    assert normalized.empty
+    assert evidence["invalid_numeric_observation"] == 1
+
+
+def test_invalid_traded_volume_is_withheld_instead_of_aborting_file() -> None:
+    normalized, evidence = loader.prepare_normalized_rows(
+        pd.DataFrame([_row(volume="not published", numeric_parse_status="invalid")])
     )
 
     assert normalized.empty
@@ -283,11 +314,15 @@ def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> No
     calls = []
     helper = ModuleType("helper")
     helper.get_project_number = lambda _project: "unused"
-    helper.insert_into_bigquery = lambda *_args: calls.append("bigquery")
-    helper.insert_into_duckdb = lambda *_args: calls.append("duckdb")
     helper.move_csv_file = lambda *args: calls.append(("archive", *args))
     helper.move_csv_file_gcp = lambda *_args: calls.append("gcs-archive")
+    helper.upsert_into_bigquery = lambda *_args: calls.append("bigquery")
     monkeypatch.setitem(sys.modules, "helper", helper)
+    monkeypatch.setattr(
+        loader,
+        "_insert_revisions_into_duckdb",
+        lambda *_args: calls.append("duckdb"),
+    )
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
 
@@ -302,46 +337,100 @@ def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> No
     assert calls == [("archive", "data", "archive", "raw-observations.csv")]
 
 
-def test_duplicate_symbol_session_across_files_is_withheld(monkeypatch) -> None:
-    committed = set()
-    inserted = []
+def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) -> None:
+    signature = inspect.signature(actual_helper.upsert_into_bigquery)
+    signature.bind(
+        pd.DataFrame(), "project", "stocks", "shares", list(loader.REVISION_KEYS)
+    )
+
+    calls = []
     helper = ModuleType("helper")
-    helper.get_project_number = lambda _project: "unused"
-    helper.insert_into_bigquery = lambda *_args: None
-    helper.insert_into_duckdb = lambda frame, _database, _asset: (
-        inserted.extend(frame.to_dict("records")),
-        committed.update((row["symbol"], row["date"].isoformat()) for row in frame.to_dict("records")),
-    )
-    helper.move_csv_file = lambda *_args: None
-    helper.move_csv_file_gcp = lambda *_args: None
+    helper.get_project_number = lambda _project: "123"
+    helper.move_csv_file = lambda *_args: calls.append("local-archive")
+    helper.move_csv_file_gcp = lambda *args: calls.append(("gcs-archive", *args))
+
+    def upsert(frame, project_id, dataset, table, primary_keys):
+        calls.append(
+            (
+                "upsert",
+                len(frame),
+                project_id,
+                dataset,
+                table,
+                tuple(primary_keys),
+            )
+        )
+
+    helper.upsert_into_bigquery = upsert
     monkeypatch.setitem(sys.modules, "helper", helper)
-    monkeypatch.setattr(loader, "_existing_observation_keys", lambda _config, _asset: set(committed))
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-    config = {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"}
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setenv("K_SERVICE", "share-loader")
+    monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
-    first = loader._archive_after_optional_load(config, "first.csv", pd.DataFrame([_row()]), "shares")
-    second = loader._archive_after_optional_load(
-        config, "second.csv", pd.DataFrame([_row(close="1 060,00")]), "shares"
+    evidence = loader._archive_after_optional_load(
+        {}, SimpleNamespace(name="shares.csv"), pd.DataFrame([_row()]), "shares"
     )
 
-    assert first["loadable"] == 1
-    assert second["loadable"] == 0
-    assert second["duplicate_or_revision_unknown"] == 1
-    assert len(inserted) == 1
+    assert evidence["loadable"] == 1
+    assert calls == [
+        ("upsert", 1, "project", "stocks", "shares", loader.REVISION_KEYS),
+        ("gcs-archive", "data-123", "archive-123", "shares.csv"),
+    ]
+
+
+def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
+    tmp_path,
+) -> None:
+    original, _ = loader.prepare_normalized_rows(pd.DataFrame([_row()]))
+    changed, _ = loader.prepare_normalized_rows(
+        pd.DataFrame([_row(close="1 060,00", observation_id="observation-2")])
+    )
+    database = tmp_path / "share-revisions.db"
+
+    def connect(path):
+        return sqlite3.connect(path, timeout=10)
+
+    loader._insert_revisions_into_duckdb(
+        original, str(database), "shares", connect=connect
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(
+                loader._insert_revisions_into_duckdb,
+                changed,
+                str(database),
+                "shares",
+                connect=connect,
+            )
+            for _ in range(2)
+        ]
+        for future in futures:
+            future.result()
+
+    with sqlite3.connect(database) as connection:
+        stored = connection.execute(
+            "SELECT revision_id, close FROM shares ORDER BY close"
+        ).fetchall()
+
+    assert len(stored) == 2
+    assert len({revision_id for revision_id, _ in stored}) == 2
+    assert {str(close) for _, close in stored} == {"1050.75", "1060"}
 
 
 def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatch) -> None:
     committed = set()
-    inserted = []
     archive_attempts = 0
     helper = ModuleType("helper")
     helper.get_project_number = lambda _project: "unused"
-    helper.insert_into_bigquery = lambda *_args: None
+    helper.upsert_into_bigquery = lambda *_args: None
 
     def insert(frame, _database, _asset):
-        inserted.extend(frame.to_dict("records"))
-        committed.update((row["symbol"], row["date"].isoformat()) for row in frame.to_dict("records"))
+        committed.update(frame["revision_id"])
 
     def archive(*_args):
         nonlocal archive_attempts
@@ -349,11 +438,10 @@ def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatc
         if archive_attempts == 1:
             raise OSError("archive move failed after data commit")
 
-    helper.insert_into_duckdb = insert
     helper.move_csv_file = archive
     helper.move_csv_file_gcp = lambda *_args: None
     monkeypatch.setitem(sys.modules, "helper", helper)
-    monkeypatch.setattr(loader, "_existing_observation_keys", lambda _config, _asset: set(committed))
+    monkeypatch.setattr(loader, "_insert_revisions_into_duckdb", insert)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
     config = {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"}
@@ -362,9 +450,9 @@ def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatc
         loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
     retry = loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
 
-    assert retry["loadable"] == 0
-    assert retry["duplicate_or_revision_unknown"] == 1
-    assert len(inserted) == 1
+    assert retry["loadable"] == 1
+    assert retry["duplicate_or_revision_unknown"] == 0
+    assert len(committed) == 1
     assert archive_attempts == 2
 
 
