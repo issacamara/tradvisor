@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -106,6 +107,10 @@ class _MemoryBigQueryClient:
 
     def query(self, sql: str, *, job_config=None):
         if sql.lstrip().startswith("SELECT"):
+            if "financial_report_revisions" not in sql:
+                table_id = sql.split("FROM `", 1)[1].split("`", 1)[0]
+                rows = self.tables.get(table_id, [])
+                return _BigQueryJob([SimpleNamespace(**row) for row in rows])
             parameters = {
                 item.name: item.value for item in job_config.query_parameters
             }
@@ -192,7 +197,13 @@ def test_recorded_provider_response_replays_only_for_matching_pdf(
 ) -> None:
     pdf = b"fixture PDF bytes"
     digest = hashlib.sha256(pdf).hexdigest()
-    result = {"revenue": 500, "net_income": 100}
+    result = {
+        "revenue": 500,
+        "net_income": 100,
+        "total_debt": 80,
+        "cash_and_cash_equivalents": 40,
+        "total_equity": 200,
+    }
     artifact = {
         "pdf_sha256": digest,
         "model": "fixture/model-v1",
@@ -231,7 +242,13 @@ def test_saved_artifact_is_keyed_by_pdf_hash_and_replays_without_reextraction(
         "model": "fixture/model-v1",
         "prompt": "fixture prompt",
         "response": {"id": "fixture-response"},
-        "result": {"revenue": 10},
+        "result": {
+            "revenue": 10,
+            "net_income": 2,
+            "total_debt": 4,
+            "cash_and_cash_equivalents": 3,
+            "total_equity": 8,
+        },
     }
 
     adapter_module.save_extraction_artifact(bucket, digest, evidence)
@@ -316,6 +333,223 @@ def test_provider_attempt_budget_is_shared_and_bounded(
 
     assert attempt_budget == [1]
     assert len(calls) == 1
+
+
+def test_incomplete_extraction_is_not_accepted_and_remains_retryable(
+    adapter_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf = b"fixture incomplete then complete PDF"
+    digest = hashlib.sha256(pdf).hexdigest()
+    bucket = _Bucket()
+    incomplete = {
+        "fiscal_year": 2025,
+        "revenue": 500,
+        "net_income": 100,
+        "total_debt": None,
+        "cash_and_cash_equivalents": 40,
+        "total_equity": 200,
+    }
+    complete = dict(incomplete, total_debt=80)
+    provider_results = [incomplete] * 4 + [complete]
+    provider_calls: list[dict[str, object]] = []
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, result: dict[str, object]) -> None:
+            self.result = result
+
+        def json(self) -> dict[str, object]:
+            return {
+                "model": "fixture/model-v1",
+                "choices": [{"message": {"content": json.dumps(self.result)}}],
+            }
+
+    def post(url: str, **kwargs: object) -> _Response:
+        result = provider_results[len(provider_calls)]
+        provider_calls.append(kwargs)
+        return _Response(result)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "curl_cffi",
+        SimpleNamespace(requests=SimpleNamespace(post=post)),
+    )
+    monkeypatch.setattr(
+        adapter_module,
+        "extract_text_from_pdf",
+        lambda content: "fixture report text " * 10,
+    )
+    monkeypatch.setattr(
+        adapter_module,
+        "extract_relevant_pdf_pages",
+        lambda content, max_pages: content,
+    )
+
+    incomplete_evidence: list[dict[str, object]] = []
+    assert adapter_module.extract_financials_from_pdf(
+        pdf,
+        "fixture-key",
+        evidence_callback=incomplete_evidence.append,
+    ) is None
+    assert len(provider_calls) == 4
+    with pytest.raises(ValueError, match="not a complete accepted extraction"):
+        adapter_module.save_extraction_artifact(
+            bucket, digest, incomplete_evidence[-1]
+        )
+    assert not bucket.blob(adapter_module.extraction_artifact_name(digest)).exists()
+
+    stale_artifact = dict(incomplete_evidence[-1], pdf_sha256=digest)
+    bucket.blob(adapter_module.extraction_artifact_name(digest)).upload_from_string(
+        json.dumps(stale_artifact)
+    )
+    assert adapter_module.load_extraction_artifact(bucket, digest) is None
+
+    accepted_evidence: list[dict[str, object]] = []
+    assert adapter_module.extract_financials_from_pdf(
+        pdf,
+        "fixture-key",
+        recorded_response=adapter_module.load_extraction_artifact(bucket, digest),
+        evidence_callback=accepted_evidence.append,
+    ) == complete
+    assert len(provider_calls) == 5
+    adapter_module.save_extraction_artifact(bucket, digest, accepted_evidence[-1])
+    accepted = adapter_module.load_extraction_artifact(bucket, digest)
+    assert adapter_module.extract_financials_from_pdf(
+        pdf, recorded_response=accepted
+    ) == complete
+    assert len(provider_calls) == 5
+
+
+def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    functions_framework = ModuleType("functions_framework")
+    functions_framework.http = lambda function: function  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "functions_framework", functions_framework)
+    monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=lambda stream: {}))
+    monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=lambda *a, **k: None))
+
+    pdf = b"fixture monthly annual report PDF bytes"
+    storage_client = _MemoryStorageClient()
+    bigquery_client = _MemoryBigQueryClient()
+
+    class _BigQuery:
+        Client = lambda self, **kwargs: bigquery_client
+        LoadJobConfig = lambda self, **kwargs: SimpleNamespace(**kwargs)
+        QueryJobConfig = lambda self, **kwargs: SimpleNamespace(**kwargs)
+        WriteDisposition = SimpleNamespace(WRITE_TRUNCATE="WRITE_TRUNCATE")
+        ScalarQueryParameter = lambda self, name, kind, value: SimpleNamespace(
+            name=name, type=kind, value=value
+        )
+
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("fixture-credentials", "fixture-project")  # type: ignore[attr-defined]
+    cloud = ModuleType("google.cloud")
+    cloud.storage = SimpleNamespace(Client=lambda **kwargs: storage_client)  # type: ignore[attr-defined]
+    cloud.bigquery = _BigQuery()  # type: ignore[attr-defined]
+    google = ModuleType("google")
+    google.auth = google_auth  # type: ignore[attr-defined]
+    google.cloud = cloud  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+
+    fiscal_year = datetime.now().year
+    result = {
+        "fiscal_year": fiscal_year,
+        "revenue": 500,
+        "net_income": 100,
+        "total_debt": 80,
+        "cash_and_cash_equivalents": 40,
+        "total_equity": 200,
+    }
+    provider_calls: list[dict[str, object]] = []
+
+    class _ProviderResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {
+                "model": "fixture/model-v1",
+                "choices": [{"message": {"content": json.dumps(result)}}],
+            }
+
+    class _DownloadResponse:
+        status_code = 200
+        content = pdf
+
+    class _Session:
+        def get(self, *args: object, **kwargs: object) -> _DownloadResponse:
+            return _DownloadResponse()
+
+        def close(self) -> None:
+            return None
+
+    requests = SimpleNamespace(
+        Session=lambda: _Session(),
+        post=lambda url, **kwargs: provider_calls.append(kwargs) or _ProviderResponse(),
+    )
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+
+    helper = _load_module(SCRIPTS / "helper.py", "helper")
+    monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
+    insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
+    monkeypatch.setattr(
+        insert,
+        "extract_text_from_pdf",
+        lambda content: "fixture report text " * 10,
+    )
+    scraper = _load_module(SCRIPTS / "scrape_financials.py", "financial_pipeline_monthly")
+    announcement = {
+        "symbol": "ABC",
+        "title": "Fixture annual report",
+        "announcement_date": f"{fiscal_year}-06-30",
+        "fiscal_year": fiscal_year,
+        "url": "https://fixture.invalid/annual.pdf",
+    }
+    monkeypatch.setattr(scraper, "table_exists", lambda name: True)
+    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(
+        scraper,
+        "get_announcements_for_symbol",
+        lambda symbol: [announcement],
+    )
+
+    current_table = "fixture-project.stocks.financials"
+    revision_table = "fixture-project.stocks.financial_report_revisions"
+    bigquery_client.tables[current_table] = [{
+        "symbol": "XYZ",
+        "fiscal_year": fiscal_year,
+        "announcement_date": f"{fiscal_year}-01-01",
+        "document_link": "https://fixture.invalid/existing.pdf",
+    }]
+
+    scraper.scrape_financials("fixture://source", "fixture-key")
+    scraper.scrape_financials("fixture://source", "fixture-key")
+
+    assert len(provider_calls) == 1
+    current = [
+        row for row in bigquery_client.tables[current_table]
+        if row["symbol"] == "ABC"
+    ]
+    revisions = bigquery_client.tables[revision_table]
+    digest = hashlib.sha256(pdf).hexdigest()
+    assert len(current) == 1
+    assert {key: current[0][key] for key in result if key != "fiscal_year"} == {
+        key: value for key, value in result.items() if key != "fiscal_year"
+    }
+    assert current[0]["fiscal_year"] == fiscal_year
+    assert len(revisions) == 1
+    assert revisions[0]["document_revision"] == digest
+    assert revisions[0]["document_link"] == announcement["url"]
+    artifact = json.loads(
+        storage_client.bucket("data-123").blobs[
+            f"financial_extraction_artifacts/{digest}.json"
+        ].payload or "{}"
+    )
+    assert artifact["result"] == result
 
 
 def test_empty_table_hands_initialization_through_canonical_pdf_loader(

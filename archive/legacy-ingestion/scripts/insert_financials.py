@@ -240,11 +240,13 @@ def extract_financials_from_pdf(
     if recorded_response is not None:
         if recorded_response.get("pdf_sha256") != hashlib.sha256(pdf_content).hexdigest():
             raise ValueError("recorded extraction does not match the PDF hash")
-        if not isinstance(recorded_response.get("result"), dict):
+        recorded_result = recorded_response.get("result")
+        if not isinstance(recorded_result, dict):
             raise ValueError("recorded extraction has no parsed result")
-        if evidence_callback:
-            evidence_callback(recorded_response)
-        return recorded_response["result"]
+        if not is_data_incomplete(recorded_result):
+            if evidence_callback:
+                evidence_callback(recorded_response)
+            return recorded_result
     if not openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY is required when no recorded response exists")
     if max_provider_attempts < 1:
@@ -334,7 +336,7 @@ def extract_financials_from_pdf(
     except Exception as e:
         print(f"    Sequential chunking error: {e}")
 
-    return result
+    return result if result and not is_data_incomplete(result) else None
 
 
 def extraction_artifact_name(pdf_sha256):
@@ -351,6 +353,8 @@ def load_extraction_artifact(bucket, pdf_sha256):
         raise ValueError("stored extraction artifact has a mismatched PDF hash")
     if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
         raise ValueError("stored extraction artifact is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        return None
     return artifact
 
 
@@ -358,6 +362,8 @@ def save_extraction_artifact(bucket, pdf_sha256, evidence):
     artifact = dict(evidence, pdf_sha256=pdf_sha256)
     if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
         raise ValueError("provider response is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        raise ValueError("provider response is not a complete accepted extraction")
     blob = bucket.blob(extraction_artifact_name(pdf_sha256))
     blob.upload_from_string(json.dumps(artifact, sort_keys=True), content_type="application/json")
     return artifact
@@ -541,6 +547,8 @@ def process_financial_pdfs(openrouter_api_key):
                     document_revision,
                     project_id,
                 )
+                if is_data_incomplete(financial_data):
+                    financial_data = None
             if financial_data is None:
                 evidence = []
                 if callable(getattr(bucket, "blob", None)):
@@ -558,7 +566,7 @@ def process_financial_pdfs(openrouter_api_key):
 
             del pdf_content
 
-            if not financial_data:
+            if is_data_incomplete(financial_data):
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
                 continue

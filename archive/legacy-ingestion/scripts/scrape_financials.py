@@ -588,6 +588,8 @@ def scrape_financials(url, openrouter_api_key=None):
                     document_revision,
                     project_id,
                 )
+                if is_data_incomplete(financial_data):
+                    financial_data = None
                 if current_matches_announcement and financial_data is not None:
                     print(f"  FY {fiscal_year} - already up to date, skipping")
                     del pdf_content
@@ -602,7 +604,7 @@ def scrape_financials(url, openrouter_api_key=None):
                             recorded_response=artifact,
                             evidence_callback=evidence.append,
                         )
-                        if evidence and financial_data:
+                        if evidence and not is_data_incomplete(financial_data):
                             shared_adapter.save_extraction_artifact(
                                 artifact_bucket, document_revision, evidence[-1]
                             )
@@ -614,7 +616,7 @@ def scrape_financials(url, openrouter_api_key=None):
                 # CRITICAL: Delete PDF content from memory immediately after processing
                 del pdf_content
                 
-                if not financial_data:
+                if is_data_incomplete(financial_data):
                     raise Exception("Failed to extract financial data from PDF - all AI models failed")
                 
                 # New or updated data - upsert
