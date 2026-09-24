@@ -33,7 +33,7 @@ resource "google_cloudfunctions2_function" "functions" {
 
 resource "google_workflows_workflow" "workflows" {
   depends_on      = [google_cloudfunctions2_function.functions, google_project_service.apis]
-  count           = length(var.functions) / 2
+  count           = var.manage_legacy_workflows ? length(var.functions) / 2 : 0
   name            = "${split("_", var.functions[count.index])[1]}-wf"
   region          = var.region
   description     = "A workflow to run ${var.functions[count.index]} and ${var.functions[count.index + 4]} sequentially"

@@ -52,3 +52,9 @@ variable "jobs" {
     job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
   }
 }
+
+variable "manage_legacy_workflows" {
+  description = "Whether Terraform owns the pre-existing legacy workflows"
+  type        = bool
+  default     = false
+}
