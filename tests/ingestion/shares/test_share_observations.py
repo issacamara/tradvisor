@@ -47,6 +47,12 @@ def test_invalid_or_negative_decimal_is_not_silently_rewritten() -> None:
         scraper.parse_localized_decimal("-1,25")
 
 
+@pytest.mark.parametrize("value", ["1.23,45", "12,34.56", "1,23,456", "1 23,45"])
+def test_malformed_separator_grouping_is_rejected(value: str) -> None:
+    with pytest.raises(ValueError):
+        scraper.parse_localized_decimal(value)
+
+
 def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkeypatch) -> None:
     monkeypatch.setattr(
         scraper,
@@ -103,6 +109,32 @@ def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> 
     assert row["high"] == "not published"
     assert row["numeric_parse_status"] == "invalid"
     assert row["numeric_parse_errors"] == "high"
+
+
+def test_scraper_preserves_raw_malformed_grouping_as_invalid(monkeypatch) -> None:
+    monkeypatch.setattr(
+        scraper,
+        "scrape",
+        lambda _url: [
+            {
+                "symbol": "ABC",
+                "name": "Example",
+                "open": "1.23,45",
+                "high": "1 100,50",
+                "low": "900,00",
+                "volume": "12",
+                "close": "1 050,75",
+            }
+        ],
+    )
+    row = scraper.scrape_brvm_shares(
+        "fixture://shares", collected_at=datetime(2026, 9, 22, tzinfo=timezone.utc)
+    ).iloc[0]
+
+    assert row["open"] == "1.23,45"
+    assert row["parsed_open"] == ""
+    assert row["numeric_parse_status"] == "invalid"
+    assert row["numeric_parse_errors"] == "open"
 
 
 def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch) -> None:
@@ -268,6 +300,72 @@ def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> No
 
     assert evidence["loadable"] == 0
     assert calls == [("archive", "data", "archive", "raw-observations.csv")]
+
+
+def test_duplicate_symbol_session_across_files_is_withheld(monkeypatch) -> None:
+    committed = set()
+    inserted = []
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "unused"
+    helper.insert_into_bigquery = lambda *_args: None
+    helper.insert_into_duckdb = lambda frame, _database, _asset: (
+        inserted.extend(frame.to_dict("records")),
+        committed.update((row["symbol"], row["date"].isoformat()) for row in frame.to_dict("records")),
+    )
+    helper.move_csv_file = lambda *_args: None
+    helper.move_csv_file_gcp = lambda *_args: None
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    monkeypatch.setattr(loader, "_existing_observation_keys", lambda _config, _asset: set(committed))
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+    config = {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"}
+
+    first = loader._archive_after_optional_load(config, "first.csv", pd.DataFrame([_row()]), "shares")
+    second = loader._archive_after_optional_load(
+        config, "second.csv", pd.DataFrame([_row(close="1 060,00")]), "shares"
+    )
+
+    assert first["loadable"] == 1
+    assert second["loadable"] == 0
+    assert second["duplicate_or_revision_unknown"] == 1
+    assert len(inserted) == 1
+
+
+def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatch) -> None:
+    committed = set()
+    inserted = []
+    archive_attempts = 0
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "unused"
+    helper.insert_into_bigquery = lambda *_args: None
+
+    def insert(frame, _database, _asset):
+        inserted.extend(frame.to_dict("records"))
+        committed.update((row["symbol"], row["date"].isoformat()) for row in frame.to_dict("records"))
+
+    def archive(*_args):
+        nonlocal archive_attempts
+        archive_attempts += 1
+        if archive_attempts == 1:
+            raise OSError("archive move failed after data commit")
+
+    helper.insert_into_duckdb = insert
+    helper.move_csv_file = archive
+    helper.move_csv_file_gcp = lambda *_args: None
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    monkeypatch.setattr(loader, "_existing_observation_keys", lambda _config, _asset: set(committed))
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+    config = {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"}
+
+    with pytest.raises(OSError, match="archive move failed"):
+        loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
+    retry = loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
+
+    assert retry["loadable"] == 0
+    assert retry["duplicate_or_revision_unknown"] == 1
+    assert len(inserted) == 1
+    assert archive_attempts == 2
 
 
 def test_load_requires_explicit_session_and_source_columns() -> None:

@@ -117,12 +117,34 @@ def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: s
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
+    existing_keys = _existing_observation_keys(config, asset) if not normalized.empty else set()
+    if not normalized.empty:
+        keys = list(zip(normalized["symbol"], normalized["date"].astype(str)))
+        duplicate_mask = pd.Series([key in existing_keys for key in keys], index=normalized.index)
+        duplicate_count = int(duplicate_mask.sum())
+        if duplicate_count:
+            normalized = normalized.loc[~duplicate_mask].reset_index(drop=True)
+            evidence["loadable"] -= duplicate_count
+            evidence["duplicate_or_revision_unknown"] += duplicate_count
+
     if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
         from google.auth import default
 
         credentials, project_id = default()
         if not normalized.empty:
-            insert_into_bigquery(normalized, project_id, "stocks", asset)
+            if existing_keys:
+                from helper import upsert_into_bigquery
+
+                upsert_into_bigquery(
+                    normalized,
+                    project_id,
+                    "stocks",
+                    asset,
+                    ["symbol", "date"],
+                    update_matched=False,
+                )
+            else:
+                insert_into_bigquery(normalized, project_id, "stocks", asset)
         project_number = get_project_number(project_id)
         move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)
     else:
@@ -130,6 +152,40 @@ def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: s
             insert_into_duckdb(normalized, config["duckdb"]["database"], asset)
         move_csv_file(config["csv_directory"], config["archive"], file)
     return evidence
+
+
+def _existing_observation_keys(config, asset: str) -> set[tuple[str, str]]:
+    """Read committed keys so a raw-file retry cannot append the same session."""
+    if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
+        from google.auth import default
+        from google.api_core.exceptions import NotFound
+        from google.cloud import bigquery
+
+        _, project_id = default()
+        client = bigquery.Client(project=project_id)
+        table_id = f"{project_id}.stocks.{asset}"
+        try:
+            client.get_table(table_id)
+        except NotFound:
+            return set()
+        query = f"SELECT symbol, date FROM `{table_id}`"
+        return {_observation_key(row.symbol, row.date) for row in client.query(query).result()}
+
+    import duckdb
+
+    database_path = os.path.join(os.path.dirname(__file__), "..", config["duckdb"]["database"])
+    with duckdb.connect(database_path) as connection:
+        table_exists = connection.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [asset]
+        ).fetchone()
+        if table_exists is None:
+            return set()
+        rows = connection.execute(f'SELECT symbol, date FROM "{asset}"').fetchall()
+    return {_observation_key(symbol, date) for symbol, date in rows}
+
+
+def _observation_key(symbol: object, date: object) -> tuple[str, str]:
+    return str(symbol), pd.to_datetime(date).date().isoformat()
 
 
 def process_share_files(config, files: Iterable[object]) -> list[dict[str, int]]:

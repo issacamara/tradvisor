@@ -21,18 +21,38 @@ RAW_COLUMNS = (
 def parse_localized_decimal(value: str) -> Decimal | None:
     """Parse French or English decimal/grouping separators without float loss."""
     text = value.strip().replace("\xa0", " ").replace("\u202f", " ")
-    text = re.sub(r"\s+", "", text)
     if not text or text in {"-", "—"}:
         return None
+
+    # Spaces are accepted only as conventional three-digit grouping marks.
+    if " " in text:
+        match = re.fullmatch(r"(\d{1,3}(?: \d{3})+)([.,]\d+)?", text)
+        if match is None:
+            raise ValueError(f"invalid localized decimal: {value!r}")
+        text = match.group(1).replace(" ", "") + (match.group(2) or "")
 
     if "," in text and "." in text:
         decimal_separator = "," if text.rfind(",") > text.rfind(".") else "."
         grouping_separator = "." if decimal_separator == "," else ","
-        text = text.replace(grouping_separator, "")
-        if decimal_separator == ",":
-            text = text.replace(",", ".")
+        integer, fraction = text.rsplit(decimal_separator, 1)
+        if not fraction.isdigit() or decimal_separator in integer:
+            raise ValueError(f"invalid localized decimal: {value!r}")
+        if grouping_separator in integer:
+            groups = integer.split(grouping_separator)
+            if not (1 <= len(groups[0]) <= 3 and groups[0].isdigit()) or any(
+                len(group) != 3 or not group.isdigit() for group in groups[1:]
+            ):
+                raise ValueError(f"invalid localized decimal: {value!r}")
+            integer = "".join(groups)
+        elif not integer.isdigit():
+            raise ValueError(f"invalid localized decimal: {value!r}")
+        text = integer + "." + fraction
     elif "," in text:
-        text = text.replace(",", ".")
+        text = _normalize_single_separator(text, ",", value)
+    elif "." in text:
+        text = _normalize_single_separator(text, ".", value)
+    elif not text.isdigit():
+        raise ValueError(f"invalid localized decimal: {value!r}")
 
     try:
         result = Decimal(text)
@@ -41,6 +61,21 @@ def parse_localized_decimal(value: str) -> Decimal | None:
     if not result.is_finite() or result < 0:
         raise ValueError(f"share observation must be a finite nonnegative decimal: {value!r}")
     return result
+
+
+def _normalize_single_separator(text: str, separator: str, original: str) -> str:
+    if text.count(separator) == 1:
+        integer, fraction = text.split(separator)
+        if not integer.isdigit() or not fraction.isdigit():
+            raise ValueError(f"invalid localized decimal: {original!r}")
+        return integer + "." + fraction
+
+    groups = text.split(separator)
+    if not (1 <= len(groups[0]) <= 3 and groups[0].isdigit()) or any(
+        len(group) != 3 or not group.isdigit() for group in groups[1:]
+    ):
+        raise ValueError(f"invalid localized decimal: {original!r}")
+    return "".join(groups)
 
 
 def _source_observation_id(row: dict[str, object], collected_at: str) -> str:
