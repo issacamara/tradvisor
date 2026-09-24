@@ -336,7 +336,7 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         return False
 
 
-def scrape_financials_init(url=None):
+def scrape_financials_init(url=None, openrouter_api_key=None):
     """Scrape annual financial statements from BRVM - INITIALIZATION (last 5 years).
     
     Downloads PDF files to Cloud Storage for later processing by insert_financials function.
@@ -409,11 +409,19 @@ def scrape_financials_init(url=None):
                 total_failed += 1
         
         gc.collect()
+
+    if openrouter_api_key:
+        from insert_financials import process_financial_pdfs
+
+        total_processed = process_financial_pdfs(openrouter_api_key)
+    else:
+        total_processed = 0
     
     print(f"\nInitialization complete.")
     print(f"  Total PDFs downloaded: {total_downloaded}")
     print(f"  Total failures: {total_failed}")
-    return total_downloaded
+    print(f"  Total financial reports loaded: {total_processed}")
+    return total_processed if openrouter_api_key else total_downloaded
 
 
 @functions_framework.http
@@ -421,8 +429,10 @@ def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     
+    openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     scrape_financials_init(
-        config['url'].get('financials', 'https://www.brvm.org/fr/rapports-societes-cotees')
+        config['url'].get('financials', 'https://www.brvm.org/fr/rapports-societes-cotees'),
+        openrouter_api_key,
     )
     
     return "PDF download initialization complete.\n"

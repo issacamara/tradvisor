@@ -16,6 +16,8 @@ import re
 import json
 import io
 import hashlib
+import importlib.util
+import sys
 from google.auth import default
 
 
@@ -265,7 +267,7 @@ def extract_text_from_pdf(pdf_content):
     return None
 
 
-def extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
+def _legacy_extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
     """Extract financial data from PDF using OpenRouter API with retry on better models.
     
     First extracts text from PDF to avoid hitting image limits (50 max).
@@ -445,6 +447,34 @@ Output format:
     return best_result
 
 
+def extract_financials_from_pdf(pdf_content, openrouter_api_key=None, **kwargs):
+    """Compatibility entry point backed by the shared stored-response adapter."""
+    shared_module = _load_shared_extraction_module()
+    shared_adapter = shared_module.extract_financials_from_pdf
+
+    return shared_adapter(pdf_content, openrouter_api_key, **kwargs)
+
+
+def _load_shared_extraction_module():
+    try:
+        import insert_financials
+
+        return insert_financials
+    except ModuleNotFoundError as error:
+        if error.name != "insert_financials":
+            raise
+    module_name = "tradvisor_shared_financial_extraction"
+    if module_name not in sys.modules:
+        module_path = os.path.join(os.path.dirname(__file__), "insert_financials.py")
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("could not load the shared financial extraction adapter")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[module_name]
+
+
 def scrape_financials(url, openrouter_api_key=None):
     """Scrape annual financial statements - MONTHLY RUN.
     
@@ -468,13 +498,8 @@ def scrape_financials(url, openrouter_api_key=None):
     # If table doesn't exist or is empty, auto-initialize with all historical data
     if not table_exists_flag or not existing_data:
         print("No existing data found. Auto-initializing with all available historical data...")
-        # Lazy import to avoid circular import issues
+        # Lazy import keeps initialization and provider work out of module import.
         from scrape_financials_init import scrape_financials_init
-        # Get URL from config (need to load it here since we're outside entry_point)
-        import yaml
-        with open('config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        url = config['url'].get('financials', 'https://www.richbourse.com/common/actualite-categorie/index/etats-financiers')
         return scrape_financials_init(url, openrouter_api_key)
     
     print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs in database.")
@@ -545,13 +570,17 @@ def scrape_financials(url, openrouter_api_key=None):
                 if pdf_response.status_code != 200:
                     raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
                 
-                # Check if API key is available
-                if not openrouter_api_key:
-                    raise Exception("OPENROUTER_API_KEY environment variable not set")
-                
-                # Extract financial data from PDF
                 pdf_content = pdf_response.content
                 document_revision = hashlib.sha256(pdf_content).hexdigest()
+                shared_adapter = _load_shared_extraction_module()
+                try:
+                    artifact_bucket = shared_adapter.get_extraction_artifact_bucket(project_id)
+                    artifact = shared_adapter.load_extraction_artifact(
+                        artifact_bucket, document_revision
+                    )
+                except (ImportError, AttributeError):
+                    artifact_bucket = None
+                    artifact = None
                 financial_data = get_financial_report_revision(
                     symbol,
                     fiscal_year,
@@ -565,9 +594,22 @@ def scrape_financials(url, openrouter_api_key=None):
                     session.close()
                     continue
                 if financial_data is None:
-                    financial_data = extract_financials_from_pdf(
-                        pdf_content, openrouter_api_key
-                    )
+                    evidence = []
+                    if artifact_bucket is not None:
+                        financial_data = extract_financials_from_pdf(
+                            pdf_content,
+                            openrouter_api_key,
+                            recorded_response=artifact,
+                            evidence_callback=evidence.append,
+                        )
+                        if evidence and financial_data:
+                            shared_adapter.save_extraction_artifact(
+                                artifact_bucket, document_revision, evidence[-1]
+                            )
+                    else:
+                        financial_data = extract_financials_from_pdf(
+                            pdf_content, openrouter_api_key
+                        )
                 
                 # CRITICAL: Delete PDF content from memory immediately after processing
                 del pdf_content
