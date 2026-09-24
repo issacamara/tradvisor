@@ -38,6 +38,109 @@ class _Bucket:
     def blob(self, name: str) -> _Blob:
         return self.blobs.setdefault(name, _Blob())
 
+    def list_blobs(self, prefix: str) -> list[_Blob]:
+        return [blob for name, blob in self.blobs.items() if name.startswith(prefix)]
+
+
+class _MemoryBlob(_Blob):
+    def __init__(self, bucket: "_MemoryBucket", name: str) -> None:
+        super().__init__()
+        self.bucket = bucket
+        self.name = name
+
+    def upload_from_string(self, payload: str | bytes, **kwargs: object) -> None:
+        self.payload = payload.decode() if isinstance(payload, bytes) else payload
+
+    def download_as_bytes(self) -> bytes:
+        assert self.payload is not None
+        return self.payload.encode()
+
+    def delete(self) -> None:
+        self.bucket.blobs.pop(self.name, None)
+
+
+class _MemoryBucket(_Bucket):
+    def __init__(self, client: "_MemoryStorageClient", name: str) -> None:
+        super().__init__()
+        self.client = client
+        self.name = name
+
+    def blob(self, name: str) -> _MemoryBlob:
+        return self.blobs.setdefault(name, _MemoryBlob(self, name))  # type: ignore[return-value]
+
+    def copy_blob(
+        self,
+        source_blob: _MemoryBlob,
+        destination_bucket: "_MemoryBucket",
+        destination_name: str,
+    ) -> _MemoryBlob:
+        destination = destination_bucket.blob(destination_name)
+        destination.payload = source_blob.payload
+        return destination
+
+
+class _MemoryStorageClient:
+    def __init__(self) -> None:
+        self.buckets: dict[str, _MemoryBucket] = {}
+
+    def bucket(self, name: str) -> _MemoryBucket:
+        return self.buckets.setdefault(name, _MemoryBucket(self, name))
+
+
+class _BigQueryJob:
+    def __init__(self, result: object = None) -> None:
+        self.value = result
+
+    def result(self) -> object:
+        return self.value
+
+
+class _MemoryBigQueryClient:
+    def __init__(self) -> None:
+        self.tables: dict[str, list[dict[str, object]]] = {}
+        self.staging: dict[str, list[dict[str, object]]] = {}
+
+    def load_table_from_dataframe(self, dataframe, table_id, *, job_config):
+        self.staging[table_id] = dataframe.to_dict(orient="records")
+        return _BigQueryJob()
+
+    def query(self, sql: str, *, job_config=None):
+        if sql.lstrip().startswith("SELECT"):
+            parameters = {
+                item.name: item.value for item in job_config.query_parameters
+            }
+            rows = self.tables.get("fixture-project.stocks.financial_report_revisions", [])
+            matching = [
+                row for row in rows
+                if all(row.get(key) == value for key, value in parameters.items())
+            ]
+            return _BigQueryJob(matching[:1])
+
+        target = sql.split("MERGE `", 1)[1].split("`", 1)[0]
+        staging = sql.split("USING `", 1)[1].split("`", 1)[0]
+        key_clause = sql.split("ON ", 1)[1].split("WHEN", 1)[0]
+        import re
+
+        keys = re.findall(r"target\.`([^`]+)` = source\.`([^`]+)`", key_clause)
+        key_columns = [(left, right) for left, right in keys]
+        destination_rows = self.tables.setdefault(target, [])
+        for incoming in self.staging[staging]:
+            existing = next(
+                (
+                    row for row in destination_rows
+                    if all(row.get(left) == incoming.get(right) for left, right in key_columns)
+                ),
+                None,
+            )
+            if existing is None:
+                destination_rows.append(dict(incoming))
+            elif "WHEN MATCHED THEN UPDATE SET" in sql:
+                existing.update(incoming)
+        return _BigQueryJob()
+
+    def delete_table(self, table_id: str, *, not_found_ok: bool) -> None:
+        self.staging.pop(table_id, None)
+
 
 def _load_module(path: Path, name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
@@ -248,7 +351,7 @@ def test_empty_table_hands_initialization_through_canonical_pdf_loader(
     assert calls == [("fixture://source", "fixture-key")]
 
 
-def test_initialization_runs_shared_canonical_loader_after_fixture_downloads(
+def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     functions_framework = ModuleType("functions_framework")
@@ -256,29 +359,167 @@ def test_initialization_runs_shared_canonical_loader_after_fixture_downloads(
     monkeypatch.setitem(sys.modules, "functions_framework", functions_framework)
     monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=lambda stream: {}))
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=lambda *a, **k: None))
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=SimpleNamespace()))
+
+    pdf = b"fixture annual report PDF bytes"
+    storage_client = _MemoryStorageClient()
+    bigquery_client = _MemoryBigQueryClient()
+
+    class _BigQuery:
+        Client = lambda self, **kwargs: bigquery_client
+        LoadJobConfig = lambda self, **kwargs: SimpleNamespace(**kwargs)
+        QueryJobConfig = lambda self, **kwargs: SimpleNamespace(**kwargs)
+        WriteDisposition = SimpleNamespace(WRITE_TRUNCATE="WRITE_TRUNCATE")
+        ScalarQueryParameter = lambda self, name, kind, value: SimpleNamespace(
+            name=name, type=kind, value=value
+        )
+
     google_auth = ModuleType("google.auth")
     google_auth.default = lambda: ("fixture-credentials", "fixture-project")  # type: ignore[attr-defined]
+    cloud = ModuleType("google.cloud")
+    cloud.storage = SimpleNamespace(Client=lambda **kwargs: storage_client)  # type: ignore[attr-defined]
+    cloud.bigquery = _BigQuery()  # type: ignore[attr-defined]
     google = ModuleType("google")
     google.auth = google_auth  # type: ignore[attr-defined]
-    cloud = ModuleType("google.cloud")
-    cloud.storage = SimpleNamespace(Client=lambda **kwargs: None)  # type: ignore[attr-defined]
     google.cloud = cloud  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.auth", google_auth)
     monkeypatch.setitem(sys.modules, "google.cloud", cloud)
-    company_reference = ModuleType("company_reference")
-    company_reference.build_company_records = lambda *a, **k: []  # type: ignore[attr-defined]
-    company_reference.read_mapping = lambda *a, **k: []  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "company_reference", company_reference)
 
-    loader_calls: list[str] = []
-    insert = ModuleType("insert_financials")
-    insert.process_financial_pdfs = lambda key: loader_calls.append(key) or 1  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "insert_financials", insert)
-    init = _load_module(SCRIPTS / "scrape_financials_init.py", "financial_pipeline_init")
-    monkeypatch.setattr(init, "discover_company_references", lambda path: [])
-    monkeypatch.setattr(init, "get_bucket_name", lambda: "fixture-bucket")
+    class _DownloadResponse:
+        status_code = 200
+        content = pdf
+
+    requests = SimpleNamespace(Session=lambda: SimpleNamespace(get=lambda *a, **k: _DownloadResponse()))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+
+    helper = _load_module(SCRIPTS / "helper.py", "helper")
+    monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
+    company_reference = ModuleType("company_reference")
+    company_reference.build_company_records = lambda *args, **kwargs: []  # type: ignore[attr-defined]
+    company_reference.read_mapping = lambda *args, **kwargs: []  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "company_reference", company_reference)
+    insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
+    monkeypatch.setattr(insert, "get_existing_data_in_bigquery", lambda project_id: set())
+    result = {
+        "fiscal_year": 2025,
+        "revenue": 500,
+        "net_income": 100,
+        "total_debt": 80,
+        "cash_and_cash_equivalents": 40,
+        "total_equity": 200,
+    }
+    extraction_calls: list[bytes] = []
+
+    def extract_fixture(content, api_key=None, *, evidence_callback=None, **kwargs):
+        extraction_calls.append(content)
+        if evidence_callback:
+            evidence_callback({
+                "model": "fixture/model-v1",
+                "prompt": "fixture prompt",
+                "response": {"id": "fixture-response"},
+                "result": result,
+            })
+        return result
+
+    monkeypatch.setattr(insert, "extract_financials_from_pdf", extract_fixture)
+    init = _load_module(SCRIPTS / "scrape_financials_init.py", "scrape_financials_init")
+    monkeypatch.setattr(
+        init,
+        "discover_company_references",
+        lambda path: [SimpleNamespace(source_slug="fixture-company", symbol="ABC", name="Fixture Co")],
+    )
+    monkeypatch.setattr(
+        init,
+        "get_financial_reports_for_company",
+        lambda slug, max_year: [{
+            "title": "Fixture annual report",
+            "fiscal_year": 2025,
+            "pdf_url": "https://fixture.invalid/annual.pdf",
+        }],
+    )
+    monkeypatch.setattr(init, "get_bucket_name", lambda: "data-123")
 
     assert init.scrape_financials_init("fixture://source", "fixture-key") == 1
-    assert loader_calls == ["fixture-key"]
+    assert extraction_calls == [pdf]
+
+    digest = hashlib.sha256(pdf).hexdigest()
+    current = bigquery_client.tables["fixture-project.stocks.financials"]
+    revisions = bigquery_client.tables[
+        "fixture-project.stocks.financial_report_revisions"
+    ]
+    assert len(current) == 1
+    assert {key: current[0][key] for key in result} == result
+    assert len(revisions) == 1
+    assert revisions[0]["document_revision"] == digest
+    assert revisions[0]["document_link"] == (
+        f"gs://archive-123/financial_report_revisions/ABC/2025/{digest}.pdf"
+    )
+    source_blobs = storage_client.bucket("data-123").blobs
+    assert not any(name.startswith("financials/") for name in source_blobs)
+    artifact = json.loads(
+        source_blobs[f"financial_extraction_artifacts/{digest}.json"].payload or "{}"
+    )
+    assert artifact["pdf_sha256"] == digest
+    assert artifact["model"] == "fixture/model-v1"
+    assert artifact["prompt"] == "fixture prompt"
+    assert artifact["response"] == {"id": "fixture-response"}
+    assert storage_client.bucket("archive-123").blob(
+        f"financial_report_revisions/ABC/2025/{digest}.pdf"
+    ).download_as_bytes() == pdf
+
+
+def test_importing_financial_pipeline_modules_does_not_construct_clients_or_call_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def forbidden(name):
+        def fail(*args, **kwargs):
+            calls.append(name)
+            raise AssertionError(f"import must not invoke {name}")
+        return fail
+
+    framework = ModuleType("functions_framework")
+    framework.http = lambda function: function  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "functions_framework", framework)
+    monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=forbidden("yaml")))
+    monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=forbidden("BeautifulSoup")))
+    requests = SimpleNamespace(Session=forbidden("provider/source session"), post=forbidden("provider"))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+
+    google_auth = ModuleType("google.auth")
+    google_auth.default = forbidden("google.auth.default")  # type: ignore[attr-defined]
+    cloud = ModuleType("google.cloud")
+    cloud.storage = SimpleNamespace(Client=forbidden("storage.Client"))  # type: ignore[attr-defined]
+    cloud.bigquery = SimpleNamespace(Client=forbidden("bigquery.Client"))  # type: ignore[attr-defined]
+    google = ModuleType("google")
+    google.auth = google_auth  # type: ignore[attr-defined]
+    google.cloud = cloud  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+
+    helper = ModuleType("helper")
+    for name in (
+        "get_financial_report_revision",
+        "get_symbols_from_richbourse",
+        "save_dataframe_as_csv",
+        "table_exists",
+        "upsert_financial_report_and_archive",
+        "upsert_financial_report_current_and_revision",
+    ):
+        setattr(helper, name, lambda *args, **kwargs: None)
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    company_reference = ModuleType("company_reference")
+    company_reference.build_company_records = lambda *args, **kwargs: []  # type: ignore[attr-defined]
+    company_reference.read_mapping = lambda *args, **kwargs: []  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "company_reference", company_reference)
+
+    for path, name in (
+        ("scrape_financials.py", "financial_import_scraper"),
+        ("scrape_financials_init.py", "financial_import_init"),
+        ("insert_financials.py", "financial_import_insert"),
+    ):
+        _load_module(SCRIPTS / path, name)
+
+    assert calls == []
