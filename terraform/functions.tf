@@ -1,9 +1,8 @@
 resource "google_cloudfunctions2_function" "functions" {
-  depends_on = [google_project_service.apis, google_storage_bucket_object.src-code,
-  data.google_project.project]
-  for_each = toset(var.functions)
-  name     = "${each.key}_function"
-  location = var.region
+  depends_on = [google_project_service.apis, data.google_project.project]
+  for_each   = toset(var.functions)
+  name       = "${each.key}_function"
+  location   = var.region
   build_config {
     #     runtime     = "python39"
     runtime     = var.function_runtimes[each.key]
@@ -11,7 +10,7 @@ resource "google_cloudfunctions2_function" "functions" {
     source {
       storage_source {
         bucket = google_storage_bucket.bucket.name
-        object = google_storage_bucket_object.src-code[each.key].name
+        object = "${each.key}.zip"
       }
     }
   }

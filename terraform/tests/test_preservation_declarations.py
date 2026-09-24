@@ -13,6 +13,27 @@ REPOSITORY_ROOT = TERRAFORM_DIR.parent
 
 
 class PreservationDeclarationTests(unittest.TestCase):
+    def test_legacy_source_objects_are_opt_in(self) -> None:
+        variables = (TERRAFORM_DIR / "variables.tf").read_text()
+        buckets = (TERRAFORM_DIR / "buckets.tf").read_text()
+        functions = (TERRAFORM_DIR / "functions.tf").read_text()
+
+        self.assertRegex(
+            variables,
+            r'variable "manage_legacy_source_objects"\s*\{[^}]*default\s*=\s*false',
+        )
+        guard = (
+            "var.manage_legacy_source_objects ? "
+            "toset(var.functions) : toset([])"
+        )
+        self.assertEqual(buckets.count(guard), 3)
+        self.assertIn('name       = "${each.key}.zip"', buckets)
+        self.assertIn('object = "${each.key}.zip"', functions)
+        self.assertNotIn(
+            "google_storage_bucket_object.src-code[each.key].name",
+            functions,
+        )
+
     def test_legacy_resources_are_not_force_destroyable(self) -> None:
         configuration = "\n".join(
             path.read_text() for path in TERRAFORM_DIR.glob("*.tf")

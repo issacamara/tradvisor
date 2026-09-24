@@ -31,6 +31,12 @@ variable "function_runtimes" {
   }
 }
 
+variable "manage_legacy_source_objects" {
+  description = "Whether Terraform manages legacy function source archives and storage objects"
+  type        = bool
+  default     = false
+}
+
 variable "apis" {
   description = "List of apis"
   type        = list(string)
