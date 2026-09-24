@@ -6,7 +6,7 @@ resource "google_cloudfunctions2_function" "functions" {
   location = var.region
   build_config {
     #     runtime     = "python39"
-    runtime     = "python39"
+    runtime     = var.function_runtimes[each.key]
     entry_point = "entry_point" # Set the entry point
     source {
       storage_source {
@@ -23,6 +23,9 @@ resource "google_cloudfunctions2_function" "functions" {
   }
 
   lifecycle {
+    # Existing Gen 2 functions retain their deployed source until a separately
+    # approved deployment migration takes ownership of source artifacts.
+    ignore_changes  = [build_config[0].source]
     prevent_destroy = true
   }
 }
