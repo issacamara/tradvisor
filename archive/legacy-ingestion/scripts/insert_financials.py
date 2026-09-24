@@ -8,10 +8,11 @@ import functions_framework
 import yaml
 import pandas as pd
 from google.auth import default
-from google.cloud import storage
 from google.cloud import bigquery
 from datetime import datetime
 from helper import get_financial_report_revision, upsert_financial_report_and_archive
+
+MAX_PROVIDER_ATTEMPTS_PER_PDF = 4
 
 
 def is_data_incomplete(data):
@@ -91,7 +92,14 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         return pdf_content
 
 
-def send_openrouter_payload(content, openrouter_api_key, max_retries=2):
+def send_openrouter_payload(
+    content,
+    openrouter_api_key,
+    max_retries=2,
+    evidence_callback=None,
+    attempt_budget=None,
+    max_provider_attempts=MAX_PROVIDER_ATTEMPTS_PER_PDF,
+):
     """Helper to call OpenRouter models with structured fallback strategy."""
     from curl_cffi import requests as curl_requests
     
@@ -163,6 +171,8 @@ Output format:
     for tier_idx, (models, is_free, model_name) in enumerate(model_tiers):
         if tier_idx > max_retries and not is_free:
             break
+        if attempt_budget is not None and attempt_budget[0] >= max_provider_attempts:
+            break
         
         payload = {
             "models": models,
@@ -176,6 +186,8 @@ Output format:
         }
         
         try:
+            if attempt_budget is not None:
+                attempt_budget[0] += 1
             response = curl_requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
@@ -193,6 +205,14 @@ Output format:
                 if json_start >= 0 and json_end > json_start:
                     data = json.loads(text[json_start:json_end])
                     best_result = data
+                    evidence = {
+                        "model": result.get("model", model_name),
+                        "prompt": prompt,
+                        "response": result,
+                        "result": data,
+                    }
+                    if evidence_callback:
+                        evidence_callback(evidence)
                     
                     if not is_data_incomplete(data):
                         print(f"    ✓ Successfully extracted with {model_name}")
@@ -208,8 +228,30 @@ Output format:
     return best_result
 
 
-def extract_financials_from_pdf(pdf_content, openrouter_api_key):
+def extract_financials_from_pdf(
+    pdf_content,
+    openrouter_api_key=None,
+    *,
+    recorded_response=None,
+    evidence_callback=None,
+    max_provider_attempts=MAX_PROVIDER_ATTEMPTS_PER_PDF,
+):
     """Extract financial data handling full-text extraction, smart slicing, and image chunking."""
+    if recorded_response is not None:
+        if recorded_response.get("pdf_sha256") != hashlib.sha256(pdf_content).hexdigest():
+            raise ValueError("recorded extraction does not match the PDF hash")
+        recorded_result = recorded_response.get("result")
+        if not isinstance(recorded_result, dict):
+            raise ValueError("recorded extraction has no parsed result")
+        if not is_data_incomplete(recorded_result):
+            if evidence_callback:
+                evidence_callback(recorded_response)
+            return recorded_result
+    if not openrouter_api_key:
+        raise ValueError("OPENROUTER_API_KEY is required when no recorded response exists")
+    if max_provider_attempts < 1:
+        raise ValueError("max_provider_attempts must be positive")
+    attempt_budget = [0]
     import base64
 
     print("    Extracting text from PDF...")
@@ -219,7 +261,13 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
     if pdf_text and len(pdf_text) > 100:
         print(f"    Using full document text extraction ({len(pdf_text)} chars)")
         text_content = [{"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}]
-        result = send_openrouter_payload(text_content, openrouter_api_key)
+        result = send_openrouter_payload(
+            text_content,
+            openrouter_api_key,
+            evidence_callback=evidence_callback,
+            attempt_budget=attempt_budget,
+            max_provider_attempts=max_provider_attempts,
+        )
         if result and not is_data_incomplete(result):
             return result
 
@@ -236,7 +284,13 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
         }
     }]
     
-    result = send_openrouter_payload(file_content, openrouter_api_key)
+    result = send_openrouter_payload(
+        file_content,
+        openrouter_api_key,
+        evidence_callback=evidence_callback,
+        attempt_budget=attempt_budget,
+        max_provider_attempts=max_provider_attempts,
+    )
     if result and not is_data_incomplete(result):
         return result
 
@@ -249,6 +303,8 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
         if total_pages > 40:
             print(f"    Attempting sequential chunk processing across {total_pages} pages...")
             for start in range(0, total_pages, 40):
+                if attempt_budget[0] >= max_provider_attempts:
+                    break
                 end = min(start + 40, total_pages)
                 print(f"    Scanning page chunk {start + 1} to {end}...")
 
@@ -268,13 +324,58 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
                     }
                 }]
                 
-                chunk_result = send_openrouter_payload(chunk_content, openrouter_api_key)
+                chunk_result = send_openrouter_payload(
+                    chunk_content,
+                    openrouter_api_key,
+                    evidence_callback=evidence_callback,
+                    attempt_budget=attempt_budget,
+                    max_provider_attempts=max_provider_attempts,
+                )
                 if chunk_result and not is_data_incomplete(chunk_result):
                     return chunk_result
     except Exception as e:
         print(f"    Sequential chunking error: {e}")
 
-    return result
+    return result if result and not is_data_incomplete(result) else None
+
+
+def extraction_artifact_name(pdf_sha256):
+    return f"financial_extraction_artifacts/{pdf_sha256}.json"
+
+
+def load_extraction_artifact(bucket, pdf_sha256):
+    """Load accepted provider evidence for an exact PDF revision."""
+    blob = bucket.blob(extraction_artifact_name(pdf_sha256))
+    if not blob.exists():
+        return None
+    artifact = json.loads(blob.download_as_text())
+    if artifact.get("pdf_sha256") != pdf_sha256:
+        raise ValueError("stored extraction artifact has a mismatched PDF hash")
+    if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
+        raise ValueError("stored extraction artifact is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        return None
+    return artifact
+
+
+def save_extraction_artifact(bucket, pdf_sha256, evidence):
+    artifact = dict(evidence, pdf_sha256=pdf_sha256)
+    if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
+        raise ValueError("provider response is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        raise ValueError("provider response is not a complete accepted extraction")
+    blob = bucket.blob(extraction_artifact_name(pdf_sha256))
+    blob.upload_from_string(json.dumps(artifact, sort_keys=True), content_type="application/json")
+    return artifact
+
+
+def get_extraction_artifact_bucket(project_id):
+    from helper import get_project_number
+    from google.cloud import storage
+
+    credentials, _ = default()
+    client = storage.Client(credentials=credentials, project=project_id)
+    return client.bucket(f"data-{get_project_number(project_id)}")
 
 
 def get_existing_data_in_bigquery(project_id):
@@ -363,6 +464,8 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
 
 def process_financial_pdfs(openrouter_api_key):
     """Process PDF files from GCS and extract financial data to BigQuery."""
+    from google.cloud import storage
+
     credentials, project_id = default()
     
     # Get storage bucket
@@ -424,23 +527,46 @@ def process_financial_pdfs(openrouter_api_key):
             )
             document_link = f"gs://archive-{project_number}/{archive_name}"
 
-            # Reuse committed extraction evidence on archive retries. This avoids
-            # repeating a paid parse and keeps current state aligned with history.
-            financial_data = get_financial_report_revision(
-                symbol,
-                fiscal_year,
-                document_link,
-                document_revision,
-                project_id,
+            artifact = (
+                load_extraction_artifact(bucket, document_revision)
+                if callable(getattr(bucket, "blob", None))
+                else None
             )
-            if financial_data is None:
+            financial_data = None
+            if artifact is not None:
                 financial_data = extract_financials_from_pdf(
-                    pdf_content, openrouter_api_key
+                    pdf_content, recorded_response=artifact
                 )
+            # Older accepted reports may have a canonical revision without a
+            # sidecar. Reuse that result rather than issuing another provider call.
+            if financial_data is None:
+                financial_data = get_financial_report_revision(
+                    symbol,
+                    fiscal_year,
+                    document_link,
+                    document_revision,
+                    project_id,
+                )
+                if is_data_incomplete(financial_data):
+                    financial_data = None
+            if financial_data is None:
+                evidence = []
+                if callable(getattr(bucket, "blob", None)):
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content,
+                        openrouter_api_key,
+                        evidence_callback=evidence.append,
+                    )
+                else:
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content, openrouter_api_key
+                    )
+                if financial_data and evidence and callable(getattr(bucket, "blob", None)):
+                    save_extraction_artifact(bucket, document_revision, evidence[-1])
 
             del pdf_content
 
-            if not financial_data:
+            if is_data_incomplete(financial_data):
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
                 continue
