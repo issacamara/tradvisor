@@ -6,7 +6,7 @@ resource "google_cloudfunctions2_function" "functions" {
   location = var.region
   build_config {
     #     runtime     = "python39"
-    runtime     = "python311"
+    runtime     = var.function_runtimes[each.key]
     entry_point = "entry_point" # Set the entry point
     source {
       storage_source {

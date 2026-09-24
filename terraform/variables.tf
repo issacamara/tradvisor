@@ -16,6 +16,21 @@ variable "functions" {
   "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
 }
 
+variable "function_runtimes" {
+  description = "Deployed runtime preserved for each legacy Gen 2 function"
+  type        = map(string)
+  default = {
+    scrape_shares          = "python311"
+    scrape_bonds           = "python39"
+    scrape_dividends       = "python311"
+    scrape_capitalizations = "python39"
+    insert_shares          = "python311"
+    insert_bonds           = "python39"
+    insert_dividends       = "python311"
+    insert_capitalizations = "python39"
+  }
+}
+
 variable "apis" {
   description = "List of apis"
   type        = list(string)
