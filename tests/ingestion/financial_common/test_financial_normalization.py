@@ -113,15 +113,71 @@ def test_restricted_or_unknown_cash_is_not_unrestricted_cash(restricted):
     assert "cash_restriction_unknown_or_restricted" in record.unavailable_reasons
 
 
-def test_owner_and_consolidation_basis_mismatch_withholds_matched_values():
+def test_owner_and_scope_are_checked_independently_for_available_fields():
     report = deepcopy(REPORTS[0])
+    report.pop("ordinary_owner_earnings")
+    report.pop("earnings_basis")
+    report.pop("earnings_scope")
     report["equity_scope"] = "standalone"
 
     record = financial_normalization.normalize_annual_report(report)
 
     assert record.ordinary_owner_earnings is None
     assert record.equity is None
-    assert "owner_or_consolidation_basis_mismatch" in record.unavailable_reasons
+    assert "equity_owner_or_scope_unverified" in record.unavailable_reasons
+
+
+def test_valid_owner_earnings_survives_missing_equity_counterpart():
+    report = deepcopy(REPORTS[0])
+    report.pop("equity")
+    report.pop("equity_basis")
+    report.pop("equity_scope")
+
+    record = financial_normalization.normalize_annual_report(report)
+
+    assert record.ordinary_owner_earnings.value == -2_500_000
+    assert record.equity is None
+
+
+def test_valid_equity_survives_missing_earnings_counterpart():
+    report = deepcopy(REPORTS[0])
+    report.pop("ordinary_owner_earnings")
+    report.pop("earnings_basis")
+    report.pop("earnings_scope")
+
+    record = financial_normalization.normalize_annual_report(report)
+
+    assert record.equity.value == 120_000_000
+    assert record.ordinary_owner_earnings is None
+
+
+@pytest.mark.parametrize(
+    ("unit", "scale"),
+    [("million XOF", "1000"), ("thousand XOF", "1000000"), ("XOF", "1000")],
+)
+def test_unsupported_unit_and_scale_pairs_are_unavailable(unit, scale):
+    report = deepcopy(REPORTS[0])
+    report["equity"]["unit"] = unit
+    report["equity"]["scale_to_xof"] = scale
+
+    record = financial_normalization.normalize_annual_report(report)
+
+    assert record.equity is None
+    assert "unsupported_equity_unit_scale" in record.unavailable_reasons
+
+
+@pytest.mark.parametrize("opening_scope", [None, "unknown"])
+def test_opening_equity_requires_known_matching_scope(opening_scope):
+    report = deepcopy(REPORTS[0])
+    if opening_scope is None:
+        report["opening_equity"].pop("scope")
+    else:
+        report["opening_equity"]["scope"] = opening_scope
+
+    record = financial_normalization.normalize_annual_report(report)
+
+    assert record.opening_equity is None
+    assert "opening_equity_basis_or_date_unverified" in record.unavailable_reasons
 
 
 def test_unknown_publication_time_does_not_become_available_at_collection_time():
@@ -167,4 +223,22 @@ def test_non_financial_fields_are_unavailable_for_financial_entities():
     assert record.current_assets is None
     assert record.current_liabilities is None
     assert "non_financial_inputs_not_applicable" in record.unavailable_reasons
-    assert not hasattr(record, "revenue")
+    assert record.revenue is None
+
+
+def test_bank_pnb_cannot_become_generic_revenue():
+    report = deepcopy(REPORTS[0])
+    report["financial_category"] = "bank"
+    report["revenue"] = {
+        "value": "900",
+        "currency": "XOF",
+        "unit": "million XOF",
+        "scale_to_xof": "1000000",
+        "evidenced": True,
+    }
+    report["pnb"] = report["revenue"]
+
+    record = financial_normalization.normalize_annual_report(report)
+
+    assert record.revenue is None
+    assert "revenue_not_applicable_for_financial_entity" in record.unavailable_reasons

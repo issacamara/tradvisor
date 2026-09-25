@@ -183,6 +183,7 @@ def adapter_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     for name in (
         "get_financial_report_revision",
         "upsert_financial_report_and_archive",
+        "upsert_into_bigquery",
         "get_project_number",
     ):
         setattr(helper, name, lambda *args, **kwargs: None)
@@ -459,11 +460,54 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     fiscal_year = datetime.now().year
     result = {
         "fiscal_year": fiscal_year,
+        "financial_category": "bank",
         "revenue": 500,
+        "pnb": 500,
         "net_income": 100,
         "total_debt": 80,
         "cash_and_cash_equivalents": 40,
         "total_equity": 200,
+        "annual_report": {
+            "period": {
+                "fiscal_year": fiscal_year,
+                "start": f"{fiscal_year - 1}-07-01",
+                "end": f"{fiscal_year}-06-30",
+                "full_year": True,
+            },
+            "publication": {
+                "published_at": f"{fiscal_year}-07-15T12:00:00Z",
+                "evidenced": True,
+            },
+            "currency": "XOF",
+            "report_scope": "consolidated",
+            "accounting_basis": "SYSCOHADA",
+            "financial_category": "bank",
+            "revenue": {
+                "value": "500",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "ordinary_owner_earnings": {
+                "value": "-2.5",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "earnings_basis": "ordinary_owner",
+            "earnings_scope": "consolidated",
+            "equity": {
+                "value": "20",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "equity_basis": "ordinary_owner",
+            "equity_scope": "consolidated",
+        },
     }
     provider_calls: list[dict[str, object]] = []
 
@@ -496,6 +540,14 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     helper = _load_module(SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
     insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
+    canonical_rows: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        insert,
+        "persist_annual_financial_revision",
+        lambda rows, project_id: canonical_rows.extend(
+            rows if isinstance(rows, list) else [rows]
+        ),
+    )
     monkeypatch.setattr(
         insert,
         "extract_text_from_pdf",
@@ -537,10 +589,22 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     revisions = bigquery_client.tables[revision_table]
     digest = hashlib.sha256(pdf).hexdigest()
     assert len(current) == 1
-    assert {key: current[0][key] for key in result if key != "fiscal_year"} == {
-        key: value for key, value in result.items() if key != "fiscal_year"
-    }
+    assert current[0]["revenue"] is None
+    assert current[0]["net_income"] == result["net_income"]
+    assert current[0]["total_debt"] == result["total_debt"]
     assert current[0]["fiscal_year"] == fiscal_year
+    assert len(canonical_rows) == 2
+    assert {row["revision_id"] for row in canonical_rows} == {
+        canonical_rows[0]["revision_id"]
+    }
+    canonical = canonical_rows[0]
+    assert canonical["revenue"] is None
+    assert canonical["ordinary_owner_earnings"] == -2_500_000
+    assert canonical["equity"] == 20_000_000
+    assert canonical["report_scope"] == "consolidated"
+    assert canonical["publication_status"] == "published"
+    assert canonical["source_published_at"] == f"{fiscal_year}-07-15 12:00:00"
+    datetime.strptime(canonical["collected_at"], "%Y-%m-%d %H:%M:%S")
     assert len(revisions) == 1
     assert revisions[0]["document_revision"] == digest
     assert revisions[0]["document_link"] == announcement["url"]

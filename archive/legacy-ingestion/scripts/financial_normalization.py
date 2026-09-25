@@ -33,6 +33,7 @@ class AnnualFinancialRecord:
     report_scope: str
     accounting_basis: str | None
     financial_category: str
+    revenue: NormalizedAmount | None
     ordinary_owner_earnings: NormalizedAmount | None
     earnings_basis: str | None
     equity: NormalizedAmount | None
@@ -114,6 +115,20 @@ def _amount(report: Mapping[str, Any], field: str, reasons: list[str]) -> Normal
     if raw.get("currency") != "XOF":
         reasons.append(f"unsupported_{field}_currency")
         return None
+    unit_key = " ".join(unit.casefold().split())
+    unit_scales = {
+        "xof": Decimal("1"),
+        "fcfa": Decimal("1"),
+        "thousand xof": Decimal("1000"),
+        "thousand fcfa": Decimal("1000"),
+        "million xof": Decimal("1000000"),
+        "million fcfa": Decimal("1000000"),
+        "billion xof": Decimal("1000000000"),
+        "billion fcfa": Decimal("1000000000"),
+    }
+    if unit_scales.get(unit_key) != multiplier:
+        reasons.append(f"unsupported_{field}_unit_scale")
+        return None
     return NormalizedAmount(source_value * multiplier, source_value, unit.strip(), multiplier)
 
 
@@ -150,7 +165,7 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
         reasons.append("collection_time_unknown")
 
     scope = report.get("report_scope")
-    scope = scope if scope in {"standalone", "consolidated"} else "unknown"
+    scope = scope if isinstance(scope, str) and scope in {"standalone", "consolidated"} else "unknown"
     if scope == "unknown":
         reasons.append("report_scope_unknown")
     accounting_basis = report.get("accounting_basis")
@@ -162,22 +177,42 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
         currency = None
         reasons.append("unsupported_report_currency")
 
+    category = report.get("financial_category")
+    category = (
+        category
+        if isinstance(category, str) and category in {"bank", "insurer", "non_financial"}
+        else "unsupported"
+    )
+    revenue = None
+    if category == "non_financial":
+        revenue = _amount(report, "revenue", reasons)
+    elif report.get("revenue") is not None:
+        reasons.append("revenue_not_applicable_for_financial_entity")
+
     earnings = _amount(report, "ordinary_owner_earnings", reasons)
     equity = _amount(report, "equity", reasons)
-    if earnings is not None and report.get("earnings_basis") != "ordinary_owner":
+    earnings_scope = report.get("earnings_scope")
+    equity_scope = report.get("equity_scope")
+    if earnings is not None and (
+        report.get("earnings_basis") != "ordinary_owner"
+        or earnings_scope not in {"standalone", "consolidated"}
+        or earnings_scope != scope
+        or scope == "unknown"
+    ):
         earnings = None
-        reasons.append("earnings_not_attributed_to_ordinary_owners")
-    if equity is not None and report.get("equity_basis") != "ordinary_owner":
+        reasons.append("earnings_owner_or_scope_unverified")
+    if equity is not None and (
+        report.get("equity_basis") != "ordinary_owner"
+        or equity_scope not in {"standalone", "consolidated"}
+        or equity_scope != scope
+        or scope == "unknown"
+    ):
         equity = None
-        reasons.append("equity_not_attributed_to_ordinary_owners")
-    earnings_scope = report.get("earnings_scope", scope)
-    equity_scope = report.get("equity_scope", scope)
+        reasons.append("equity_owner_or_scope_unverified")
     if earnings is not None and equity is not None:
         if (
             report.get("earnings_basis") != report.get("equity_basis")
             or earnings_scope != equity_scope
-            or earnings_scope != scope
-            or scope == "unknown"
         ):
             earnings = equity = None
             reasons.append("owner_or_consolidation_basis_mismatch")
@@ -186,7 +221,9 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
     opening_date = _date((report.get("opening_equity") or {}).get("date")) if isinstance(report.get("opening_equity"), Mapping) else None
     if opening_equity is not None and (
         report.get("opening_equity", {}).get("basis") != "ordinary_owner"
-        or report.get("opening_equity", {}).get("scope", scope) != scope
+        or report.get("opening_equity", {}).get("scope") not in {"standalone", "consolidated"}
+        or report.get("opening_equity", {}).get("scope") != scope
+        or scope == "unknown"
         or opening_date is None
         or start is None
         or opening_date >= start
@@ -194,8 +231,6 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
         opening_equity = None
         reasons.append("opening_equity_basis_or_date_unverified")
 
-    category = report.get("financial_category")
-    category = category if category in {"bank", "insurer", "non_financial"} else "unsupported"
     balance: dict[str, NormalizedAmount | None] = {
         key: None for key in ("interest_bearing_debt", "unrestricted_cash", "current_assets", "current_liabilities")
     }
@@ -232,6 +267,7 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
         report_scope=scope,
         accounting_basis=accounting_basis,
         financial_category=category,
+        revenue=revenue,
         ordinary_owner_earnings=earnings,
         earnings_basis=report.get("earnings_basis") if earnings is not None else None,
         equity=equity,
@@ -244,6 +280,28 @@ def normalize_annual_report(report: Mapping[str, Any]) -> AnnualFinancialRecord:
         current_liabilities=balance["current_liabilities"],
         unavailable_reasons=tuple(dict.fromkeys(reasons)),
     )
+
+
+def normalize_extracted_annual_report(
+    extraction: Mapping[str, Any],
+    *,
+    company_id: str,
+    source_ref: str,
+    collected_at: str,
+) -> AnnualFinancialRecord:
+    """Normalize recorded provider output with acquisition metadata from ingestion."""
+    annual_report = extraction.get("annual_report")
+    if isinstance(annual_report, Mapping):
+        report = dict(extraction)
+        report.update(annual_report)
+    else:
+        # Legacy rows may carry naive timestamps and do not contain the
+        # evidence needed for the canonical annual contract.
+        report = {key: value for key, value in extraction.items() if key != "collected_at"}
+    report.setdefault("company_id", company_id)
+    report.setdefault("source_ref", source_ref)
+    report.setdefault("collected_at", collected_at)
+    return normalize_annual_report(report)
 
 
 def assess_five_year_history(records: Sequence[AnnualFinancialRecord]) -> HistoryAssessment:

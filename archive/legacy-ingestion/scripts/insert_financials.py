@@ -4,13 +4,18 @@ import io
 import json
 import re
 import gc
+import importlib.util
+import sys
 import functions_framework
 import yaml
 import pandas as pd
 from google.auth import default
 from google.cloud import bigquery
-from datetime import datetime
-from helper import get_financial_report_revision, upsert_financial_report_and_archive
+from datetime import datetime, timezone
+from helper import (
+    get_financial_report_revision,
+    upsert_financial_report_and_archive,
+)
 
 MAX_PROVIDER_ATTEMPTS_PER_PDF = 4
 
@@ -20,8 +25,144 @@ def is_data_incomplete(data):
     if data is None:
         return True
     
-    financial_fields = ['revenue', 'net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    financial_fields = ['net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    category = data.get("financial_category")
+    if not (isinstance(category, str) and category in {"bank", "insurer"}):
+        financial_fields.insert(0, "revenue")
     return any(data.get(field) is None for field in financial_fields)
+
+
+def _financial_normalization_module():
+    try:
+        import financial_normalization
+
+        return financial_normalization
+    except ModuleNotFoundError as error:
+        if error.name != "financial_normalization":
+            raise
+    name = "tradvisor_financial_normalization"
+    if name not in sys.modules:
+        path = os.path.join(os.path.dirname(__file__), "financial_normalization.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError("could not load annual financial normalizer")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def legacy_revenue_value(extraction):
+    """Keep bank/insurer activity out of the legacy generic revenue column."""
+    annual_report = extraction.get("annual_report")
+    category = extraction.get("financial_category")
+    if isinstance(annual_report, dict):
+        category = annual_report.get("financial_category", category)
+    if isinstance(category, str) and category in {"bank", "insurer"}:
+        return None
+    return extraction.get("revenue")
+
+
+def annual_financial_revision_row(
+    extraction,
+    *,
+    company_id,
+    source_ref,
+    source_revision_id,
+    collected_at,
+):
+    """Normalize one recorded extraction and shape it to the #14 logical contract."""
+    module = _financial_normalization_module()
+    record = module.normalize_extracted_annual_report(
+        extraction,
+        company_id=company_id,
+        source_ref=source_ref,
+        collected_at=collected_at,
+    )
+    if record.period_start is None or record.period_end is None or record.currency is None:
+        return None
+
+    parser_version = "annual-financial-normalization-v1"
+    revision_id = hashlib.sha256(
+        f"{source_revision_id}:{parser_version}".encode("utf-8")
+    ).hexdigest()
+    amounts = {
+        name: getattr(record, name)
+        for name in (
+            "revenue",
+            "ordinary_owner_earnings",
+            "equity",
+            "opening_equity",
+        )
+    }
+    original_scale = {
+        name: {"unit": amount.source_unit, "scale_to_xof": str(amount.scale_to_xof)}
+        for name, amount in amounts.items()
+        if amount is not None
+    }
+
+    def timestamp(value):
+        if value is None:
+            return None
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "company_id": record.company_id,
+        "fiscal_period_start": record.period_start.isoformat(),
+        "fiscal_period_end": record.period_end.isoformat(),
+        "report_scope": record.report_scope,
+        "revision_id": revision_id,
+        "source_id": "richbourse",
+        "source_observation_id": record.source_ref,
+        "source_revision_id": source_revision_id,
+        "currency": record.currency,
+        "original_scale": json.dumps(original_scale, sort_keys=True),
+        "revenue": amounts["revenue"].value if amounts["revenue"] else None,
+        "ordinary_owner_earnings": (
+            amounts["ordinary_owner_earnings"].value
+            if amounts["ordinary_owner_earnings"]
+            else None
+        ),
+        "equity": amounts["equity"].value if amounts["equity"] else None,
+        "opening_equity": (
+            amounts["opening_equity"].value if amounts["opening_equity"] else None
+        ),
+        "publication_status": record.publication_status,
+        "reason_codes": list(record.unavailable_reasons),
+        "source_published_at": timestamp(record.published_at),
+        "collected_at": timestamp(record.collected_at),
+        "known_at": timestamp(record.collected_at),
+        "snapshot_uri": record.source_ref,
+        "snapshot_sha256": source_revision_id,
+        "parser_version": parser_version,
+    }
+
+
+def persist_annual_financial_revision(row, project_id, dataset="stocks"):
+    if row is None:
+        return None
+    rows = [row] if isinstance(row, dict) else list(row)
+    if not rows:
+        return None
+    keys = [
+        "company_id",
+        "fiscal_period_start",
+        "fiscal_period_end",
+        "report_scope",
+        "source_id",
+        "source_observation_id",
+        "revision_id",
+    ]
+    from helper import upsert_into_bigquery as upsert_canonical_into_bigquery
+
+    return upsert_canonical_into_bigquery(
+        pd.DataFrame(rows),
+        project_id,
+        dataset,
+        "annual_financial_revisions_v1",
+        keys,
+        update_matched=False,
+    )
 
 
 def extract_text_from_pdf(pdf_content):
@@ -109,7 +250,7 @@ For each document, extract the following fields:
 
 fiscal_year: The fiscal year of the report (e.g., 2024). Use the most recent year covered by the statement, not the publication date.
 
-revenue: Total revenue or "chiffre d'affaires" (produits d'exploitation / chiffre d'affaires net). For banks, use "produit net bancaire" (PNB) if chiffre d'affaires is not presented. In local currency (XOF/FCFA), expressed in full units.
+revenue: Generic operating revenue or "chiffre d'affaires" only. Never put bank net banking income ("produit net bancaire" / PNB), insurer premiums, interest income, or any category-specific activity measure in this field. Extract PNB separately as pnb. In local currency (XOF/FCFA), expressed in full units.
 
 net_income: Net income or "résultat net" (résultat net de l'exercice). Use the net result attributable to the company (résultat net part du groupe if consolidated accounts are shown alongside company-only accounts, otherwise résultat net). In local currency, expressed in full units.
 
@@ -146,12 +287,36 @@ Instructions for each document:
 Output format: 
 {
   "fiscal_year": <integer or null>,
+  "financial_category": "bank" | "insurer" | "non_financial" | "unsupported",
   "revenue": <number or null>,
+  "pnb": <number or null>,
   "net_income": <number or null>,
   "total_debt": <number or null>,
   "cash_and_cash_equivalents": <number or null>,
-  "total_equity": <number or null>
+  "total_equity": <number or null>,
+  "annual_report": {
+    "period": {"fiscal_year": <integer or null>, "start": "YYYY-MM-DD" | null, "end": "YYYY-MM-DD" | null, "full_year": <boolean>},
+    "publication": {"published_at": <ISO-8601 timestamp with offset or null>, "evidenced": <boolean>},
+    "currency": "XOF" | null,
+    "report_scope": "standalone" | "consolidated" | "unknown",
+    "accounting_basis": <reported accounting basis or null>,
+    "financial_category": "bank" | "insurer" | "non_financial" | "unsupported",
+    "revenue": <evidenced amount object or null>,
+    "ordinary_owner_earnings": <evidenced amount object or null>,
+    "earnings_basis": "ordinary_owner" | null,
+    "earnings_scope": "standalone" | "consolidated" | null,
+    "equity": <evidenced amount object or null>,
+    "equity_basis": "ordinary_owner" | null,
+    "equity_scope": "standalone" | "consolidated" | null,
+    "opening_equity": <evidenced amount object with date, basis, and scope or null>,
+    "interest_bearing_debt": <evidenced amount object with scope or null>,
+    "unrestricted_cash": <evidenced amount object with scope and restricted boolean or null>,
+    "current_assets": <evidenced amount object with scope or null>,
+    "current_liabilities": <evidenced amount object with scope or null>
+  }
 }
+
+Each evidenced amount object has source-reported numeric "value", "currency", exact "unit" (XOF, thousand XOF, million XOF, or billion XOF), matching numeric "scale_to_xof", and "evidenced": true. Never invent a scope, period boundary, publication timestamp, accounting basis, owner attribution, opening date, or amount. Set unsupported evidence to null; the normalizer preserves partial fields.
 """
 
     model_tiers = [
@@ -570,12 +735,21 @@ def process_financial_pdfs(openrouter_api_key):
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
                 continue
+
+            normalized_collected_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            annual_revision = annual_financial_revision_row(
+                financial_data,
+                company_id=symbol,
+                source_ref=document_link,
+                source_revision_id=document_revision,
+                collected_at=normalized_collected_at,
+            )
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{
                 'symbol': symbol,
                 'fiscal_year': fiscal_year,
-                'revenue': financial_data.get('revenue'),
+                'revenue': legacy_revenue_value(financial_data),
                 'net_income': financial_data.get('net_income'),
                 'total_debt': financial_data.get('total_debt'),
                 'cash_and_cash_equivalents': financial_data.get('cash_and_cash_equivalents'),
@@ -584,6 +758,8 @@ def process_financial_pdfs(openrouter_api_key):
                 'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }])
             revision_df = df.assign(document_revision=document_revision)
+
+            persist_annual_financial_revision(annual_revision, project_id)
             
             def archive_pdf():
                 if not move_pdf_to_archive(
