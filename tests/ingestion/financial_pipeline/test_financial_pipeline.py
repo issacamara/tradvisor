@@ -786,6 +786,34 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
         "cash_and_cash_equivalents": 40,
         "total_equity": 200,
     }
+    annual_result = dict(result)
+    annual_result["annual_report"] = {
+        "period": {"fiscal_year": 2025, "start": "2024-01-01", "end": "2024-12-31", "full_year": True},
+        "publication": {"published_at": "2025-03-01T00:00:00Z", "evidenced": True},
+        "currency": "XOF",
+        "report_scope": "standalone",
+        "accounting_basis": "SYSCOHADA",
+        "financial_category": "non_financial",
+        "revenue": {"value": "500", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "ordinary_owner_earnings": {"value": "100", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "earnings_basis": "ordinary_owner",
+        "earnings_scope": "standalone",
+        "equity": {"value": "200", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "equity_basis": "ordinary_owner",
+        "equity_scope": "standalone",
+        "opening_equity": {"value": "150", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True, "date": "2023-12-31", "basis": "ordinary_owner", "scope": "standalone"},
+    }
+    monkeypatch.setattr(
+        insert,
+        "get_financial_report_revision",
+        lambda *args: dict(result, net_income=90),
+    )
+    annual_persisted: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        insert,
+        "persist_annual_financial_revision",
+        lambda row, project_id: annual_persisted.append(row),
+    )
     extraction_calls: list[bytes] = []
 
     def extract_fixture(content, api_key=None, *, evidence_callback=None, **kwargs):
@@ -795,9 +823,9 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
                 "model": "fixture/model-v1",
                 "prompt": "fixture prompt",
                 "response": {"id": "fixture-response"},
-                "result": result,
+                "result": annual_result,
             })
-        return result
+        return annual_result
 
     monkeypatch.setattr(insert, "extract_financials_from_pdf", extract_fixture)
     init = _load_module(SCRIPTS / "scrape_financials_init.py", "scrape_financials_init")
@@ -828,6 +856,11 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     assert len(current) == 1
     assert {key: current[0][key] for key in result} == result
     assert len(revisions) == 1
+    assert len(annual_persisted) == 1
+    assert annual_persisted[0]["ordinary_owner_earnings"] == 100
+    assert annual_persisted[0]["accounting_basis"] == "SYSCOHADA"
+    assert annual_persisted[0]["opening_equity_date"] == "2023-12-31"
+    assert current[0]["net_income"] == 100
     assert revisions[0]["document_revision"] == digest
     assert revisions[0]["document_link"] == (
         f"gs://archive-123/financial_report_revisions/ABC/2025/{digest}.pdf"
@@ -841,6 +874,7 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     assert artifact["model"] == "fixture/model-v1"
     assert artifact["prompt"] == "fixture prompt"
     assert artifact["response"] == {"id": "fixture-response"}
+    assert artifact["result"] == annual_result
     assert storage_client.bucket("archive-123").blob(
         f"financial_report_revisions/ABC/2025/{digest}.pdf"
     ).download_as_bytes() == pdf

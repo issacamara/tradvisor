@@ -726,12 +726,11 @@ def process_financial_pdfs(openrouter_api_key):
                 else None
             )
             financial_data = None
+            cached_extraction = artifact is not None
             if artifact is not None:
                 financial_data = extract_financials_from_pdf(
                     pdf_content, recorded_response=artifact
                 )
-            # Older accepted reports may have a canonical revision without a
-            # sidecar. Reuse that result rather than issuing another provider call.
             if financial_data is None:
                 financial_data = get_financial_report_revision(
                     symbol,
@@ -742,6 +741,8 @@ def process_financial_pdfs(openrouter_api_key):
                 )
                 if is_data_incomplete(financial_data):
                     financial_data = None
+                else:
+                    cached_extraction = True
             if financial_data is None:
                 evidence = []
                 if callable(getattr(bucket, "blob", None)):
@@ -757,8 +758,6 @@ def process_financial_pdfs(openrouter_api_key):
                 if financial_data and evidence and callable(getattr(bucket, "blob", None)):
                     save_extraction_artifact(bucket, document_revision, evidence[-1])
 
-            del pdf_content
-
             if is_data_incomplete(financial_data):
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
@@ -772,6 +771,44 @@ def process_financial_pdfs(openrouter_api_key):
                 source_revision_id=document_revision,
                 collected_at=normalized_collected_at,
             )
+
+            if annual_revision is None and cached_extraction:
+                evidence = []
+                financial_data = extract_financials_from_pdf(
+                    pdf_content,
+                    openrouter_api_key,
+                    evidence_callback=(
+                        evidence.append
+                        if callable(getattr(bucket, "blob", None))
+                        else None
+                    ),
+                )
+                if is_data_incomplete(financial_data):
+                    raise RuntimeError(
+                        "cached legacy extraction lacks canonical annual fields "
+                        "and source re-extraction was incomplete"
+                    )
+                if evidence and callable(getattr(bucket, "blob", None)):
+                    save_extraction_artifact(
+                        bucket,
+                        document_revision,
+                        dict(evidence[-1], collected_at=normalized_collected_at),
+                    )
+                annual_revision = annual_financial_revision_row(
+                    financial_data,
+                    company_id=symbol,
+                    source_ref=document_link,
+                    source_revision_id=document_revision,
+                    collected_at=normalized_collected_at,
+                )
+
+            if annual_revision is None:
+                raise RuntimeError(
+                    "extraction lacks canonical annual period or currency; "
+                    "refusing legacy-only persistence"
+                )
+
+            del pdf_content
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{
