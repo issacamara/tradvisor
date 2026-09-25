@@ -1,6 +1,6 @@
 
 data "archive_file" "assets" {
-  for_each    = toset(var.functions)
+  for_each    = var.manage_legacy_source_objects ? toset(var.functions) : toset([])
   type        = "zip"
   output_path = "${each.key}.zip"
 
@@ -61,7 +61,7 @@ resource "google_storage_bucket" "bucket" {
   }
 }
 resource "google_storage_bucket_object" "src-code" {
-  for_each   = toset(var.functions)
+  for_each   = var.manage_legacy_source_objects ? toset(var.functions) : toset([])
   depends_on = [data.archive_file.assets, google_storage_bucket.bucket]
   name       = "${each.key}.zip"
   bucket     = google_storage_bucket.bucket.name
@@ -74,7 +74,7 @@ resource "google_storage_bucket_object" "src-code" {
 
 resource "null_resource" "delete_archive" {
   # Trigger this resource whenever the archive changes
-  for_each = toset(var.functions)
+  for_each = var.manage_legacy_source_objects ? toset(var.functions) : toset([])
   triggers = {
     archive_path = data.archive_file.assets[each.key].output_path
   }

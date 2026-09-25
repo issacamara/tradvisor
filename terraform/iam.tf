@@ -11,6 +11,7 @@ resource "google_service_account" "tradvisor_sa" {
 
 # Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
+  count              = var.manage_legacy_service_account_credentials ? 1 : 0
   service_account_id = google_service_account.tradvisor_sa.name
   private_key_type   = "TYPE_GOOGLE_CREDENTIALS_FILE"
 
@@ -23,6 +24,7 @@ resource "google_service_account_key" "tradvisor_sa_key" {
 }
 
 resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
+  count     = var.manage_legacy_service_account_credentials ? 1 : 0
   secret_id = "tradvisor_sa_key"
   replication {
     auto {}
@@ -35,9 +37,10 @@ resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
 }
 
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
+  count       = var.manage_legacy_service_account_credentials ? 1 : 0
   depends_on  = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
-  secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
-  secret_data = base64decode(google_service_account_key.tradvisor_sa_key.private_key)
+  secret      = google_secret_manager_secret.tradvisor_sa_key_secret[0].name
+  secret_data = base64decode(google_service_account_key.tradvisor_sa_key[0].private_key)
 
   lifecycle {
     prevent_destroy = true
