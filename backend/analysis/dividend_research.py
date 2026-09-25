@@ -218,6 +218,7 @@ def calculate_dividend_research(
             if (
                 payment.payment_status == "paid"
                 and payment.per_share_semantics == "gross"
+                and payment.revision.provenance.basis == "actual"
                 and payment.gross_amount_per_share is not None
                 and adjustment is not None
                 and adjustment.verified
@@ -267,6 +268,7 @@ def calculate_dividend_research(
             else:
                 price_known_at = price.revision.known_at
                 price_available_at = price.validated_available_at
+                price_provenance_actual = price.revision.provenance.basis == "actual"
                 price_ok = (
                     price.symbol == source.symbol
                     and price.session_date == source.valuation_date
@@ -315,7 +317,13 @@ def calculate_dividend_research(
                         for _, _, adjustment in ttm_payments
                     )
                 )
-                if not price_ok:
+                if not price_provenance_actual:
+                    metric = _yield_metric(
+                        status="unsupported_basis",
+                        reason="price_basis_unverified",
+                        valuation_date=source.valuation_date,
+                    )
+                elif not price_ok:
                     metric = _yield_metric(
                         status="missing_inputs",
                         reason="no_current_trade",

@@ -55,6 +55,7 @@ def payment(
     semantics: str = "gross",
     known_at: datetime = AS_OF,
     revision_number: int = 1,
+    provenance_basis: str = "actual",
 ) -> NormalizedDividend:
     return NormalizedDividend(
         dividend_id=f"payment-{installment}",
@@ -69,7 +70,11 @@ def payment(
         payment_status=status,
         dividend_type=kind,
         reason_codes=("payment_unresolved",) if status == "unknown" else (),
-        revision=revision(known_at=known_at, number=revision_number),
+        revision=revision(
+            known_at=known_at,
+            number=revision_number,
+            basis=provenance_basis,
+        ),
     )
 
 
@@ -94,7 +99,12 @@ def coverage(
     )
 
 
-def price(*, basis: str = "actual", session_date: date = VALUATION_DATE) -> NormalizedPrice:
+def price(
+    *,
+    basis: str = "actual",
+    session_date: date = VALUATION_DATE,
+    provenance_basis: str = "actual",
+) -> NormalizedPrice:
     return NormalizedPrice(
         symbol="ABC",
         session_date=session_date,
@@ -105,7 +115,7 @@ def price(*, basis: str = "actual", session_date: date = VALUATION_DATE) -> Norm
         price_basis_ref="current-share-basis",
         validated_available_at=AS_OF,
         suspension_status="not_suspended",
-        revision=revision(),
+        revision=revision(basis=provenance_basis),
     )
 
 
@@ -227,6 +237,31 @@ def test_incomplete_coverage_or_incompatible_basis_keeps_yield_unknown(
     assert result.trailing_ordinary_yield.value is None
     assert result.trailing_ordinary_yield.status == expected_status
     assert result.coverage is not None
+
+
+def test_estimated_payment_provenance_does_not_support_ttm_yield() -> None:
+    record = payment(provenance_basis="estimated")
+    result = calculate_dividend_research(
+        [
+            source(
+                payments=(record,),
+                adjustments=(adjustment(record.installment_id),),
+            )
+        ]
+    )[0]
+
+    assert result.trailing_ordinary_yield.status == "unsupported_basis"
+    assert result.trailing_ordinary_yield.value is None
+    assert result.payments[0].adjusted_gross_dps is None
+
+
+def test_estimated_price_provenance_does_not_support_ttm_yield() -> None:
+    result = calculate_dividend_research(
+        [source(current_price=price(provenance_basis="estimated"))]
+    )[0]
+
+    assert result.trailing_ordinary_yield.status == "unsupported_basis"
+    assert result.trailing_ordinary_yield.value is None
 
 
 def test_unknown_coverage_is_preserved_as_unknown_not_zero() -> None:
