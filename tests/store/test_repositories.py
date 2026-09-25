@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from backend.contracts.scalars import OpaqueIdentifier
 from backend.store.repositories import (
     DocumentKey,
+    GenerationConflict,
     OwnerContext,
     Page,
     PaperRepositories,
@@ -31,6 +33,7 @@ class Record(BaseModel):
 @dataclass
 class FakeTransaction:
     writes: dict[str, VersionedDocument[BaseModel]] = field(default_factory=dict)
+    commit_immediately: bool = True
 
 
 class FakeStore:
@@ -39,6 +42,7 @@ class FakeStore:
         self.queries: list[dict[str, Any]] = []
         self.callbacks: list[Callable[[Transaction], Any]] = []
         self.retry_once_with: VersionedDocument[BaseModel] | None = None
+        self.retry_once_with_control: VersionedDocument[BaseModel] | None = None
 
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None:
         return self.documents.get(key.path)
@@ -48,7 +52,7 @@ class FakeStore:
         collection: str,
         *,
         filters: tuple[tuple[str, str, str], ...],
-        order_by: tuple[str, ...],
+        order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
         limit: int,
         cursor: str | None,
     ) -> Page[BaseModel]:
@@ -67,18 +71,29 @@ class FakeStore:
         self, callback: Callable[[Transaction], Any], *, max_attempts: int
     ) -> Any:
         self.callbacks.append(callback)
-        result = callback(FakeTransaction())
-        if self.retry_once_with is not None:
+        transaction = FakeTransaction(commit_immediately=False)
+        result = callback(transaction)
+        if self.retry_once_with is not None or self.retry_once_with_control is not None:
             concurrent = self.retry_once_with
             self.retry_once_with = None
-            self.documents[concurrent.key.path] = concurrent
+            if concurrent is not None:
+                self.documents[concurrent.key.path] = concurrent
+            control = self.retry_once_with_control
+            self.retry_once_with_control = None
+            if control is not None:
+                self.documents[control.key.path] = control
             self.callbacks.append(callback)
-            result = callback(FakeTransaction())
+            transaction = FakeTransaction(commit_immediately=False)
+            result = callback(transaction)
+        self.documents.update(transaction.writes)
         return result
 
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey
     ) -> VersionedDocument[BaseModel] | None:
+        assert isinstance(transaction, FakeTransaction)
+        if key.path in transaction.writes:
+            return transaction.writes[key.path]
         return self.documents.get(key.path)
 
     def put_in_transaction(
@@ -86,7 +101,8 @@ class FakeStore:
     ) -> None:
         assert isinstance(transaction, FakeTransaction)
         transaction.writes[document.key.path] = document
-        self.documents.update(transaction.writes)
+        if transaction.commit_immediately:
+            self.documents.update(transaction.writes)
 
 
 @pytest.fixture
@@ -94,6 +110,22 @@ def repositories() -> tuple[FakeStore, PaperRepositories]:
     store = FakeStore()
     owner = OwnerContext(uid=OpaqueIdentifier("verified-user"))
     return store, PaperRepositories(store, owner)
+
+
+def _control(generation: str | None) -> BaseModel:
+    from backend.contracts.paper import PortfolioControl
+
+    return PortfolioControl.model_validate(
+        {
+            "owner_uid": "verified-user",
+            "active_generation": generation,
+            "configured_fee_rate_pct": None,
+            "state_version": 0,
+            "preference_version": 0,
+            "recovery_id": "recovery-1",
+            "updated_at": datetime.now(timezone.utc),
+        }
+    )
 
 
 def test_document_paths_are_stable_and_owner_scoped(
@@ -111,6 +143,9 @@ def test_document_paths_are_stable_and_owner_scoped(
     assert repo.order_key(generation, OpaqueIdentifier("order-1")).document_id == "order-1"
     assert repo.execution_key(generation, OpaqueIdentifier("fill-1")).document_id == "fill-1"
     assert repo.cash_movement_key(generation, OpaqueIdentifier("cash-1")).document_id == "cash-1"
+    assert repo.receipt_key("request-1").path.startswith(
+        "paper_portfolios/verified-user/command_receipts/"
+    )
 
     with pytest.raises(RepositoryError, match="outside the authenticated owner scope"):
         repo.write_in_transaction(
@@ -127,6 +162,9 @@ def test_versioned_write_advances_only_the_expected_version(
 ) -> None:
     store, repo = repositories
     key = repo.generation_key(OpaqueIdentifier("g1"))
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
     first = repo.write_in_transaction(
         FakeTransaction(),
         key=key,
@@ -179,6 +217,9 @@ def test_concurrent_version_change_retries_callback_from_new_state(
 ) -> None:
     store, repo = repositories
     key = repo.generation_key(OpaqueIdentifier("g1"))
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
     store.documents[key.path] = VersionedDocument(
         key=key,
         schema_version=1,
@@ -214,6 +255,33 @@ def test_concurrent_version_change_retries_callback_from_new_state(
     assert result.record.value == 21
 
 
+def test_reset_race_rejects_old_generation_on_retry(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    key = repo.generation_key(OpaqueIdentifier("g1"))
+    control_key = repo.control_key()
+    store.documents[control_key.path] = VersionedDocument(
+        key=control_key, schema_version=1, state_version=0, record=_control("g1")
+    )
+    store.retry_once_with_control = VersionedDocument(
+        key=control_key, schema_version=1, state_version=1, record=_control("g2")
+    )
+
+    def stale_write(transaction: Transaction) -> None:
+        repo.write_in_transaction(
+            transaction,
+            key=key,
+            record=Record(generation="g1", value=1),
+            schema_version=1,
+            expected_state_version=None,
+        )
+
+    with pytest.raises(GenerationConflict, match="not the active"):
+        repo.transact(stale_write)
+    assert key.path not in store.documents
+
+
 def test_order_query_is_bounded_ordered_and_generation_scoped(
     repositories: tuple[FakeStore, PaperRepositories],
 ) -> None:
@@ -226,7 +294,7 @@ def test_order_query_is_bounded_ordered_and_generation_scoped(
         {
             "collection": "paper_portfolios/verified-user/generations/g1/orders",
             "filters": (("generation", "==", "g1"),),
-            "order_by": ("intended_session", "accepted_at", "order_id"),
+            "order_by": (("accepted_at", "desc"), ("order_id", "desc")),
             "limit": 25,
             "cursor": "opaque-cursor",
         }
@@ -259,7 +327,7 @@ def test_publication_results_are_immutable_and_bounded_by_batch(
         schema_version=1,
     )
     assert first.key == repeated.key
-    assert first.key.path == "published_batches/batch%2Fone/results/company%2FA"
+    assert first.key.path == "analysis_batches/batch%2Fone/results/company%2FA"
 
     with pytest.raises(RepositoryError, match="immutable"):
         publications.write_result(
@@ -273,9 +341,9 @@ def test_publication_results_are_immutable_and_bounded_by_batch(
     page = publications.list_results(batch_id, limit=10)
     assert page.next_cursor == "next"
     assert store.queries[-1] == {
-        "collection": "published_batches/batch%2Fone/results",
+        "collection": "analysis_batches/batch%2Fone/results",
         "filters": (),
-        "order_by": ("__name__",),
+        "order_by": (("__name__", "asc"),),
         "limit": 10,
         "cursor": None,
     }

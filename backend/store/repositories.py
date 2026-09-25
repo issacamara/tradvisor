@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
-from typing import Generic, Protocol, TypeVar, cast
-from urllib.parse import quote
+from typing import Generic, Literal, Protocol, TypeVar, cast
+from urllib.parse import quote, unquote
 
 from pydantic import BaseModel
 
@@ -46,6 +46,10 @@ class SnapshotChanged(RepositoryError):
 
 class VersionConflict(RepositoryError):
     """The document no longer has the state version observed by the caller."""
+
+
+class GenerationConflict(RepositoryError):
+    """A write targeted a generation that is no longer active."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +105,7 @@ class QueryReader(Protocol):
         collection: str,
         *,
         filters: tuple[tuple[str, str, str], ...],
-        order_by: tuple[str, ...],
+        order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
         limit: int,
         cursor: str | None,
     ) -> Page[BaseModel]: ...
@@ -177,7 +181,7 @@ class PaperRepositories:
     def receipt_key(self, key: IdempotencyKey) -> DocumentKey:
         digest = hashlib.sha256(f"{self._owner.uid}\0{key}".encode("utf-8")).hexdigest()
         return DocumentKey(
-            f"paper_command_receipts/{_segment(str(self._owner.uid))}/items", digest
+            f"paper_portfolios/{_segment(str(self._owner.uid))}/command_receipts", digest
         )
 
     def get_control(self) -> VersionedDocument[PortfolioControl] | None:
@@ -236,7 +240,7 @@ class PaperRepositories:
             PaperOrder,
             limit=limit,
             cursor=cursor,
-            order_by=("intended_session", "accepted_at", "order_id"),
+            order_by=(("accepted_at", "desc"), ("order_id", "desc")),
         )
 
     def list_executions(
@@ -244,7 +248,7 @@ class PaperRepositories:
     ) -> Page[PaperExecution]:
         return self._page(
             "executions", generation, PaperExecution, limit=limit, cursor=cursor,
-            order_by=("processed_at", "execution_id"),
+            order_by=(("processed_at", "desc"), ("execution_id", "desc")),
         )
 
     def list_cash_movements(
@@ -252,7 +256,7 @@ class PaperRepositories:
     ) -> Page[CashMovement]:
         return self._page(
             "cash_movements", generation, CashMovement, limit=limit, cursor=cursor,
-            order_by=("occurred_at", "movement_id"),
+            order_by=(("occurred_at", "desc"), ("movement_id", "desc")),
         )
 
     def transact(self, callback: Callable[[Transaction], T], *, max_attempts: int = 5) -> T:
@@ -272,6 +276,16 @@ class PaperRepositories:
         """Create or advance a document after checking its observed version."""
 
         self._validate_owner_path(key)
+        generation = self._generation_for_key(key)
+        if generation is not None:
+            control = self._store.get_in_transaction(transaction, self.control_key())
+            if control is None:
+                raise GenerationConflict("cannot write a generation without portfolio control")
+            control_record = self._record(control.record, PortfolioControl)
+            if control_record.active_generation != generation:
+                raise GenerationConflict(
+                    f"generation {generation} is not the active portfolio generation"
+                )
         if schema_version < 1:
             raise ValueError("schema_version must be positive")
         current = self._store.get_in_transaction(transaction, key)
@@ -296,11 +310,24 @@ class PaperRepositories:
         allowed = (
             (key.collection == "paper_portfolios" and key.document_id == owner_segment)
             or key.collection.startswith(f"paper_portfolios/{owner_segment}/")
-            or key.collection == f"paper_command_receipts/{owner_segment}/items"
+            or key.collection == f"paper_portfolios/{owner_segment}/command_receipts"
             or (key.collection == "users" and key.document_id == owner_segment)
         )
         if not allowed:
             raise RepositoryError("document path is outside the authenticated owner scope")
+
+    @staticmethod
+    def _generation_for_key(key: DocumentKey) -> str | None:
+        parts = key.collection.split("/")
+        try:
+            index = parts.index("generations")
+        except ValueError:
+            return None
+        if index + 1 >= len(parts):
+            if index == len(parts) - 1:
+                return unquote(key.document_id)
+            raise RepositoryError("generation collection path is incomplete")
+        return unquote(parts[index + 1])
 
     def _page(
         self,
@@ -310,7 +337,7 @@ class PaperRepositories:
         *,
         limit: int,
         cursor: str | None,
-        order_by: tuple[str, ...],
+        order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
     ) -> Page[Record]:
         if not 1 <= limit <= MAX_PAGE_SIZE:
             raise ValueError(f"limit must be between 1 and {MAX_PAGE_SIZE}")
@@ -353,7 +380,7 @@ class PublicationRepositories:
     @staticmethod
     def result_key(batch_id: OpaqueIdentifier, record_id: OpaqueIdentifier) -> DocumentKey:
         return DocumentKey(
-            f"published_batches/{_segment(str(batch_id))}/results",
+            f"analysis_batches/{_segment(str(batch_id))}/results",
             _segment(str(record_id)),
         )
 
@@ -397,9 +424,9 @@ class PublicationRepositories:
         if not 1 <= limit <= MAX_PAGE_SIZE:
             raise ValueError(f"limit must be between 1 and {MAX_PAGE_SIZE}")
         result = self._store.page(
-            f"published_batches/{_segment(str(batch_id))}/results",
+            f"analysis_batches/{_segment(str(batch_id))}/results",
             filters=(),
-            order_by=("__name__",),
+            order_by=(("__name__", "asc"),),
             limit=limit,
             cursor=cursor,
         )

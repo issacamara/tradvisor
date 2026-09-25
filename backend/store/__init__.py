@@ -2,6 +2,7 @@
 
 from backend.store.repositories import (
     DocumentKey,
+    GenerationConflict,
     OwnerContext,
     Page,
     PaperRepositories,
@@ -16,6 +17,7 @@ from backend.store.transactions import TransactionRunner, run_transaction
 
 __all__ = [
     "DocumentKey",
+    "GenerationConflict",
     "OwnerContext",
     "Page",
     "PaperRepositories",
