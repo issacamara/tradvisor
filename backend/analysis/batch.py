@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel
@@ -89,7 +90,10 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _canonical(value.model_dump(mode="python"))
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return _canonical(dataclasses.asdict(value))
+        return {
+            field.name: _canonical(getattr(value, field.name))
+            for field in dataclasses.fields(value)
+        }
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise BatchValidationError("calculation output mapping keys must be strings")
@@ -111,6 +115,18 @@ def _canonical(value: Any) -> Any:
             raise BatchValidationError("calculation outputs cannot contain non-finite floats")
         return value
     raise BatchValidationError(f"unsupported calculation output type: {type(value).__name__}")
+
+
+def _freeze(value: Any) -> Any:
+    """Make canonical payloads immutable at every nested level."""
+
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze(item) for item in value)
+    return value
 
 
 def _digest(payload: Any) -> str:
@@ -206,7 +222,15 @@ def build_analytical_batch(
             )
         for output in stock.outputs:
             _validate_output(output)
-        ordered_outputs = tuple(sorted(stock.outputs, key=lambda output: output.name))
+        ordered_outputs = tuple(
+            CalculationOutput(
+                name=output.name,
+                status=output.status,
+                value=None if output.value is None else _freeze(_canonical(output.value)),
+                reason_codes=output.reason_codes,
+            )
+            for output in sorted(stock.outputs, key=lambda output: output.name)
+        )
         canonical_stocks.append(StockCalculation(symbol, ordered_outputs))
         manifest_symbols.append(
             StockManifestEntry(

@@ -107,6 +107,67 @@ def test_partial_per_stock_availability_is_manifested_explicitly() -> None:
     }
 
 
+def test_source_payload_mutation_cannot_change_stored_value_or_hash() -> None:
+    payload = {"nested": {"items": [1, 2]}}
+    batch = _build(
+        stocks=[
+            StockCalculation(
+                "AAA",
+                (
+                    CalculationOutput("growth", "available", payload),
+                    CalculationOutput("swing", "unavailable", reason_codes=("warming_up",)),
+                ),
+            ),
+            StockCalculation(
+                "BBB",
+                (
+                    CalculationOutput("growth", "unavailable", reason_codes=("missing_report",)),
+                    CalculationOutput("swing", "unavailable", reason_codes=("missing_prices",)),
+                ),
+            ),
+        ]
+    )
+    original_hash = batch.manifest.content_sha256
+
+    payload["nested"]["items"].append(3)
+    payload["nested"]["items"] = [99]
+
+    stored = batch.stocks[0].outputs[0].value
+    assert stored["nested"]["items"] == (1, 2)
+    assert batch.manifest.content_sha256 == original_hash
+
+
+def test_exposed_nested_value_cannot_be_mutated() -> None:
+    batch = _build(
+        stocks=[
+            StockCalculation(
+                "AAA",
+                (
+                    CalculationOutput("growth", "available", {"nested": {"items": [1, 2]}}),
+                    CalculationOutput("swing", "unavailable", reason_codes=("warming_up",)),
+                ),
+            ),
+            StockCalculation(
+                "BBB",
+                (
+                    CalculationOutput("growth", "unavailable", reason_codes=("missing_report",)),
+                    CalculationOutput("swing", "unavailable", reason_codes=("missing_prices",)),
+                ),
+            ),
+        ]
+    )
+    original_hash = batch.manifest.content_sha256
+    exposed = batch.stocks[0].outputs[0].value
+
+    with pytest.raises(TypeError):
+        exposed["nested"]["items"] = (9,)
+    with pytest.raises(TypeError):
+        exposed["nested"]["items"][0] = 3
+
+    assert batch.stocks[0].outputs[0].value["nested"]["items"] == (1, 2)
+    assert batch.manifest.content_sha256 == original_hash
+
+
 def test_incomplete_catalog_is_rejected_before_batch_is_returned() -> None:
     with pytest.raises(BatchValidationError, match="complete declared catalog"):
         _build(stocks=[])
