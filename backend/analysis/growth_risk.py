@@ -36,6 +36,8 @@ class RegulatoryCoverage:
     company_id: str
     effective_date: date
     basis_id: str
+    jurisdiction: str
+    report_scope: Literal["standalone", "consolidated"]
     capital_amount: Decimal
     required_amount: Decimal
     evidence_refs: tuple[str, ...]
@@ -51,6 +53,7 @@ class GrowthRiskSnapshot:
 
     company_id: str
     category: FinancialCategory
+    jurisdiction: str
     period_end: date
     report_scope: Literal["standalone", "consolidated"]
     basis_id: str
@@ -146,11 +149,19 @@ def _financial_institution_resilience(snapshot: GrowthRiskSnapshot) -> TermResul
     if any(
         item.company_id != snapshot.company_id
         or item.basis_id != snapshot.basis_id
-        or item.required_amount <= 0
+        or item.jurisdiction != snapshot.jurisdiction
+        or item.report_scope != snapshot.report_scope
+        for item in coverages
+    ):
+        return _unavailable("regulatory_constraints_unmatched", refs)
+    if any(item.effective_date != snapshot.period_end for item in coverages):
+        return _unavailable("regulatory_constraints_not_applicable_as_of_period_end", refs)
+    if any(
+        item.required_amount <= 0
         or item.capital_amount < 0
         for item in coverages
     ):
-        return _unavailable("regulatory_constraints_unmatched_or_invalid", refs)
+        return _unavailable("regulatory_constraints_invalid", refs)
     coverage = min(item.capital_amount / item.required_amount for item in coverages)
     points = RESILIENCE_POINTS * _clamp((coverage - Decimal(1)) / Decimal("0.5"))
     return TermResult(

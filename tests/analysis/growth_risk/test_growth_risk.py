@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 import pytest
 
@@ -39,6 +40,7 @@ def _balance(
 def _snapshot(
     *,
     category: FinancialCategory = "non_financial",
+    jurisdiction: str = "UEMOA",
     earnings: str | None = "20",
     equity: str | None = "200",
     market_cap: str | None = "400",
@@ -47,13 +49,30 @@ def _snapshot(
     regulations: tuple[RegulatoryCoverage, ...] = (),
 ) -> GrowthRiskSnapshot:
     return GrowthRiskSnapshot(
-        "company-1", category, PERIOD_END, "consolidated", "matched-basis",
+        "company-1", category, jurisdiction, PERIOD_END, "consolidated", "matched-basis",
         None if earnings is None else Decimal(earnings),
         None if equity is None else Decimal(equity),
         None if market_cap is None else Decimal(market_cap), cap_basis,
         ("financial-source", "capital-source"),
         _balance() if balance is None and category == "non_financial" else balance,
         regulations,
+    )
+
+
+def _coverage(
+    capital: str,
+    *,
+    effective_date: date = PERIOD_END,
+    jurisdiction: str = "UEMOA",
+    report_scope: Literal["standalone", "consolidated"] = "consolidated",
+    company_id: str = "company-1",
+    basis_id: str = "matched-basis",
+    required: str = "1",
+    source: str = "capital",
+) -> RegulatoryCoverage:
+    return RegulatoryCoverage(
+        company_id, effective_date, basis_id, jurisdiction, report_scope,
+        Decimal(capital), Decimal(required), (source,),
     )
 
 
@@ -110,8 +129,8 @@ def test_nonpositive_equity_and_earnings_get_zero_applicable_factors() -> None:
 
 def test_financial_institution_uses_minimum_matched_regulatory_coverage() -> None:
     coverage = (
-        RegulatoryCoverage("company-1", PERIOD_END, "matched-basis", Decimal("1.4"), Decimal("1"), ("capital-a",)),
-        RegulatoryCoverage("company-1", PERIOD_END, "matched-basis", Decimal("1.25"), Decimal("1"), ("capital-b",)),
+        _coverage("1.4", source="capital-a"),
+        _coverage("1.25", source="capital-b"),
     )
     bank = calculate_growth_risk(_snapshot(category="bank", regulations=coverage))
     assert bank.sector_resilience.points == Decimal("10")
@@ -123,9 +142,7 @@ def test_financial_institution_uses_minimum_matched_regulatory_coverage() -> Non
 def test_regulatory_coverage_clamps_at_requirement_and_full_credit(
     capital: str, expected: str
 ) -> None:
-    coverage = RegulatoryCoverage(
-        "company-1", PERIOD_END, "matched-basis", Decimal(capital), Decimal("1"), ("capital",)
-    )
+    coverage = _coverage(capital)
     result = calculate_growth_risk(_snapshot(category="bank", regulations=(coverage,))).sector_resilience
     assert result.points == Decimal(expected)
 
@@ -139,12 +156,42 @@ def test_missing_regulatory_constraints_do_not_fall_back_to_industrial_formula(c
 
 
 def test_zero_required_capital_is_unavailable_not_infinite_coverage() -> None:
-    invalid = RegulatoryCoverage(
-        "company-1", PERIOD_END, "matched-basis", Decimal("10"), Decimal("0"), ("capital",)
-    )
+    invalid = _coverage("10", required="0")
     result = calculate_growth_risk(_snapshot(category="insurer", regulations=(invalid,)))
     assert result.sector_resilience.status == "unavailable"
-    assert result.sector_resilience.reason_codes == ("regulatory_constraints_unmatched_or_invalid",)
+    assert result.sector_resilience.reason_codes == ("regulatory_constraints_invalid",)
+
+
+@pytest.mark.parametrize(
+    "coverage",
+    [
+        _coverage("1.25", company_id="other-company"),
+        _coverage("1.25", basis_id="other-basis"),
+        _coverage("1.25", jurisdiction="other"),
+        _coverage("1.25", report_scope="standalone"),
+    ],
+)
+def test_regulatory_coverage_requires_matching_jurisdiction_and_scope(
+    coverage: RegulatoryCoverage,
+) -> None:
+    result = calculate_growth_risk(_snapshot(category="bank", regulations=(coverage,)))
+    assert result.sector_resilience.status == "unavailable"
+    assert result.sector_resilience.reason_codes == ("regulatory_constraints_unmatched",)
+
+
+@pytest.mark.parametrize(
+    "effective_date",
+    [date(2026, 1, 1), date(2025, 12, 30)],
+    ids=["future", "expired"],
+)
+def test_future_or_expired_regulatory_coverage_is_not_used(effective_date: date) -> None:
+    coverage = _coverage("1.5", effective_date=effective_date)
+    result = calculate_growth_risk(_snapshot(category="insurer", regulations=(coverage,)))
+    assert result.sector_resilience.status == "unavailable"
+    assert result.sector_resilience.points is None
+    assert result.sector_resilience.reason_codes == (
+        "regulatory_constraints_not_applicable_as_of_period_end",
+    )
 
 
 def test_unmatched_inputs_are_unavailable_and_do_not_hide_independent_valuation() -> None:
