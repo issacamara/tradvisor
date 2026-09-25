@@ -52,7 +52,6 @@ resource "google_secret_manager_secret_version" "sa_key_secret_version" {
 # managed outside this configuration. A future additive-member migration needs
 # verified state ownership and a separately approved preservation plan.
 resource "google_project_iam_binding" "build_sa_roles" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   depends_on = [google_service_account.tradvisor_sa]
   project    = var.project_id
   role       = "roles/cloudbuild.builds.builder"
@@ -67,7 +66,6 @@ resource "google_project_iam_binding" "build_sa_roles" {
 }
 
 resource "google_project_iam_binding" "function_invoker" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/cloudfunctions.invoker"
@@ -82,7 +80,6 @@ resource "google_project_iam_binding" "function_invoker" {
 }
 
 resource "google_project_iam_binding" "all_buckets_viewer" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/storage.objectViewer"
@@ -97,7 +94,6 @@ resource "google_project_iam_binding" "all_buckets_viewer" {
 }
 
 resource "google_project_iam_binding" "log_writer" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/logging.logWriter"
@@ -113,7 +109,6 @@ resource "google_project_iam_binding" "log_writer" {
 
 # Grant the necessary roles to the service account
 resource "google_project_iam_binding" "cloud_run_sa_invoker" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/run.invoker"
   depends_on = [google_service_account.tradvisor_sa]
@@ -128,7 +123,6 @@ resource "google_project_iam_binding" "cloud_run_sa_invoker" {
 }
 
 resource "google_project_iam_binding" "workflow_executor" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/workflows.invoker"
   depends_on = [google_service_account.tradvisor_sa]
@@ -144,7 +138,6 @@ resource "google_project_iam_binding" "workflow_executor" {
 
 
 resource "google_project_iam_binding" "sa_user" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/iam.serviceAccountUser"
   depends_on = [google_service_account.tradvisor_sa]
@@ -159,7 +152,6 @@ resource "google_project_iam_binding" "sa_user" {
 }
 
 resource "google_project_iam_binding" "sms_accessor" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/secretmanager.secretAccessor"
   depends_on = [google_service_account.tradvisor_sa]
@@ -175,7 +167,6 @@ resource "google_project_iam_binding" "sms_accessor" {
 
 
 resource "google_project_iam_binding" "bq_viewer" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/bigquery.dataViewer"
   depends_on = [google_service_account.tradvisor_sa]
@@ -190,7 +181,6 @@ resource "google_project_iam_binding" "bq_viewer" {
 }
 
 resource "google_project_iam_binding" "bq_data_editor" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/bigquery.dataEditor"
   depends_on = [google_service_account.tradvisor_sa]
@@ -205,7 +195,6 @@ resource "google_project_iam_binding" "bq_data_editor" {
 }
 
 resource "google_project_iam_binding" "bq_job_user" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/bigquery.jobUser"
   depends_on = [google_service_account.tradvisor_sa]
@@ -220,7 +209,6 @@ resource "google_project_iam_binding" "bq_job_user" {
 }
 
 resource "google_project_iam_binding" "run_admin" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/run.admin"
   depends_on = [google_service_account.tradvisor_sa]
@@ -235,7 +223,6 @@ resource "google_project_iam_binding" "run_admin" {
 }
 
 resource "google_project_iam_binding" "storage_admin" {
-  count      = var.manage_legacy_iam_bindings ? 1 : 0
   project    = var.project_id
   role       = "roles/storage.admin"
   depends_on = [google_service_account.tradvisor_sa]

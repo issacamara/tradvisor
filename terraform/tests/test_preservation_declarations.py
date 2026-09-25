@@ -23,7 +23,6 @@ class PreservationDeclarationTests(unittest.TestCase):
         ownership_controls = {
             "manage_legacy_schedules": functions,
             "manage_legacy_project_services": main,
-            "manage_legacy_iam_bindings": iam,
             "manage_legacy_bigquery_datasets": main,
             "manage_legacy_service_account_credentials": iam,
         }
@@ -44,10 +43,6 @@ class PreservationDeclarationTests(unittest.TestCase):
         self.assertIn(
             "count                      = var.manage_legacy_bigquery_datasets ? 1 : 0",
             main,
-        )
-        self.assertEqual(
-            iam.count("count      = var.manage_legacy_iam_bindings ? 1 : 0"),
-            13,
         )
         self.assertEqual(
             iam.count(

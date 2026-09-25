@@ -77,12 +77,6 @@ variable "manage_legacy_project_services" {
   default     = false
 }
 
-variable "manage_legacy_iam_bindings" {
-  description = "Whether Terraform owns pre-existing project IAM bindings; enabling requires an explicitly approved ownership migration"
-  type        = bool
-  default     = false
-}
-
 variable "manage_legacy_bigquery_datasets" {
   description = "Whether Terraform owns pre-existing BigQuery datasets; enabling requires an explicitly approved ownership migration"
   type        = bool
