@@ -1,4 +1,4 @@
-"""Approved Growth activity, earnings, and profitability dimensions."""
+"""Contract-supported Growth earnings and profitability dimensions."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from typing import Literal
 
 from backend.contracts.analysis import NormalizedFinancial
 
-ACTIVITY_POINTS = Decimal("12")
 EARNINGS_POINTS = Decimal("18")
 PROFITABILITY_POINTS = Decimal("25")
 ROE_FULL_CREDIT = Decimal("0.15")
@@ -18,7 +17,6 @@ SMALL_BASE_FRACTION = Decimal("0.10")
 HISTORY_YEARS = 5
 CAGR_YEARS = 3
 
-ActivityKind = Literal["revenue", "net_banking_income", "gross_written_premiums"]
 DimensionStatus = Literal["assessable", "unavailable"]
 
 
@@ -27,21 +25,11 @@ class GrowthCalculationError(ValueError):
 
 
 @dataclass(frozen=True)
-class ActivityObservation:
-    fiscal_period_end: date
-    kind: ActivityKind
-    value: Decimal | None
-    evidence_refs: tuple[str, ...]
-    reason_codes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class GrowthInput:
-    """Five normalized annual financial rows and matching sector activity facts."""
+    """Five normalized annual financial rows."""
 
     company_id: str
     financials: tuple[NormalizedFinancial, ...]
-    activity: tuple[ActivityObservation, ...]
 
 
 @dataclass(frozen=True)
@@ -102,16 +90,13 @@ def _cagr_and_factor(latest: Decimal, base: Decimal, ceiling: Decimal) -> tuple[
     return cagr, factor
 
 
-def _require_history(inputs: GrowthInput) -> tuple[tuple[NormalizedFinancial, ...], tuple[ActivityObservation, ...]]:
+def _require_history(inputs: GrowthInput) -> tuple[NormalizedFinancial, ...]:
     rows = tuple(sorted(inputs.financials, key=lambda row: row.fiscal_period_end))
-    activity = tuple(sorted(inputs.activity, key=lambda row: row.fiscal_period_end))
-    if len(rows) != HISTORY_YEARS or len(activity) != HISTORY_YEARS:
-        raise GrowthCalculationError("exactly five annual financial and activity observations are required")
+    if len(rows) != HISTORY_YEARS:
+        raise GrowthCalculationError("exactly five annual financial observations are required")
     if any(row.company_id != inputs.company_id for row in rows):
         raise GrowthCalculationError("annual financial rows must belong to one company")
     ends = tuple(row.fiscal_period_end for row in rows)
-    if tuple(item.fiscal_period_end for item in activity) != ends:
-        raise GrowthCalculationError("activity and financial fiscal periods must align exactly")
     if len(set(ends)) != HISTORY_YEARS:
         raise GrowthCalculationError("annual fiscal period ends must be unique")
     for prior, current in zip(rows, rows[1:]):
@@ -123,39 +108,7 @@ def _require_history(inputs: GrowthInput) -> tuple[tuple[NormalizedFinancial, ..
             raise GrowthCalculationError("annual financial periods must be consecutive without interpolation")
     if any(not 350 <= (row.fiscal_period_end - row.fiscal_period_start).days + 1 <= 380 for row in rows):
         raise GrowthCalculationError("each normalized record must represent a full fiscal year")
-    return rows, activity
-
-
-def _activity_term(observations: tuple[ActivityObservation, ...]) -> TermResult:
-    refs = _refs(*(item.evidence_refs for item in observations))
-    if len({item.kind for item in observations}) != 1:
-        return _unavailable(reason="incomparable_activity_measure", evidence=refs)
-    if any(item.value is None for item in observations):
-        missing_reasons = _refs(*(item.reason_codes for item in observations if item.value is None))
-        return _unavailable(reason=missing_reasons[0] if missing_reasons else "activity_history_incomplete", evidence=refs)
-    values = tuple(item.value for item in observations)
-    assert all(value is not None for value in values)
-    numeric = tuple(value for value in values if value is not None)
-    kind = observations[0].kind
-    if kind in {"revenue", "gross_written_premiums"} and any(value < 0 for value in numeric):
-        return _unavailable(reason="unsupported_negative_activity_semantics", evidence=refs)
-    base, latest = numeric[-1 - CAGR_YEARS], numeric[-1]
-    reason_list: list[str] = []
-    cagr: Decimal | None = None
-    if latest <= 0:
-        reason_list.append("nonpositive_latest_activity")
-    elif base <= 0:
-        reason_list.append("nonpositive_activity_base_recovery")
-    else:
-        cagr, factor = _cagr_and_factor(latest, base, Decimal("0.15"))
-    if cagr is None:
-        factor = Decimal(0)
-    points = ACTIVITY_POINTS * factor
-    return TermResult(
-        "assessable", points, refs, tuple(reason_list),
-        (("cagr", cagr), ("starting_value", base), ("latest_value", latest),
-         ("latest_annual_change", numeric[-1] - numeric[-2])),
-    )
+    return rows
 
 
 def _earnings_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
@@ -238,23 +191,13 @@ def _profitability_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
 
 
 def calculate_growth_core(inputs: GrowthInput) -> GrowthCoreResult:
-    """Calculate 30-point activity/earnings and 25-point profitability dimensions."""
+    """Calculate supported earnings and profitability terms from normalized rows."""
 
-    rows, activity = _require_history(inputs)
-    activity_result = _activity_term(activity)
+    rows = _require_history(inputs)
+    activity_result = _unavailable(reason="normalized_activity_measure_unavailable")
     earnings_result = _earnings_term(rows)
-    if activity_result.status == "assessable" and earnings_result.status == "assessable":
-        assert activity_result.points is not None and earnings_result.points is not None
-        growth = TermResult(
-            "assessable", activity_result.points + earnings_result.points,
-            _refs(activity_result.evidence_refs, earnings_result.evidence_refs),
-            _refs(activity_result.reason_codes, earnings_result.reason_codes),
-            (("activity_points", activity_result.points), ("earnings_points", earnings_result.points)),
-        )
-    else:
-        reasons = activity_result.reason_codes + earnings_result.reason_codes
-        growth = _unavailable(
-            reason=reasons[0] if reasons else "growth_terms_unavailable",
-            evidence=_refs(activity_result.evidence_refs, earnings_result.evidence_refs),
-        )
+    growth = _unavailable(
+        reason="normalized_activity_measure_unavailable",
+        evidence=earnings_result.evidence_refs,
+    )
     return GrowthCoreResult(activity_result, earnings_result, growth, _profitability_term(rows))
