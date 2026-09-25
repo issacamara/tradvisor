@@ -460,7 +460,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     fiscal_year = datetime.now().year
     result = {
         "fiscal_year": fiscal_year,
-        "financial_category": "bank",
+        "financial_category": "non_financial",
         "revenue": 500,
         "pnb": 500,
         "net_income": 100,
@@ -481,7 +481,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
             "currency": "XOF",
             "report_scope": "consolidated",
             "accounting_basis": "SYSCOHADA",
-            "financial_category": "bank",
+            "financial_category": "non_financial",
             "revenue": {
                 "value": "500",
                 "currency": "XOF",
@@ -507,6 +507,39 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
             },
             "equity_basis": "ordinary_owner",
             "equity_scope": "consolidated",
+            "interest_bearing_debt": {
+                "value": "3",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
+            "unrestricted_cash": {
+                "value": "4",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+                "restricted": False,
+            },
+            "current_assets": {
+                "value": "5",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
+            "current_liabilities": {
+                "value": "6",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
         },
     }
     provider_calls: list[dict[str, object]] = []
@@ -541,13 +574,19 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
     insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
     canonical_rows: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        insert,
-        "persist_annual_financial_revision",
-        lambda rows, project_id: canonical_rows.extend(
-            rows if isinstance(rows, list) else [rows]
-        ),
-    )
+    failed_attempt_rows: list[dict[str, object]] = []
+    fail_canonical_write = True
+
+    def persist_canonical(rows, project_id):
+        nonlocal fail_canonical_write
+        batch = rows if isinstance(rows, list) else [rows]
+        if fail_canonical_write:
+            fail_canonical_write = False
+            failed_attempt_rows.extend(batch)
+            raise RuntimeError("fixture canonical write failure")
+        canonical_rows.extend(batch)
+
+    monkeypatch.setattr(insert, "persist_annual_financial_revision", persist_canonical)
     monkeypatch.setattr(
         insert,
         "extract_text_from_pdf",
@@ -578,7 +617,17 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
         "document_link": "https://fixture.invalid/existing.pdf",
     }]
 
-    scraper.scrape_financials("fixture://source", "fixture-key")
+    with pytest.raises(RuntimeError, match="fixture canonical write failure"):
+        scraper.scrape_financials("fixture://source", "fixture-key")
+
+    assert bigquery_client.tables[current_table] == [{
+        "symbol": "XYZ",
+        "fiscal_year": fiscal_year,
+        "announcement_date": f"{fiscal_year}-01-01",
+        "document_link": "https://fixture.invalid/existing.pdf",
+    }]
+    assert bigquery_client.tables.get(revision_table, []) == []
+
     scraper.scrape_financials("fixture://source", "fixture-key")
 
     assert len(provider_calls) == 1
@@ -589,22 +638,35 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     revisions = bigquery_client.tables[revision_table]
     digest = hashlib.sha256(pdf).hexdigest()
     assert len(current) == 1
-    assert current[0]["revenue"] is None
+    assert current[0]["revenue"] == result["revenue"]
     assert current[0]["net_income"] == result["net_income"]
     assert current[0]["total_debt"] == result["total_debt"]
     assert current[0]["fiscal_year"] == fiscal_year
-    assert len(canonical_rows) == 2
-    assert {row["revision_id"] for row in canonical_rows} == {
-        canonical_rows[0]["revision_id"]
-    }
+    assert len(failed_attempt_rows) == len(canonical_rows) == 1
+    assert failed_attempt_rows[0] == canonical_rows[0]
     canonical = canonical_rows[0]
-    assert canonical["revenue"] is None
+    assert canonical["revenue"] == 500_000_000
     assert canonical["ordinary_owner_earnings"] == -2_500_000
     assert canonical["equity"] == 20_000_000
+    assert canonical["interest_bearing_debt"] == 3_000_000
+    assert canonical["unrestricted_cash"] == 4_000_000
+    assert canonical["current_assets"] == 5_000_000
+    assert canonical["current_liabilities"] == 6_000_000
     assert canonical["report_scope"] == "consolidated"
     assert canonical["publication_status"] == "published"
     assert canonical["source_published_at"] == f"{fiscal_year}-07-15 12:00:00"
     datetime.strptime(canonical["collected_at"], "%Y-%m-%d %H:%M:%S")
+    missing_field_result = json.loads(json.dumps(result))
+    del missing_field_result["annual_report"]["current_liabilities"]
+    missing_field_row = insert.annual_financial_revision_row(
+        missing_field_result,
+        company_id="ABC",
+        source_ref=announcement["url"],
+        source_revision_id=digest,
+        collected_at="2026-09-25T00:00:00Z",
+    )
+    assert missing_field_row["current_liabilities"] is None
+    assert "missing_current_liabilities" in missing_field_row["reason_codes"]
     assert len(revisions) == 1
     assert revisions[0]["document_revision"] == digest
     assert revisions[0]["document_link"] == announcement["url"]

@@ -93,6 +93,10 @@ def annual_financial_revision_row(
             "ordinary_owner_earnings",
             "equity",
             "opening_equity",
+            "interest_bearing_debt",
+            "unrestricted_cash",
+            "current_assets",
+            "current_liabilities",
         )
     }
     original_scale = {
@@ -126,6 +130,24 @@ def annual_financial_revision_row(
         "equity": amounts["equity"].value if amounts["equity"] else None,
         "opening_equity": (
             amounts["opening_equity"].value if amounts["opening_equity"] else None
+        ),
+        "interest_bearing_debt": (
+            amounts["interest_bearing_debt"].value
+            if amounts["interest_bearing_debt"]
+            else None
+        ),
+        "unrestricted_cash": (
+            amounts["unrestricted_cash"].value
+            if amounts["unrestricted_cash"]
+            else None
+        ),
+        "current_assets": (
+            amounts["current_assets"].value if amounts["current_assets"] else None
+        ),
+        "current_liabilities": (
+            amounts["current_liabilities"].value
+            if amounts["current_liabilities"]
+            else None
         ),
         "publication_status": record.publication_status,
         "reason_codes": list(record.unavailable_reasons),
