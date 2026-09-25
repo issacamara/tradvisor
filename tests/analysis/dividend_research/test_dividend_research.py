@@ -236,6 +236,23 @@ def test_unknown_coverage_is_preserved_as_unknown_not_zero() -> None:
     assert result.trailing_ordinary_yield.reason_codes == ("ttm_coverage_incomplete",)
 
 
+def test_undated_unknown_payment_prevents_supported_ttm_yield() -> None:
+    record = payment(installment="unknown-undated", status="unknown", payment_date=None)
+    result = calculate_dividend_research(
+        [
+            source(
+                payments=(record,),
+                coverages=(coverage(outcome="payments_recorded"),),
+                adjustments=(adjustment(record.installment_id),),
+            )
+        ]
+    )[0]
+
+    assert result.trailing_ordinary_yield.status == "missing_inputs"
+    assert result.trailing_ordinary_yield.value is None
+    assert result.trailing_ordinary_yield.reason_codes == ("payment_semantics_unknown",)
+
+
 def test_complete_confirmed_no_payment_window_produces_a_zero_yield_fact() -> None:
     result = calculate_dividend_research(
         [source(payments=(), coverages=(coverage(outcome="confirmed_no_payment"),), adjustments=())]

@@ -284,11 +284,20 @@ def calculate_dividend_research(
                     if item.payment_date is not None
                     and lower_bound < item.payment_date <= source.valuation_date
                 ]
+                undated_unresolved_payments = [
+                    item
+                    for item in payments.values()
+                    if item.payment_date is None
+                    and (
+                        item.payment_status == "unknown"
+                        or item.payment_status == "paid"
+                    )
+                ]
                 window_paid = [item for item in window_payments if item.payment_status == "paid"]
                 ordinary_paid = [
                     item for item in window_paid if item.dividend_type == "ordinary"
                 ]
-                unresolved_payment_semantics = any(
+                unresolved_payment_semantics = bool(undated_unresolved_payments) or any(
                     item.payment_status == "unknown"
                     or item.payment_status == "paid" and item.dividend_type == "unclassified"
                     for item in window_payments
