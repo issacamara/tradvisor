@@ -1,5 +1,6 @@
 from backend.contracts.analytical_storage import (
     ANNUAL_FINANCIAL_REVISIONS_V1,
+    ANALYTICAL_SOURCE_TABLES,
     SHARE_PRICE_REVISIONS_V1,
     TableSpec,
 )
@@ -22,6 +23,12 @@ def test_share_revision_contract_is_additive_and_revision_keyed() -> None:
 
 def test_annual_financial_contract_preserves_period_scope_and_source_revisions() -> None:
     fields = {field.name: field for field in ANNUAL_FINANCIAL_REVISIONS_V1.fields}
+    non_financial_amount_fields = {
+        "interest_bearing_debt",
+        "unrestricted_cash",
+        "current_assets",
+        "current_liabilities",
+    }
 
     assert ANNUAL_FINANCIAL_REVISIONS_V1.table_name == "annual_financial_revisions_v1"
     assert ANNUAL_FINANCIAL_REVISIONS_V1.immutable_key == (
@@ -35,8 +42,29 @@ def test_annual_financial_contract_preserves_period_scope_and_source_revisions()
     )
     assert fields["ordinary_owner_earnings"].field_type == "NUMERIC"
     assert fields["opening_equity"].field_type == "NUMERIC"
+    assert {
+        name: (fields[name].field_type, fields[name].mode)
+        for name in non_financial_amount_fields
+    } == {name: ("NUMERIC", "NULLABLE") for name in non_financial_amount_fields}
     assert fields["publication_status"].mode == "REQUIRED"
-    assert {"source_revision_id", "collected_at", "known_at", "original_scale"} <= set(fields)
+    assert {
+        "revenue",
+        "ordinary_owner_earnings",
+        "equity",
+        "opening_equity",
+        "publication_status",
+        "reason_codes",
+        "source_revision_id",
+        "collected_at",
+        "known_at",
+        "original_scale",
+    } <= set(fields)
+    assert fields["reason_codes"].mode == "REPEATED"
+    assert ANNUAL_FINANCIAL_REVISIONS_V1.partition_candidates == (
+        "fiscal_period_end",
+        "collected_at",
+    )
+    assert "financials" not in {table.table_name for table in ANALYTICAL_SOURCE_TABLES}
 
 
 def test_table_contract_rejects_invalid_key_and_partition_candidates() -> None:
