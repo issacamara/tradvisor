@@ -56,18 +56,21 @@ def _sessions(current_index: int = 25, oldest_age: int = 6) -> tuple[NormalizedS
 def _price(
     *, symbol: str = "TEST", age: int = 0,
     trade_status: str = "traded", close_basis: str = "raw",
+    suspension_status: str = "not_suspended",
 ) -> NormalizedPrice:
     session_date = date.fromordinal(AS_OF.date().toordinal() - age)
     provenance = Provenance(
         source_id="price-source", collected_at=AS_OF,
         original_unit="XOF/share", basis="actual",
     )
+    suspension_evidence = () if suspension_status == "not_suspended" else (provenance,)
     return NormalizedPrice(
         symbol=symbol, session_date=session_date,
         close=NonNegativeMoney(amount="100", currency="XOF"),
         close_basis=close_basis, trade_status=trade_status, basis="actual",
         original_source_date=session_date, price_basis_ref="ordinary-price-basis",
-        validated_available_at=AS_OF, suspension_status="not_suspended",
+        validated_available_at=AS_OF, suspension_status=suspension_status,
+        suspension_evidence=suspension_evidence,
         revision=Revision(revision=0, known_at=AS_OF, provenance=provenance),
     )
 
@@ -162,6 +165,35 @@ def test_confirmed_suspension_requires_review() -> None:
     ))
     assert _guard(result, "suspension_status").status == "fail"
     assert result.advisory_state == "review_required"
+
+
+def test_symbol_price_suspension_on_a_trading_session_requires_review() -> None:
+    item = _input()
+    result = compose_growth_advice(GrowthAdviceInput(
+        item.company_id, item.symbol, item.core, item.risk, item.risk_snapshot,
+        item.analysis_time, item.latest_report_known_at, item.latest_report_published,
+        (_price(symbol=item.symbol, suspension_status="suspended"),),
+        item.sessions, item.event_monitoring,
+    ))
+    guard = _guard(result, "suspension_status")
+    assert guard.status == "fail"
+    assert "price-source" in guard.evidence_refs
+    assert result.advisory_state == "review_required"
+
+
+def test_future_known_session_revision_does_not_supply_price_freshness() -> None:
+    item = _input()
+    future = item.sessions[0].model_copy(update={
+        "revision": item.sessions[0].revision.model_copy(update={
+            "known_at": datetime(2026, 9, 26, tzinfo=timezone.utc),
+        }),
+    })
+    result = compose_growth_advice(GrowthAdviceInput(
+        item.company_id, item.symbol, item.core, item.risk, item.risk_snapshot,
+        item.analysis_time, item.latest_report_known_at, item.latest_report_published,
+        item.prices, (future,), item.event_monitoring,
+    ))
+    assert _guard(result, "actual_traded_price_freshness").status == "unknown"
 
 
 def test_known_failed_guard_wins_over_unknown_required_guards() -> None:

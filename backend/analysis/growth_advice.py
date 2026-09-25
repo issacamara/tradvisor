@@ -196,10 +196,24 @@ def _price_guard(
     if len(candidates) != 1:
         return _guard("actual_traded_price_freshness", "unknown", evidence=refs)
     price = candidates[0]
-    session_by_date = {session.session_date: session for session in sessions}
-    current_sessions = tuple(
+    contemporaneous_sessions = tuple(
         session for session in sessions
-        if session.session_date <= analysis_time.date() and session.revision.known_at <= analysis_time
+        if session.revision.known_at <= analysis_time
+    )
+    session_by_date: dict[date, NormalizedSession] = {}
+    for session in contemporaneous_sessions:
+        previous = session_by_date.get(session.session_date)
+        if previous is None or (
+            session.revision.known_at,
+            session.revision.revision,
+        ) > (
+            previous.revision.known_at,
+            previous.revision.revision,
+        ):
+            session_by_date[session.session_date] = session
+    current_sessions = tuple(
+        session for session in session_by_date.values()
+        if session.session_date <= analysis_time.date()
     )
     current = max(current_sessions, key=lambda session: session.session_date) if current_sessions else None
     traded = session_by_date.get(price.session_date)
@@ -226,20 +240,54 @@ def _price_guard(
 
 
 def _suspension_guard(
-    sessions: tuple[NormalizedSession, ...], analysis_time: datetime
+    symbol: str,
+    prices: tuple[NormalizedPrice, ...],
+    sessions: tuple[NormalizedSession, ...],
+    analysis_time: datetime,
 ) -> GrowthGuard:
-    known_sessions = tuple(
+    contemporaneous_sessions = tuple(
         session for session in sessions
-        if session.session_date <= analysis_time.date() and session.revision.known_at <= analysis_time
+        if session.session_date <= analysis_time.date()
+        and session.revision.known_at <= analysis_time
     )
-    if not known_sessions:
+    current_by_date: dict[date, NormalizedSession] = {}
+    for session in contemporaneous_sessions:
+        previous = current_by_date.get(session.session_date)
+        if previous is None or (
+            session.revision.known_at,
+            session.revision.revision,
+        ) > (
+            previous.revision.known_at,
+            previous.revision.revision,
+        ):
+            current_by_date[session.session_date] = session
+    if not current_by_date:
         return _guard("suspension_status", "unknown")
-    current = max(known_sessions, key=lambda session: session.session_date)
+    current = max(current_by_date.values(), key=lambda session: session.session_date)
     refs = tuple(item.source_id for item in current.source_evidence)
     if current.status == "suspended":
         return _guard("suspension_status", "fail", current.session_date, evidence=refs)
     if current.status == "unknown":
         return _guard("suspension_status", "unknown", current.session_date, evidence=refs)
+    current_prices = tuple(
+        price for price in prices
+        if price.symbol == symbol
+        and price.session_date == current.session_date
+        and price.revision.known_at <= analysis_time
+    )
+    if not current_prices:
+        return _guard("suspension_status", "unknown", current.session_date, evidence=refs)
+    latest_price = max(
+        current_prices,
+        key=lambda price: (price.revision.known_at, price.revision.revision),
+    )
+    price_refs = refs + tuple(
+        item.source_id for item in latest_price.suspension_evidence
+    )
+    if latest_price.suspension_status == "suspended":
+        return _guard("suspension_status", "fail", current.session_date, evidence=price_refs)
+    if latest_price.suspension_status == "unknown":
+        return _guard("suspension_status", "unknown", current.session_date, evidence=price_refs)
     return _guard("suspension_status", "pass", current.session_date, evidence=refs)
 
 
@@ -358,7 +406,9 @@ def compose_growth_advice(
         tuple(price for price in item.prices if price.symbol == item.symbol),
         item.sessions, item.analysis_time, selected_rules.price_max_age_sessions,
     ))
-    guards.append(_suspension_guard(item.sessions, item.analysis_time))
+    guards.append(_suspension_guard(
+        item.symbol, item.prices, item.sessions, item.analysis_time,
+    ))
     failed = any(guard.status == "fail" for guard in guards)
     unknown = any(guard.status == "unknown" for guard in guards)
     if failed:
