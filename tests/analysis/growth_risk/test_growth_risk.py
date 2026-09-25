@@ -47,6 +47,7 @@ def _snapshot(
     cap_basis: str | None = "matched-basis",
     balance: NonFinancialBalanceSheet | None = None,
     regulations: tuple[RegulatoryCoverage, ...] = (),
+    regulatory_constraints_complete: bool = False,
 ) -> GrowthRiskSnapshot:
     return GrowthRiskSnapshot(
         "company-1", category, jurisdiction, PERIOD_END, "consolidated", "matched-basis",
@@ -54,6 +55,7 @@ def _snapshot(
         None if equity is None else Decimal(equity),
         None if market_cap is None else Decimal(market_cap), cap_basis,
         ("financial-source", "capital-source"),
+        regulatory_constraints_complete,
         _balance() if balance is None and category == "non_financial" else balance,
         regulations,
     )
@@ -132,7 +134,9 @@ def test_financial_institution_uses_minimum_matched_regulatory_coverage() -> Non
         _coverage("1.4", source="capital-a"),
         _coverage("1.25", source="capital-b"),
     )
-    bank = calculate_growth_risk(_snapshot(category="bank", regulations=coverage))
+    bank = calculate_growth_risk(_snapshot(
+        category="bank", regulations=coverage, regulatory_constraints_complete=True
+    ))
     assert bank.sector_resilience.points == Decimal("10")
     assert dict(bank.sector_resilience.details)["minimum_regulatory_coverage"] == Decimal("1.25")
     assert "industrial" not in bank.sector_resilience.reason_codes
@@ -143,7 +147,9 @@ def test_regulatory_coverage_clamps_at_requirement_and_full_credit(
     capital: str, expected: str
 ) -> None:
     coverage = _coverage(capital)
-    result = calculate_growth_risk(_snapshot(category="bank", regulations=(coverage,))).sector_resilience
+    result = calculate_growth_risk(_snapshot(
+        category="bank", regulations=(coverage,), regulatory_constraints_complete=True
+    )).sector_resilience
     assert result.points == Decimal(expected)
 
 
@@ -157,7 +163,9 @@ def test_missing_regulatory_constraints_do_not_fall_back_to_industrial_formula(c
 
 def test_zero_required_capital_is_unavailable_not_infinite_coverage() -> None:
     invalid = _coverage("10", required="0")
-    result = calculate_growth_risk(_snapshot(category="insurer", regulations=(invalid,)))
+    result = calculate_growth_risk(_snapshot(
+        category="insurer", regulations=(invalid,), regulatory_constraints_complete=True
+    ))
     assert result.sector_resilience.status == "unavailable"
     assert result.sector_resilience.reason_codes == ("regulatory_constraints_invalid",)
 
@@ -174,7 +182,9 @@ def test_zero_required_capital_is_unavailable_not_infinite_coverage() -> None:
 def test_regulatory_coverage_requires_matching_jurisdiction_and_scope(
     coverage: RegulatoryCoverage,
 ) -> None:
-    result = calculate_growth_risk(_snapshot(category="bank", regulations=(coverage,)))
+    result = calculate_growth_risk(_snapshot(
+        category="bank", regulations=(coverage,), regulatory_constraints_complete=True
+    ))
     assert result.sector_resilience.status == "unavailable"
     assert result.sector_resilience.reason_codes == ("regulatory_constraints_unmatched",)
 
@@ -186,12 +196,24 @@ def test_regulatory_coverage_requires_matching_jurisdiction_and_scope(
 )
 def test_future_or_expired_regulatory_coverage_is_not_used(effective_date: date) -> None:
     coverage = _coverage("1.5", effective_date=effective_date)
-    result = calculate_growth_risk(_snapshot(category="insurer", regulations=(coverage,)))
+    result = calculate_growth_risk(_snapshot(
+        category="insurer", regulations=(coverage,), regulatory_constraints_complete=True
+    ))
     assert result.sector_resilience.status == "unavailable"
     assert result.sector_resilience.points is None
     assert result.sector_resilience.reason_codes == (
         "regulatory_constraints_not_applicable_as_of_period_end",
     )
+
+
+def test_partial_regulatory_set_is_unavailable_even_when_supplied_rows_match() -> None:
+    partial = (_coverage("1.4", source="capital-a"),)
+    result = calculate_growth_risk(_snapshot(
+        category="bank", regulations=partial, regulatory_constraints_complete=False
+    ))
+    assert result.sector_resilience.status == "unavailable"
+    assert result.sector_resilience.points is None
+    assert result.sector_resilience.reason_codes == ("regulatory_constraints_incomplete",)
 
 
 def test_unmatched_inputs_are_unavailable_and_do_not_hide_independent_valuation() -> None:

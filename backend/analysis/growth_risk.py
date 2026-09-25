@@ -62,6 +62,7 @@ class GrowthRiskSnapshot:
     market_capitalization: Decimal | None
     capitalization_basis_id: str | None
     evidence_refs: tuple[str, ...]
+    regulatory_constraints_complete: bool
     balance_sheet: NonFinancialBalanceSheet | None = None
     regulatory_coverages: tuple[RegulatoryCoverage, ...] = ()
 
@@ -146,6 +147,8 @@ def _financial_institution_resilience(snapshot: GrowthRiskSnapshot) -> TermResul
     ))
     if not coverages:
         return _unavailable("regulatory_constraints_missing", refs)
+    if not snapshot.regulatory_constraints_complete:
+        return _unavailable("regulatory_constraints_incomplete", refs)
     if any(
         item.company_id != snapshot.company_id
         or item.basis_id != snapshot.basis_id
