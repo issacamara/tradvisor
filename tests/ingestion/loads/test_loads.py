@@ -694,6 +694,8 @@ def test_process_financial_pdfs_commits_current_revision_then_archives(
     helper, client = loader
     blob = _FakePdfBlob(b"first annual report")
     processor = _load_financial_processor(monkeypatch, helper, blob)
+    monkeypatch.setattr(processor, "annual_financial_revision_row", lambda *a, **k: {"fixture": True})
+    monkeypatch.setattr(processor, "persist_annual_financial_revision", lambda *a, **k: None)
     parsed = {
         "revenue": 500,
         "net_income": 100,
@@ -729,6 +731,8 @@ def test_process_financial_pdfs_retries_archive_without_mutating_revision(
     helper, client = loader
     blob = _FakePdfBlob(b"retryable annual report")
     processor = _load_financial_processor(monkeypatch, helper, blob)
+    monkeypatch.setattr(processor, "annual_financial_revision_row", lambda *a, **k: {"fixture": True})
+    monkeypatch.setattr(processor, "persist_annual_financial_revision", lambda *a, **k: None)
     parsed_results = iter(
         [
             {

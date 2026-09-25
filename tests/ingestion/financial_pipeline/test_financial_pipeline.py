@@ -183,6 +183,7 @@ def adapter_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     for name in (
         "get_financial_report_revision",
         "upsert_financial_report_and_archive",
+        "upsert_into_bigquery",
         "get_project_number",
     ):
         setattr(helper, name, lambda *args, **kwargs: None)
@@ -459,11 +460,97 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     fiscal_year = datetime.now().year
     result = {
         "fiscal_year": fiscal_year,
+        "financial_category": "non_financial",
         "revenue": 500,
+        "pnb": 500,
         "net_income": 100,
         "total_debt": 80,
         "cash_and_cash_equivalents": 40,
         "total_equity": 200,
+        "annual_report": {
+            "period": {
+                "fiscal_year": fiscal_year,
+                "start": f"{fiscal_year - 1}-07-01",
+                "end": f"{fiscal_year}-06-30",
+                "full_year": True,
+            },
+            "publication": {
+                "published_at": f"{fiscal_year}-07-15T12:00:00Z",
+                "evidenced": True,
+            },
+            "currency": "XOF",
+            "report_scope": "consolidated",
+            "accounting_basis": "SYSCOHADA",
+            "financial_category": "non_financial",
+            "revenue": {
+                "value": "500",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "ordinary_owner_earnings": {
+                "value": "-2.5",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "earnings_basis": "ordinary_owner",
+            "earnings_scope": "consolidated",
+            "equity": {
+                "value": "20",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+            },
+            "equity_basis": "ordinary_owner",
+            "equity_scope": "consolidated",
+            "opening_equity": {
+                "value": "15",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "date": f"{fiscal_year - 1}-06-30",
+                "basis": "ordinary_owner",
+                "scope": "consolidated",
+            },
+            "interest_bearing_debt": {
+                "value": "3",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
+            "unrestricted_cash": {
+                "value": "4",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+                "restricted": False,
+            },
+            "current_assets": {
+                "value": "5",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
+            "current_liabilities": {
+                "value": "6",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "scope": "consolidated",
+            },
+        },
     }
     provider_calls: list[dict[str, object]] = []
 
@@ -496,6 +583,20 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     helper = _load_module(SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
     insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
+    canonical_rows: list[dict[str, object]] = []
+    failed_attempt_rows: list[dict[str, object]] = []
+    fail_canonical_write = True
+
+    def persist_canonical(rows, project_id):
+        nonlocal fail_canonical_write
+        batch = rows if isinstance(rows, list) else [rows]
+        if fail_canonical_write:
+            fail_canonical_write = False
+            failed_attempt_rows.extend(batch)
+            raise RuntimeError("fixture canonical write failure")
+        canonical_rows.extend(batch)
+
+    monkeypatch.setattr(insert, "persist_annual_financial_revision", persist_canonical)
     monkeypatch.setattr(
         insert,
         "extract_text_from_pdf",
@@ -526,7 +627,20 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
         "document_link": "https://fixture.invalid/existing.pdf",
     }]
 
+    with pytest.raises(RuntimeError, match="fixture canonical write failure"):
+        scraper.scrape_financials("fixture://source", "fixture-key")
+
+    assert bigquery_client.tables[current_table] == [{
+        "symbol": "XYZ",
+        "fiscal_year": fiscal_year,
+        "announcement_date": f"{fiscal_year}-01-01",
+        "document_link": "https://fixture.invalid/existing.pdf",
+    }]
+    assert bigquery_client.tables.get(revision_table, []) == []
+
     scraper.scrape_financials("fixture://source", "fixture-key")
+    assert any(row.get("symbol") == "ABC" for row in bigquery_client.tables[current_table])
+    assert len(bigquery_client.tables[revision_table]) == 1
     scraper.scrape_financials("fixture://source", "fixture-key")
 
     assert len(provider_calls) == 1
@@ -537,10 +651,40 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     revisions = bigquery_client.tables[revision_table]
     digest = hashlib.sha256(pdf).hexdigest()
     assert len(current) == 1
-    assert {key: current[0][key] for key in result if key != "fiscal_year"} == {
-        key: value for key, value in result.items() if key != "fiscal_year"
-    }
+    assert current[0]["revenue"] == result["revenue"]
+    assert current[0]["net_income"] == result["net_income"]
+    assert current[0]["total_debt"] == result["total_debt"]
     assert current[0]["fiscal_year"] == fiscal_year
+    assert len(failed_attempt_rows) == 1
+    assert len(canonical_rows) == 2
+    assert failed_attempt_rows[0] == canonical_rows[0]
+    assert canonical_rows[1] == canonical_rows[0]
+    canonical = canonical_rows[0]
+    assert canonical["revenue"] == 500_000_000
+    assert canonical["ordinary_owner_earnings"] == -2_500_000
+    assert canonical["equity"] == 20_000_000
+    assert canonical["opening_equity"] == 15_000_000
+    assert canonical["opening_equity_date"] == f"{fiscal_year - 1}-06-30"
+    assert canonical["accounting_basis"] == "SYSCOHADA"
+    assert canonical["interest_bearing_debt"] == 3_000_000
+    assert canonical["unrestricted_cash"] == 4_000_000
+    assert canonical["current_assets"] == 5_000_000
+    assert canonical["current_liabilities"] == 6_000_000
+    assert canonical["report_scope"] == "consolidated"
+    assert canonical["publication_status"] == "published"
+    assert canonical["source_published_at"] == f"{fiscal_year}-07-15 12:00:00"
+    datetime.strptime(canonical["collected_at"], "%Y-%m-%d %H:%M:%S")
+    missing_field_result = json.loads(json.dumps(result))
+    del missing_field_result["annual_report"]["current_liabilities"]
+    missing_field_row = insert.annual_financial_revision_row(
+        missing_field_result,
+        company_id="ABC",
+        source_ref=announcement["url"],
+        source_revision_id=digest,
+        collected_at="2026-09-25T00:00:00Z",
+    )
+    assert missing_field_row["current_liabilities"] is None
+    assert "missing_current_liabilities" in missing_field_row["reason_codes"]
     assert len(revisions) == 1
     assert revisions[0]["document_revision"] == digest
     assert revisions[0]["document_link"] == announcement["url"]
@@ -642,6 +786,34 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
         "cash_and_cash_equivalents": 40,
         "total_equity": 200,
     }
+    annual_result = dict(result)
+    annual_result["annual_report"] = {
+        "period": {"fiscal_year": 2025, "start": "2024-01-01", "end": "2024-12-31", "full_year": True},
+        "publication": {"published_at": "2025-03-01T00:00:00Z", "evidenced": True},
+        "currency": "XOF",
+        "report_scope": "standalone",
+        "accounting_basis": "SYSCOHADA",
+        "financial_category": "non_financial",
+        "revenue": {"value": "500", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "ordinary_owner_earnings": {"value": "100", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "earnings_basis": "ordinary_owner",
+        "earnings_scope": "standalone",
+        "equity": {"value": "200", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True},
+        "equity_basis": "ordinary_owner",
+        "equity_scope": "standalone",
+        "opening_equity": {"value": "150", "currency": "XOF", "unit": "XOF", "scale_to_xof": "1", "evidenced": True, "date": "2023-12-31", "basis": "ordinary_owner", "scope": "standalone"},
+    }
+    monkeypatch.setattr(
+        insert,
+        "get_financial_report_revision",
+        lambda *args: dict(result, net_income=90),
+    )
+    annual_persisted: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        insert,
+        "persist_annual_financial_revision",
+        lambda row, project_id: annual_persisted.append(row),
+    )
     extraction_calls: list[bytes] = []
 
     def extract_fixture(content, api_key=None, *, evidence_callback=None, **kwargs):
@@ -651,9 +823,9 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
                 "model": "fixture/model-v1",
                 "prompt": "fixture prompt",
                 "response": {"id": "fixture-response"},
-                "result": result,
+                "result": annual_result,
             })
-        return result
+        return annual_result
 
     monkeypatch.setattr(insert, "extract_financials_from_pdf", extract_fixture)
     init = _load_module(SCRIPTS / "scrape_financials_init.py", "scrape_financials_init")
@@ -684,6 +856,11 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     assert len(current) == 1
     assert {key: current[0][key] for key in result} == result
     assert len(revisions) == 1
+    assert len(annual_persisted) == 1
+    assert annual_persisted[0]["ordinary_owner_earnings"] == 100
+    assert annual_persisted[0]["accounting_basis"] == "SYSCOHADA"
+    assert annual_persisted[0]["opening_equity_date"] == "2023-12-31"
+    assert current[0]["net_income"] == 100
     assert revisions[0]["document_revision"] == digest
     assert revisions[0]["document_link"] == (
         f"gs://archive-123/financial_report_revisions/ABC/2025/{digest}.pdf"
@@ -697,6 +874,7 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     assert artifact["model"] == "fixture/model-v1"
     assert artifact["prompt"] == "fixture prompt"
     assert artifact["response"] == {"id": "fixture-response"}
+    assert artifact["result"] == annual_result
     assert storage_client.bucket("archive-123").blob(
         f"financial_report_revisions/ABC/2025/{digest}.pdf"
     ).download_as_bytes() == pdf

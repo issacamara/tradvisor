@@ -42,6 +42,14 @@ def test_annual_financial_contract_preserves_period_scope_and_source_revisions()
     )
     assert fields["ordinary_owner_earnings"].field_type == "NUMERIC"
     assert fields["opening_equity"].field_type == "NUMERIC"
+    assert (fields["accounting_basis"].field_type, fields["accounting_basis"].mode) == (
+        "STRING",
+        "NULLABLE",
+    )
+    assert (
+        fields["opening_equity_date"].field_type,
+        fields["opening_equity_date"].mode,
+    ) == ("DATE", "NULLABLE")
     assert {
         name: (fields[name].field_type, fields[name].mode)
         for name in non_financial_amount_fields
@@ -52,6 +60,8 @@ def test_annual_financial_contract_preserves_period_scope_and_source_revisions()
         "ordinary_owner_earnings",
         "equity",
         "opening_equity",
+        "opening_equity_date",
+        "accounting_basis",
         "publication_status",
         "reason_codes",
         "source_revision_id",
