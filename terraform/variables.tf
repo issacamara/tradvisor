@@ -16,6 +16,27 @@ variable "functions" {
   "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
 }
 
+variable "function_runtimes" {
+  description = "Deployed runtime preserved for each legacy Gen 2 function"
+  type        = map(string)
+  default = {
+    scrape_shares          = "python311"
+    scrape_bonds           = "python39"
+    scrape_dividends       = "python311"
+    scrape_capitalizations = "python39"
+    insert_shares          = "python311"
+    insert_bonds           = "python39"
+    insert_dividends       = "python311"
+    insert_capitalizations = "python39"
+  }
+}
+
+variable "manage_legacy_source_objects" {
+  description = "Whether Terraform manages legacy function source archives and storage objects"
+  type        = bool
+  default     = false
+}
+
 variable "apis" {
   description = "List of apis"
   type        = list(string)
@@ -36,4 +57,34 @@ variable "jobs" {
     job3 = { name = "dividends", schedule = "0 20 1 * *" }
     job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
   }
+}
+
+variable "manage_legacy_workflows" {
+  description = "Whether Terraform owns the pre-existing legacy workflows"
+  type        = bool
+  default     = false
+}
+
+variable "manage_legacy_schedules" {
+  description = "Whether Terraform owns pre-existing legacy schedules; enabling requires an explicitly approved ownership migration"
+  type        = bool
+  default     = false
+}
+
+variable "manage_legacy_project_services" {
+  description = "Whether Terraform owns pre-existing project service enablement; enabling requires an explicitly approved ownership migration"
+  type        = bool
+  default     = false
+}
+
+variable "manage_legacy_bigquery_datasets" {
+  description = "Whether Terraform owns pre-existing BigQuery datasets; enabling requires an explicitly approved ownership migration"
+  type        = bool
+  default     = false
+}
+
+variable "manage_legacy_service_account_credentials" {
+  description = "Whether Terraform owns pre-existing service-account credentials and secret resources; enabling requires an explicitly approved ownership migration"
+  type        = bool
+  default     = false
 }

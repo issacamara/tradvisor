@@ -10,11 +10,13 @@ terraform {
 }
 
 provider "google" {
-  project = var.project_id
-  region  = var.region
+  project                         = var.project_id
+  region                          = var.region
+  add_terraform_attribution_label = false
 }
 
 resource "google_bigquery_dataset" "stocks" {
+  count                      = var.manage_legacy_bigquery_datasets ? 1 : 0
   dataset_id                 = "stocks"
   location                   = var.region
   delete_contents_on_destroy = false
@@ -27,7 +29,7 @@ resource "google_bigquery_dataset" "stocks" {
 
 resource "google_project_service" "apis" {
   project                    = var.project_id
-  for_each                   = toset(var.apis)
+  for_each                   = var.manage_legacy_project_services ? toset(var.apis) : toset([])
   service                    = each.key
   disable_dependent_services = false
   disable_on_destroy         = false

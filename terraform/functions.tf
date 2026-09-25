@@ -1,17 +1,16 @@
 resource "google_cloudfunctions2_function" "functions" {
-  depends_on = [google_project_service.apis, google_storage_bucket_object.src-code,
-  data.google_project.project]
-  for_each = toset(var.functions)
-  name     = "${each.key}_function"
-  location = var.region
+  depends_on = [google_project_service.apis, data.google_project.project]
+  for_each   = toset(var.functions)
+  name       = "${each.key}_function"
+  location   = var.region
   build_config {
     #     runtime     = "python39"
-    runtime     = "python39"
+    runtime     = var.function_runtimes[each.key]
     entry_point = "entry_point" # Set the entry point
     source {
       storage_source {
         bucket = google_storage_bucket.bucket.name
-        object = google_storage_bucket_object.src-code[each.key].name
+        object = "${each.key}.zip"
       }
     }
   }
@@ -23,6 +22,9 @@ resource "google_cloudfunctions2_function" "functions" {
   }
 
   lifecycle {
+    # Existing Gen 2 functions retain their deployed source until a separately
+    # approved deployment migration takes ownership of source artifacts.
+    ignore_changes  = [build_config[0].source]
     prevent_destroy = true
   }
 }
@@ -30,7 +32,7 @@ resource "google_cloudfunctions2_function" "functions" {
 
 resource "google_workflows_workflow" "workflows" {
   depends_on      = [google_cloudfunctions2_function.functions, google_project_service.apis]
-  count           = length(var.functions) / 2
+  count           = var.manage_legacy_workflows ? length(var.functions) / 2 : 0
   name            = "${split("_", var.functions[count.index])[1]}-wf"
   region          = var.region
   description     = "A workflow to run ${var.functions[count.index]} and ${var.functions[count.index + 4]} sequentially"
@@ -64,7 +66,7 @@ EOF
 resource "google_cloud_scheduler_job" "jobs" {
   depends_on = [google_workflows_workflow.workflows, google_project_service.apis]
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
-  for_each    = var.jobs
+  for_each    = var.manage_legacy_schedules ? var.jobs : {}
   name        = "${each.value.name}-job"
   description = "Daily trigger for ${each.value.name}"
   schedule    = each.value.schedule
