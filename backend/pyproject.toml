@@ -15,7 +15,7 @@ type = ["mypy==1.15.0"]
 
 [tool.setuptools]
 package-dir = { backend = "." }
-packages = ["backend", "backend.analysis", "backend.contracts", "backend.paper"]
+packages = ["backend", "backend.analysis", "backend.contracts", "backend.paper", "backend.store"]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
