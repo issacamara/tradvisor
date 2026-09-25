@@ -11,7 +11,8 @@ from typing import Literal
 from backend.analysis.atr import AtrSeries
 from backend.analysis.ema import EmaSeries
 from backend.analysis.inputs import AnalyticalInputSnapshot
-from backend.analysis.liquidity import CurrentTradeGate, LiquidityResult
+from backend.analysis.liquidity import CurrentTradeGate as LiquidityCurrentTradeGate
+from backend.analysis.liquidity import LiquidityResult
 from backend.analysis.rsi import RsiSeries
 
 GuardStatus = Literal["pass", "fail", "unknown"]
@@ -37,6 +38,33 @@ class SwingRules:
     liquidity_window_sessions: int
     minimum_median_xof: Decimal
     minimum_traded_sessions: int
+
+
+@dataclass(frozen=True)
+class CurrentTradeGate:
+    """Current-trade evidence bound to the snapshot/session it validates."""
+
+    input_snapshot_id: str
+    session_id: str
+    status: Literal["pass", "fail", "unknown"]
+    evidence_refs: tuple[str, ...]
+    reason_codes: tuple[str, ...]
+
+    @classmethod
+    def from_liquidity_gate(
+        cls,
+        gate: LiquidityCurrentTradeGate,
+        *,
+        input_snapshot_id: str,
+        session_id: str,
+    ) -> "CurrentTradeGate":
+        return cls(
+            input_snapshot_id,
+            session_id,
+            gate.status,
+            tuple(map(str, gate.evidence_refs)),
+            gate.reason_codes,
+        )
 
 
 @dataclass(frozen=True)
@@ -167,6 +195,22 @@ def evaluate_swing(
         raise ValueError("strategy requires the approved EMA20 and EMA50 series")
 
     current = snapshot.sessions[-1]
+    if item.current_trade.input_snapshot_id != str(snapshot.snapshot_id):
+        return _unavailable(
+            item,
+            config,
+            "current_trade_snapshot_mismatch",
+            extra_evidence_refs=item.current_trade.evidence_refs,
+            extra_reason_codes=item.current_trade.reason_codes,
+        )
+    if item.current_trade.session_id != str(current.session_id):
+        return _unavailable(
+            item,
+            config,
+            "current_trade_session_mismatch",
+            extra_evidence_refs=item.current_trade.evidence_refs,
+            extra_reason_codes=item.current_trade.reason_codes,
+        )
     selected = []
     for points in (item.ema20.points, item.ema50.points, item.rsi14.points, item.atr14.points):
         matching = [point for point in points if point.session_id == current.session_id]
@@ -290,13 +334,21 @@ def evaluate_swing(
     )
 
 
-def _unavailable(item: SwingStrategyInput, rules: SwingRules, reason: str) -> SwingResult:
+def _unavailable(
+    item: SwingStrategyInput,
+    rules: SwingRules,
+    reason: str,
+    *,
+    extra_evidence_refs: tuple[str, ...] = (),
+    extra_reason_codes: tuple[str, ...] = (),
+) -> SwingResult:
     snapshot_id = str(item.snapshot.snapshot_id)
-    evidence = (snapshot_id,)
+    evidence = tuple(dict.fromkeys((snapshot_id, *extra_evidence_refs)))
+    reasons = tuple(dict.fromkeys((reason, *extra_reason_codes)))
     return SwingResult(
         rules.strategy_id, rules.version, rules.version, snapshot_id,
         str(item.snapshot.sessions[-1].session_id) if item.snapshot.sessions else "",
         "unavailable", None, rules.buy_minimum,
         (_guard("required_indicators", "unknown", evidence, reason),),
-        (reason,), evidence, (),
+        reasons, evidence, (),
     )

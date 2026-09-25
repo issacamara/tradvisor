@@ -11,9 +11,10 @@ import pytest
 from backend.analysis.atr import AtrPoint, AtrSeries
 from backend.analysis.ema import EmaPoint, EmaSeries
 from backend.analysis.inputs import AnalyticalInputSnapshot, SessionInput
-from backend.analysis.liquidity import CurrentTradeGate, LiquidityResult
+from backend.analysis.liquidity import LiquidityResult
 from backend.analysis.rsi import RsiPoint, RsiSeries
 from backend.analysis.swing import (
+    CurrentTradeGate,
     SwingStrategyInput,
     _extension_contribution,
     _rsi_contribution,
@@ -69,8 +70,10 @@ def strategy_input(
         liquidity, tuple(f"liq-s-{i}" for i in range(20)), ("turnover-source",),
         () if liquidity else ("median_below_threshold",),
     )
-    trade_gate = CurrentTradeGate(current_trade, ("current-price-source",),
-                                  () if current_trade == "pass" else ("current_trade_unknown",))
+    trade_gate = CurrentTradeGate(
+        "snapshot-v1", "s-5", current_trade, ("current-price-source",),
+        () if current_trade == "pass" else ("current_trade_unknown",),
+    )
     return SwingStrategyInput(
         snapshot, ema20, ema50, rsi_series, atr_series, liquidity_result, trade_gate
     )
@@ -169,3 +172,30 @@ def test_result_retains_immutable_rule_and_evidence_references() -> None:
     assert result.indicator_rule_refs == ("ema-v1", "rsi-v1", "atr-v1")
     with pytest.raises((AttributeError, TypeError)):
         result.rule_version = "changed"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    ("snapshot_id", "session_id", "reason"),
+    [
+        ("snapshot-other", "s-5", "current_trade_snapshot_mismatch"),
+        ("snapshot-v1", "s-4", "current_trade_session_mismatch"),
+    ],
+)
+def test_passing_gate_from_another_snapshot_or_session_cannot_authorize_buy(
+    snapshot_id: str, session_id: str, reason: str
+) -> None:
+    item = strategy_input()
+    mismatched_gate = CurrentTradeGate(
+        snapshot_id, session_id, "pass", ("current-price-source",), ()
+    )
+    result = evaluate_swing(
+        SwingStrategyInput(
+            item.snapshot, item.ema20, item.ema50, item.rsi14, item.atr14,
+            item.liquidity, mismatched_gate,
+        )
+    )
+
+    assert result.decision == "unavailable"
+    assert result.score is None
+    assert reason in result.reason_codes
+    assert "current-price-source" in result.evidence_refs
