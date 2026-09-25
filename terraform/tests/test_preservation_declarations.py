@@ -13,6 +13,81 @@ REPOSITORY_ROOT = TERRAFORM_DIR.parent
 
 
 class PreservationDeclarationTests(unittest.TestCase):
+    def test_remaining_legacy_ownership_is_opt_in(self) -> None:
+        variables = (TERRAFORM_DIR / "variables.tf").read_text()
+        main = (TERRAFORM_DIR / "main.tf").read_text()
+        iam = (TERRAFORM_DIR / "iam.tf").read_text()
+        functions = (TERRAFORM_DIR / "functions.tf").read_text()
+        outputs = (TERRAFORM_DIR / "outputs.tf").read_text()
+
+        ownership_controls = {
+            "manage_legacy_schedules": functions,
+            "manage_legacy_project_services": main,
+            "manage_legacy_iam_bindings": iam,
+            "manage_legacy_bigquery_datasets": main,
+            "manage_legacy_service_account_credentials": iam,
+        }
+        for control, declaration_file in ownership_controls.items():
+            with self.subTest(control=control):
+                self.assertRegex(
+                    variables,
+                    rf'variable "{control}"\s*\{{[^}}]*default\s*=\s*false',
+                )
+                self.assertIn(f"var.{control}", declaration_file)
+                self.assertIn("explicitly approved ownership migration", variables)
+
+        self.assertIn("var.manage_legacy_schedules ? var.jobs : {}", functions)
+        self.assertIn(
+            "var.manage_legacy_project_services ? toset(var.apis) : toset([])",
+            main,
+        )
+        self.assertIn(
+            "count                      = var.manage_legacy_bigquery_datasets ? 1 : 0",
+            main,
+        )
+        self.assertEqual(
+            iam.count("count      = var.manage_legacy_iam_bindings ? 1 : 0"),
+            13,
+        )
+        self.assertEqual(
+            iam.count(
+                "count              = var.manage_legacy_service_account_credentials ? 1 : 0"
+            )
+            + iam.count(
+                "count     = var.manage_legacy_service_account_credentials ? 1 : 0"
+            )
+            + iam.count(
+                "count       = var.manage_legacy_service_account_credentials ? 1 : 0"
+            ),
+            3,
+        )
+        self.assertIn(
+            "var.manage_legacy_service_account_credentials ? google_service_account_key.tradvisor_sa_key[0].private_key : null",
+            outputs,
+        )
+
+    def test_existing_preservation_controls_remain_default_off(self) -> None:
+        variables = (TERRAFORM_DIR / "variables.tf").read_text()
+        functions = (TERRAFORM_DIR / "functions.tf").read_text()
+
+        for control in (
+            "manage_legacy_source_objects",
+            "manage_legacy_workflows",
+        ):
+            with self.subTest(control=control):
+                self.assertRegex(
+                    variables,
+                    rf'variable "{control}"\s*\{{[^}}]*default\s*=\s*false',
+                )
+        self.assertIn(
+            "var.manage_legacy_source_objects ? toset(var.functions) : toset([])",
+            (TERRAFORM_DIR / "buckets.tf").read_text(),
+        )
+        self.assertIn(
+            "count           = var.manage_legacy_workflows ? length(var.functions) / 2 : 0",
+            functions,
+        )
+
     def test_legacy_source_objects_are_opt_in(self) -> None:
         variables = (TERRAFORM_DIR / "variables.tf").read_text()
         buckets = (TERRAFORM_DIR / "buckets.tf").read_text()
