@@ -147,6 +147,7 @@ def calculate_liquidity(
                     row.trade_status == "traded"
                     and row.close is not None
                     and row.volume is not None
+                    and row.close_basis == "raw"
                     and row.basis == "actual"
                     and row.original_source_date == row.session_date
                 )
@@ -196,7 +197,9 @@ def calculate_liquidity(
     )
 
 
-def evaluate_current_trade_gate(price: NormalizedPrice | None) -> CurrentTradeGate:
+def evaluate_current_trade_gate(
+    price: NormalizedPrice | None, *, expected_session_date: date
+) -> CurrentTradeGate:
     """Evaluate genuine current-session trade and suspension independently."""
 
     if price is None:
@@ -210,17 +213,36 @@ def evaluate_current_trade_gate(price: NormalizedPrice | None) -> CurrentTradeGa
         )
     )
     reasons: list[str] = []
+    if price.session_date != expected_session_date or price.original_source_date != expected_session_date:
+        reasons.append("current_session_date_mismatch")
     if price.trade_status == "unknown":
         reasons.append("current_trade_status_unknown")
     elif price.trade_status == "confirmed_no_trade":
         reasons.append("no_current_trade")
-    elif price.close is None or price.close.micros <= 0:
-        reasons.append("genuine_current_close_missing")
+    else:
+        if price.close is None or price.close.micros <= 0:
+            reasons.append("genuine_current_close_missing")
+        if price.close_basis != "raw":
+            reasons.append("current_close_basis_unverified")
+        if (
+            price.basis != "actual"
+            or price.revision.provenance.basis != "actual"
+        ):
+            reasons.append("current_close_provenance_unverified")
+        if price.validated_available_at is None:
+            reasons.append("current_close_availability_unverified")
     if price.suspension_status == "unknown":
         reasons.append("current_suspension_status_unknown")
     elif price.suspension_status == "suspended":
         reasons.append("current_session_suspended")
     if reasons:
-        unknown = any(reason.endswith("unknown") or reason.endswith("missing") for reason in reasons)
-        return CurrentTradeGate("unknown" if unknown else "fail", evidence, tuple(reasons))
+        failed = any(
+            reason in {
+                "current_session_date_mismatch",
+                "no_current_trade",
+                "current_session_suspended",
+            }
+            for reason in reasons
+        )
+        return CurrentTradeGate("fail" if failed else "unknown", evidence, tuple(reasons))
     return CurrentTradeGate("pass", evidence, ())

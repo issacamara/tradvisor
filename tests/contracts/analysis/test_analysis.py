@@ -64,9 +64,10 @@ def session(revision: Revision) -> object:
 
 
 @pytest.fixture
-def price(revision: Revision) -> object:
+def price(revision: Revision) -> NormalizedPrice:
     return NormalizedPrice(
         symbol="NSI", session_date=date(2026, 9, 22), close=_money("1000"),
+        close_basis="raw",
         high=_money("1050"), low=_money("950"), volume=100,
         trade_status="traded", basis="actual", original_source_date=date(2026, 9, 22),
         price_basis_ref="price-basis-1", validated_available_at=datetime(2026, 9, 22, 15, 2, tzinfo=timezone.utc),
@@ -465,6 +466,23 @@ def test_suspension_and_unknown_price_states_require_source_evidence(revision: R
         revision=revision,
     )
     assert suspended.suspension_evidence[0].source_id == "brvm-source-1"
+
+
+def test_normalized_price_close_basis_is_explicit_and_backward_unknown(price: NormalizedPrice) -> None:
+    assert price.close_basis == "raw"
+    fields = {
+        name: getattr(price, name)
+        for name in NormalizedPrice.model_fields
+        if name != "close_basis"
+    }
+    for close_basis in ("raw", "adjusted", "unknown"):
+        normalized = NormalizedPrice.model_validate(fields | {"close_basis": close_basis})
+        assert normalized.close_basis == close_basis
+        assert "close_basis" not in normalized.model_dump()
+
+    assert NormalizedPrice.model_validate(fields).close_basis == "unknown"
+    with pytest.raises(ValidationError):
+        NormalizedPrice.model_validate(fields | {"close_basis": "split_adjusted_guess"})
 
 
 def test_long_term_results_keep_deferred_scores_distinct_from_missing_growth(

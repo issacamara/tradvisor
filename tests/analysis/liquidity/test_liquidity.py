@@ -26,10 +26,12 @@ def price(
     traded: bool = True,
     turnover: str | None = "5000000",
     close: str | None = "1000",
+    close_basis: Literal["raw", "adjusted", "unknown"] = "raw",
     volume: int | None = 5000,
     price_basis: str = "raw-v1",
     trade_status: Literal["traded", "confirmed_no_trade", "unknown"] | None = None,
     suspension: Literal["not_suspended", "suspended", "unknown"] = "not_suspended",
+    source_basis: Literal["actual", "estimated", "modeled"] = "actual",
 ) -> NormalizedPrice:
     status = trade_status or ("traded" if traded else "confirmed_no_trade")
     source = Provenance(
@@ -39,20 +41,19 @@ def price(
         symbol="NSI",
         session_date=date(2026, 9, day),
         close=None if close is None else money(close),
+        close_basis=close_basis,
         volume=volume,
         trade_status=status,
-        basis="actual",
+        basis=source_basis,
         original_source_date=date(2026, 9, day),
         price_basis_ref=price_basis,
-        validated_available_at=NOW if status == "traded" else None,
+        validated_available_at=NOW if status == "traded" and source_basis == "actual" else None,
         actual_xof_turnover=None if turnover is None else money(turnover),
         liquidity_basis="actual" if turnover is not None else None,
         suspension_status=suspension,
         suspension_evidence=(source,) if suspension != "not_suspended" else (),
         reason_codes=() if status == "traded" else ("no_trade_confirmed",),
-        revision=Revision(
-            revision=1, known_at=NOW, provenance=source
-        ),
+        revision=Revision(revision=1, known_at=NOW, provenance=source),
     )
 
 
@@ -185,14 +186,22 @@ def test_positive_actual_turnover_with_confirmed_no_trade_forbids_fallback() -> 
     assert result.reason_codes == ("actual_turnover_conflicts_with_no_trade",)
 
 
-def test_estimation_rejects_incompatible_adjusted_price_and_volume_basis() -> None:
+def test_estimation_requires_raw_close_and_compatible_volume_basis() -> None:
     prices = list(rows(turnover=None))
-    prices[-1] = price(20, turnover=None, price_basis="adjusted-v2")
+    prices[-1] = price(20, turnover=None, close_basis="adjusted", price_basis="adjusted-v2")
 
     result = calculate_liquidity(snapshot(tuple(prices)), tuple(prices))
 
     assert result.status == "unavailable"
+    assert "estimated_inputs_incomplete" in result.reason_codes
     assert "incompatible_price_basis" in result.reason_codes
+
+    unknown_basis = tuple(
+        price(day, turnover=None, close_basis="unknown") for day in range(1, 21)
+    )
+    result = calculate_liquidity(snapshot(unknown_basis), unknown_basis)
+    assert result.status == "unavailable"
+    assert "estimated_inputs_incomplete" in result.reason_codes
 
 
 def test_current_trade_and_suspension_gate_is_separate_from_window() -> None:
@@ -200,13 +209,28 @@ def test_current_trade_and_suspension_gate_is_separate_from_window() -> None:
     liquidity = calculate_liquidity(snapshot(window), window)
     assert liquidity.eligible is True
 
-    no_trade_gate = evaluate_current_trade_gate(price(21, traded=False, close=None, volume=None))
+    current_date = date(2026, 9, 21)
+    no_trade_gate = evaluate_current_trade_gate(
+        price(21, traded=False, close=None, volume=None), expected_session_date=current_date
+    )
     assert no_trade_gate.status == "fail"
     assert no_trade_gate.reason_codes == ("no_current_trade",)
 
-    suspended_gate = evaluate_current_trade_gate(price(21, suspension="suspended"))
+    suspended_gate = evaluate_current_trade_gate(
+        price(21, suspension="suspended"), expected_session_date=current_date
+    )
     assert suspended_gate.status == "fail"
     assert suspended_gate.reason_codes == ("current_session_suspended",)
 
-    assert evaluate_current_trade_gate(price(21)).status == "pass"
-    assert evaluate_current_trade_gate(None).status == "unknown"
+    assert evaluate_current_trade_gate(price(21), expected_session_date=current_date).status == "pass"
+    wrong_date = evaluate_current_trade_gate(
+        price(20), expected_session_date=current_date
+    )
+    assert wrong_date.status == "fail"
+    assert "current_session_date_mismatch" in wrong_date.reason_codes
+    unverified_close = evaluate_current_trade_gate(
+        price(21, source_basis="estimated"), expected_session_date=current_date
+    )
+    assert unverified_close.status == "unknown"
+    assert "current_close_provenance_unverified" in unverified_close.reason_codes
+    assert evaluate_current_trade_gate(None, expected_session_date=current_date).status == "unknown"
