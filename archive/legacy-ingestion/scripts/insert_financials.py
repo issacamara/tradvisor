@@ -120,6 +120,7 @@ def annual_financial_revision_row(
         "source_observation_id": record.source_ref,
         "source_revision_id": source_revision_id,
         "currency": record.currency,
+        "accounting_basis": record.accounting_basis,
         "original_scale": json.dumps(original_scale, sort_keys=True),
         "revenue": amounts["revenue"].value if amounts["revenue"] else None,
         "ordinary_owner_earnings": (
@@ -130,6 +131,11 @@ def annual_financial_revision_row(
         "equity": amounts["equity"].value if amounts["equity"] else None,
         "opening_equity": (
             amounts["opening_equity"].value if amounts["opening_equity"] else None
+        ),
+        "opening_equity_date": (
+            record.opening_equity_date.isoformat()
+            if record.opening_equity_date is not None
+            else None
         ),
         "interest_bearing_debt": (
             amounts["interest_bearing_debt"].value

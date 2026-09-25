@@ -507,6 +507,16 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
             },
             "equity_basis": "ordinary_owner",
             "equity_scope": "consolidated",
+            "opening_equity": {
+                "value": "15",
+                "currency": "XOF",
+                "unit": "million XOF",
+                "scale_to_xof": "1000000",
+                "evidenced": True,
+                "date": f"{fiscal_year - 1}-06-30",
+                "basis": "ordinary_owner",
+                "scope": "consolidated",
+            },
             "interest_bearing_debt": {
                 "value": "3",
                 "currency": "XOF",
@@ -629,6 +639,9 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     assert bigquery_client.tables.get(revision_table, []) == []
 
     scraper.scrape_financials("fixture://source", "fixture-key")
+    assert any(row.get("symbol") == "ABC" for row in bigquery_client.tables[current_table])
+    assert len(bigquery_client.tables[revision_table]) == 1
+    scraper.scrape_financials("fixture://source", "fixture-key")
 
     assert len(provider_calls) == 1
     current = [
@@ -642,12 +655,17 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     assert current[0]["net_income"] == result["net_income"]
     assert current[0]["total_debt"] == result["total_debt"]
     assert current[0]["fiscal_year"] == fiscal_year
-    assert len(failed_attempt_rows) == len(canonical_rows) == 1
+    assert len(failed_attempt_rows) == 1
+    assert len(canonical_rows) == 2
     assert failed_attempt_rows[0] == canonical_rows[0]
+    assert canonical_rows[1] == canonical_rows[0]
     canonical = canonical_rows[0]
     assert canonical["revenue"] == 500_000_000
     assert canonical["ordinary_owner_earnings"] == -2_500_000
     assert canonical["equity"] == 20_000_000
+    assert canonical["opening_equity"] == 15_000_000
+    assert canonical["opening_equity_date"] == f"{fiscal_year - 1}-06-30"
+    assert canonical["accounting_basis"] == "SYSCOHADA"
     assert canonical["interest_bearing_debt"] == 3_000_000
     assert canonical["unrestricted_cash"] == 4_000_000
     assert canonical["current_assets"] == 5_000_000

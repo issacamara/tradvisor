@@ -2,7 +2,6 @@ from curl_cffi import requests
 import yaml
 import pandas as pd
 from helper import (
-    get_financial_report_revision,
     get_symbols_from_richbourse,
     save_dataframe_as_csv,
     table_exists,
@@ -584,28 +583,18 @@ def scrape_financials(url, openrouter_api_key=None):
                 except (ImportError, AttributeError):
                     artifact_bucket = None
                     artifact = None
-                financial_data = get_financial_report_revision(
-                    symbol,
-                    fiscal_year,
-                    ann['url'],
-                    document_revision,
-                    project_id,
-                )
-                if is_data_incomplete(financial_data):
-                    financial_data = None
                 evidence = []
-                if financial_data is None:
-                    if artifact_bucket is not None:
-                        financial_data = extract_financials_from_pdf(
-                            pdf_content,
-                            openrouter_api_key,
-                            recorded_response=artifact,
-                            evidence_callback=evidence.append,
-                        )
-                    else:
-                        financial_data = extract_financials_from_pdf(
-                            pdf_content, openrouter_api_key
-                        )
+                if artifact_bucket is not None:
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content,
+                        openrouter_api_key,
+                        recorded_response=artifact,
+                        evidence_callback=evidence.append,
+                    )
+                else:
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content, openrouter_api_key
+                    )
                 
                 # CRITICAL: Delete PDF content from memory immediately after processing
                 del pdf_content
@@ -619,7 +608,14 @@ def scrape_financials(url, openrouter_api_key=None):
                     and isinstance(artifact.get("collected_at"), str)
                     else datetime.now(timezone.utc).isoformat(timespec="seconds")
                 )
-                if evidence and artifact_bucket is not None:
+                if (
+                    evidence
+                    and artifact_bucket is not None
+                    and (
+                        not isinstance(artifact, dict)
+                        or not isinstance(artifact.get("collected_at"), str)
+                    )
+                ):
                     shared_adapter.save_extraction_artifact(
                         artifact_bucket,
                         document_revision,
