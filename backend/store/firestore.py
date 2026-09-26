@@ -240,7 +240,7 @@ class FirestoreRestStore(TransactionalStore):
                 {"field": {"fieldPath": field}, "direction": direction.upper() + "ENDING"}
                 for field, direction in order_by
             ],
-            "limit": limit,
+            "limit": limit + 1,
         }
         operators = {
             "==": "EQUAL",
@@ -275,9 +275,10 @@ class FirestoreRestStore(TransactionalStore):
         response = self._request_many(
             "POST", urljoin(self._root, self._documents_root.rstrip("/") + ":runQuery"), body
         )
+        page_results = response[:limit]
         items = tuple(
             decoded
-            for result in response
+            for result in page_results
             for decoded in [
                 self._decode_document(
                     result.get("document", {}),
@@ -290,8 +291,8 @@ class FirestoreRestStore(TransactionalStore):
             if decoded is not None
         )
         next_cursor = None
-        if len(response) == limit and items:
-            last_document = response[-1].get("document", {})
+        if len(response) > limit and items:
+            last_document = page_results[-1].get("document", {})
             last_fields = last_document.get("fields", {})
             ordered_values = []
             for field, _ in order_by:

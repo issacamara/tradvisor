@@ -124,10 +124,11 @@ class FirestoreSdkStore(TransactionalStore):
                     cursor_value = self._client.document(reference_path)
                 cursor_values[field] = cursor_value
             query = query.start_at(cursor_values, before=False)
-        documents = list(query.limit(limit).stream())
+        documents = list(query.limit(limit + 1).stream())
+        page_documents = documents[:limit]
         next_cursor = None
-        if len(documents) == limit and documents:
-            last = documents[-1]
+        if len(documents) > limit and page_documents:
+            last = page_documents[-1]
             data = last.to_dict()
             values: list[dict[str, Any]] = []
             for field, _ in order_by:
@@ -145,7 +146,7 @@ class FirestoreSdkStore(TransactionalStore):
             )
         items = tuple(
             decoded
-            for document in documents
+            for document in page_documents
             for decoded in [self._decode_snapshot(DocumentKey(collection, document.id), document)]
             if decoded is not None
         )
@@ -154,7 +155,10 @@ class FirestoreSdkStore(TransactionalStore):
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey
     ) -> VersionedDocument[BaseModel] | None:
-        snapshot = self._sdk_transaction(transaction).get(self._client.document(key.path))
+        snapshots = self._sdk_transaction(transaction).get(self._client.document(key.path))
+        snapshot = next(iter(snapshots), None)
+        if snapshot is None:
+            return None
         return self._decode_snapshot(key, snapshot)
 
     def put_in_transaction(

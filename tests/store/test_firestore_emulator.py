@@ -299,6 +299,7 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
         ("order-a", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ("order-b", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ("order-c", "g1", datetime(2025, 12, 1, tzinfo=timezone.utc)),
+        ("order-d", "g1", datetime(2025, 11, 1, tzinfo=timezone.utc)),
     )
 
     def seed(transaction: Transaction) -> None:
@@ -337,8 +338,10 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
         cursor=page.next_cursor,
     )
     assert [HistoryRecord.model_validate(item.model_dump()).order_id for item in continuation.items] == [
-        "order-c"
+        "order-c",
+        "order-d",
     ]
+    assert continuation.next_cursor is None
     query = state.query_requests[0]
     assert query["parent"] == (
         "projects/local-project/databases/local-db/documents/"
