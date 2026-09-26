@@ -32,6 +32,7 @@ resource "google_storage_bucket" "data-brvm" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
@@ -45,6 +46,7 @@ resource "google_storage_bucket" "archive-brvm" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
@@ -58,6 +60,7 @@ resource "google_storage_bucket" "bucket" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 resource "google_storage_bucket_object" "src-code" {
@@ -69,6 +72,7 @@ resource "google_storage_bucket_object" "src-code" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 

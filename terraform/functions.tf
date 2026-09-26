@@ -24,8 +24,8 @@ resource "google_cloudfunctions2_function" "functions" {
   lifecycle {
     # Existing Gen 2 functions retain their deployed source until a separately
     # approved deployment migration takes ownership of source artifacts.
-    ignore_changes  = [build_config[0].source]
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
@@ -59,6 +59,7 @@ EOF
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
@@ -90,5 +91,6 @@ resource "google_cloud_scheduler_job" "jobs" {
   # replacement requires its own approved change.
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [description, schedule, time_zone, http_target]
   }
 }
