@@ -138,12 +138,22 @@ resource "google_project_iam_binding" "workflow_executor" {
   }
 }
 
-resource "google_project_iam_member" "workflow_queue_enqueuer" {
-  count      = var.manage_legacy_schedules ? 1 : 0
-  project    = var.project_id
-  role       = "roles/cloudtasks.enqueuer"
-  member     = "serviceAccount:${google_service_account.tradvisor_sa.email}"
-  depends_on = [google_service_account.tradvisor_sa]
+resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer" {
+  for_each = var.manage_legacy_schedules ? google_cloud_tasks_queue.workflow_writers : {}
+  project  = var.project_id
+  location = each.value.location
+  name     = each.value.name
+  role     = "roles/cloudtasks.enqueuer"
+  member   = "serviceAccount:${google_service_account.tradvisor_sa.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "workflow_dispatcher_invoker" {
+  count    = var.manage_legacy_schedules ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_service.workflow_dispatcher[0].location
+  name     = google_cloud_run_v2_service.workflow_dispatcher[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.tradvisor_sa.email}"
 }
 
 

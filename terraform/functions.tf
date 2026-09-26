@@ -91,6 +91,8 @@ resource "google_cloud_tasks_queue" "workflow_writers" {
   lifecycle {
     prevent_destroy = true
   }
+
+  depends_on = [google_cloud_run_v2_service.workflow_dispatcher]
 }
 
 
@@ -111,7 +113,7 @@ resource "google_cloud_scheduler_job" "jobs" {
       task = {
         http_request = {
           http_method = "POST"
-          uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
+          uri         = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
           oauth_token = { service_account_email = google_service_account.tradvisor_sa.email }
         }
       }

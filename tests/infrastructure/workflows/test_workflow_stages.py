@@ -7,6 +7,8 @@ import re
 ROOT = Path(__file__).resolve().parents[3]
 FUNCTIONS = (ROOT / "terraform" / "functions.tf").read_text()
 VARIABLES = (ROOT / "terraform" / "variables.tf").read_text()
+IAM = (ROOT / "terraform" / "iam.tf").read_text()
+RUNTIME = (ROOT / "terraform" / "runtime.tf").read_text()
 
 
 def _workflows() -> list[tuple[str, list[str], list[str], str]]:
@@ -43,6 +45,11 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert 'max_concurrent_dispatches = 1' in FUNCTIONS
     assert 'max_dispatches_per_second = 1' in FUNCTIONS
     assert 'cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks' in FUNCTIONS
+    assert 'google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch' in FUNCTIONS
+    assert 'resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer"' in IAM
+    assert 'resource "google_project_iam_member" "workflow_queue_enqueuer"' not in IAM
+    assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in RUNTIME
+    assert 'INGRESS_TRAFFIC_INTERNAL_ONLY' in RUNTIME
 
 
 def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -> None:
