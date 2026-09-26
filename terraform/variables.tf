@@ -28,7 +28,8 @@ variable "functions" {
   description = "List of function names"
   type        = list(string)
   default = ["scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-  "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
+    "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations",
+  "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
 }
 
 variable "function_runtimes" {
@@ -43,6 +44,10 @@ variable "function_runtimes" {
     insert_bonds           = "python39"
     insert_dividends       = "python311"
     insert_capitalizations = "python39"
+    scrape_financials      = "python311"
+    insert_financials      = "python311"
+    scrape_ratings         = "python311"
+    insert_ratings         = "python311"
   }
 }
 
@@ -79,6 +84,8 @@ variable "jobs" {
     job2 = { name = "bonds", schedule = "0 20 1 * *" }
     job3 = { name = "dividends", schedule = "0 20 1 * *" }
     job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
+    job5 = { name = "financials", schedule = "0 20 1 * *" }
+    job6 = { name = "ratings", schedule = "0 20 1 * *" }
   }
 }
 

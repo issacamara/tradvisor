@@ -30,31 +30,38 @@ resource "google_cloudfunctions2_function" "functions" {
 }
 
 
+locals {
+  workflow_stages = [
+    { source = "shares", functions = ["scrape_shares", "insert_shares"], targets = ["stocks.shares"] },
+    { source = "bonds", functions = ["scrape_bonds", "insert_bonds"], targets = ["stocks.bonds"] },
+    { source = "dividends", functions = ["scrape_dividends", "insert_dividends"], targets = ["stocks.dividends"] },
+    { source = "capitalizations", functions = ["scrape_capitalizations", "insert_capitalizations"], targets = ["stocks.capitalizations"] },
+    { source = "financials", functions = ["scrape_financials", "insert_financials"], targets = ["stocks.financials"] },
+    { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"] },
+  ]
+  paused_schedule_keys = toset(["job5", "job6"])
+}
+
 resource "google_workflows_workflow" "workflows" {
   depends_on      = [google_cloudfunctions2_function.functions, google_project_service.apis]
   count           = var.manage_legacy_workflows ? length(var.functions) / 2 : 0
-  name            = "${split("_", var.functions[count.index])[1]}-wf"
+  name            = "${local.workflow_stages[count.index].source}-wf"
   region          = var.region
-  description     = "A workflow to run ${var.functions[count.index]} and ${var.functions[count.index + 4]} sequentially"
+  description     = "Ordered ${local.workflow_stages[count.index].source} ingestion and persistence stages"
   project         = var.project_id
   service_account = google_service_account.tradvisor_sa.email
   source_contents = <<EOF
 main:
   steps:
-    - ${var.functions[count.index]}:
+%{for function_name in local.workflow_stages[count.index].functions~}
+    - ${function_name}:
         call: http.get
         args:
-          url: ${google_cloudfunctions2_function.functions[var.functions[count.index]].service_config[0].uri}
+          url: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
           auth:
             type: OIDC
-            audience: ${google_cloudfunctions2_function.functions[var.functions[count.index]].service_config[0].uri}
-    - ${var.functions[count.index + 4]}:
-        call: http.get
-        args:
-          url: ${google_cloudfunctions2_function.functions[var.functions[count.index + 4]].service_config[0].uri}
-          auth:
-            type: OIDC
-            audience: ${google_cloudfunctions2_function.functions[var.functions[count.index + 4]].service_config[0].uri}
+            audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+%{endfor~}
 EOF
 
   lifecycle {
@@ -87,10 +94,12 @@ resource "google_cloud_scheduler_job" "jobs" {
     #     }
   }
 
+  paused = contains(local.paused_schedule_keys, each.key)
+
   # Existing jobs, including paused jobs, are preserved. Activation or
   # replacement requires its own approved change.
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [description, schedule, time_zone, http_target]
+    ignore_changes  = [description, schedule, time_zone, http_target, paused]
   }
 }
