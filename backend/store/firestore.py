@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import base64
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from typing import Any, Literal, cast
@@ -19,6 +20,10 @@ from backend.store.transactions import Transaction
 
 class FirestoreConflict(RuntimeError):
     """The Firestore transaction must be retried from a fresh snapshot."""
+
+
+class CursorError(ValueError):
+    """A continuation cursor is malformed or does not match this query."""
 
 
 class _StoredRecord(BaseModel):
@@ -80,6 +85,61 @@ def _python_value(value: Mapping[str, Any]) -> object:
     if "mapValue" in value:
         return {key: _python_value(item) for key, item in value["mapValue"].get("fields", {}).items()}
     raise ValueError("unsupported Firestore value")
+
+
+def _encode_cursor(
+    collection: str,
+    filters: tuple[tuple[str, str, str], ...],
+    order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
+    values: list[dict[str, Any]],
+) -> str:
+    payload = {
+        "v": 1,
+        "collection": collection,
+        "filters": [list(item) for item in filters],
+        "order_by": [list(item) for item in order_by],
+        "values": values,
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).rstrip(b"=").decode("ascii")
+    if len(encoded) > 2048:
+        raise CursorError("continuation cursor exceeds the maximum length")
+    return encoded
+
+
+def _decode_cursor(
+    cursor: str,
+    collection: str,
+    filters: tuple[tuple[str, str, str], ...],
+    order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
+) -> list[dict[str, Any]]:
+    try:
+        if not cursor or len(cursor) > 2048:
+            raise ValueError
+        padded = cursor + "=" * (-len(cursor) % 4)
+        raw = base64.b64decode(padded, altchars=b"-_", validate=True)
+        payload = json.loads(raw)
+        expected_filters = [list(item) for item in filters]
+        expected_order = [list(item) for item in order_by]
+        if (
+            not isinstance(payload, dict)
+            or payload.get("v") != 1
+            or payload.get("collection") != collection
+            or payload.get("filters") != expected_filters
+            or payload.get("order_by") != expected_order
+            or not isinstance(payload.get("values"), list)
+            or len(payload["values"]) != len(order_by)
+        ):
+            raise ValueError
+        values = payload["values"]
+        for value in values:
+            if not isinstance(value, dict) or len(value) != 1:
+                raise ValueError
+            _python_value(value)
+        return cast(list[dict[str, Any]], values)
+    except (TypeError, ValueError, UnicodeError, json.JSONDecodeError) as error:
+        raise CursorError("malformed continuation cursor") from error
 
 
 class FirestoreRestStore(TransactionalStore):
@@ -164,7 +224,9 @@ class FirestoreRestStore(TransactionalStore):
         if field_filters:
             structured["where"] = {"compositeFilter": {"op": "AND", "filters": field_filters}}
         if cursor is not None:
-            structured["startAt"] = {"values": [_firestore_value(cursor)]}
+            structured["startAfter"] = {
+                "values": _decode_cursor(cursor, collection, filters, order_by)
+            }
         body: dict[str, Any] = {
             "parent": self._resource_name(parent),
             "structuredQuery": structured,
@@ -186,7 +248,14 @@ class FirestoreRestStore(TransactionalStore):
             ]
             if decoded is not None
         )
-        return Page(tuple(item.record for item in items), None)
+        next_cursor = None
+        if len(response) == limit and items:
+            last_fields = response[-1].get("document", {}).get("fields", {})
+            ordered_values = [
+                cast(dict[str, Any], last_fields[field]) for field, _ in order_by
+            ]
+            next_cursor = _encode_cursor(collection, filters, order_by, ordered_values)
+        return Page(tuple(item.record for item in items), next_cursor)
 
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey

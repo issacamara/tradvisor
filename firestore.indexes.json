@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "accepted_at", "order": "DESCENDING"},
+        {"fieldPath": "order_id", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

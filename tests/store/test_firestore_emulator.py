@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, cast
 from urllib.parse import parse_qs, unquote
@@ -12,7 +13,7 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel
 
-from backend.store.firestore import FirestoreRestStore
+from backend.store.firestore import CursorError, FirestoreRestStore
 from backend.contracts.paper import PortfolioControl
 from backend.store.repositories import (
     DocumentKey,
@@ -28,6 +29,12 @@ from backend.contracts.scalars import OpaqueIdentifier
 class Record(BaseModel):
     generation: str
     value: int
+
+
+class HistoryRecord(BaseModel):
+    generation: str
+    accepted_at: datetime
+    order_id: str
 
 
 def _control(generation: str | None) -> PortfolioControl:
@@ -100,6 +107,18 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                         key=lambda document: self._field_value(document, field),
                         reverse=ordering["direction"] == "DESCENDING",
                     )
+                start_after = query.get("startAfter")
+                if start_after is not None:
+                    start_values = [
+                        self._field_value({"fields": {"value": value}}, "value")
+                        for value in start_after["values"]
+                    ]
+                    orderings = query.get("orderBy", [])
+                    candidates = [
+                        document
+                        for document in candidates
+                        if self._is_after(document, start_values, orderings)
+                    ]
                 candidates = candidates[: int(query["limit"])]
             self._respond_list(200, [{"document": document} for document in candidates])
             return
@@ -170,6 +189,22 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
             if field_filter["op"] == "EQUAL" and actual != expected:
                 return False
         return True
+
+    @classmethod
+    def _is_after(
+        cls,
+        document: dict[str, object],
+        start_values: list[str | int],
+        orderings: list[dict[str, Any]],
+    ) -> bool:
+        for index, ordering in enumerate(orderings):
+            actual = cls._field_value(document, str(ordering["field"]["fieldPath"]))
+            expected = start_values[index]
+            if actual == expected:
+                continue
+            descending = ordering["direction"] == "DESCENDING"
+            return actual < expected if descending else actual > expected
+        return False
 
 
 @pytest.fixture
@@ -255,20 +290,22 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
     )
     collection = "paper_portfolios/verified-user/generations/g1/orders"
     documents = (
-        ("order-a", "g1", 1),
-        ("order-b", "g1", 2),
-        ("order-c", "g2", 3),
+        ("order-a", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ("order-b", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        ("order-c", "g1", datetime(2025, 12, 1, tzinfo=timezone.utc)),
     )
 
     def seed(transaction: Transaction) -> None:
-        for order_id, generation, value in documents:
+        for order_id, generation, accepted_at in documents:
             store.put_in_transaction(
                 transaction,
                 VersionedDocument(
                     key=DocumentKey(collection, order_id),
                     schema_version=1,
                     state_version=0,
-                    record=Record(generation=generation, value=value),
+                    record=HistoryRecord(
+                        generation=generation, accepted_at=accepted_at, order_id=order_id
+                    ),
                 ),
             )
 
@@ -276,12 +313,26 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
     page = store.page(
         collection,
         filters=(("generation", "==", "g1"),),
-        order_by=(("value", "desc"), ("generation", "asc")),
-        limit=10,
+        order_by=(("accepted_at", "desc"), ("order_id", "desc")),
+        limit=2,
         cursor=None,
     )
 
-    assert [Record.model_validate(item.model_dump()).value for item in page.items] == [2, 1]
+    assert [HistoryRecord.model_validate(item.model_dump()).order_id for item in page.items] == [
+        "order-b",
+        "order-a",
+    ]
+    assert page.next_cursor is not None
+    continuation = store.page(
+        collection,
+        filters=(("generation", "==", "g1"),),
+        order_by=(("accepted_at", "desc"), ("order_id", "desc")),
+        limit=2,
+        cursor=page.next_cursor,
+    )
+    assert [HistoryRecord.model_validate(item.model_dump()).order_id for item in continuation.items] == [
+        "order-c"
+    ]
     query = state.query_requests[0]
     assert query["parent"] == (
         "projects/local-project/databases/local-db/documents/"
@@ -292,6 +343,40 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
         "fieldPath": "generation"
     }
     assert structured["orderBy"] == [
-        {"field": {"fieldPath": "value"}, "direction": "DESCENDING"},
-        {"field": {"fieldPath": "generation"}, "direction": "ASCENDING"},
+        {"field": {"fieldPath": "accepted_at"}, "direction": "DESCENDING"},
+        {"field": {"fieldPath": "order_id"}, "direction": "DESCENDING"},
+    ]
+    continuation_query = state.query_requests[1]["structuredQuery"]
+    assert "startAfter" in continuation_query
+    assert len(continuation_query["startAfter"]["values"]) == 2
+
+
+def test_firestore_rest_adapter_rejects_malformed_cursor(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, _ = firestore_emulator
+    store = FirestoreRestStore(host=emulator_host)
+    with pytest.raises(CursorError, match="malformed"):
+        store.page(
+            "paper_portfolios/u/generations/g1/orders",
+            filters=(("generation", "==", "g1"),),
+            order_by=(("accepted_at", "desc"), ("order_id", "desc")),
+            limit=2,
+            cursor="definitely-not-a-cursor",
+        )
+
+
+def test_history_composite_index_matches_repository_query() -> None:
+    index_file = Path(__file__).parents[2] / "firestore.indexes.json"
+    declaration = json.loads(index_file.read_text())
+    assert declaration["indexes"] == [
+        {
+            "collectionGroup": "orders",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {"fieldPath": "generation", "order": "ASCENDING"},
+                {"fieldPath": "accepted_at", "order": "DESCENDING"},
+                {"fieldPath": "order_id", "order": "DESCENDING"},
+            ],
+        }
     ]
