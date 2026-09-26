@@ -20,6 +20,14 @@ data "archive_file" "assets" {
     content  = file("../archive/legacy-ingestion/scripts/${each.key}.py")
     filename = "main.py"
   }
+
+  dynamic "source" {
+    for_each = lookup(var.function_local_files, each.key, [])
+    content {
+      content  = file("../archive/legacy-ingestion/scripts/${source.value}")
+      filename = source.value
+    }
+  }
 }
 
 resource "google_storage_bucket" "data-brvm" {

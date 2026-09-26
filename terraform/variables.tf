@@ -46,6 +46,14 @@ variable "function_runtimes" {
   }
 }
 
+variable "function_local_files" {
+  description = "Local Python modules and data files required by each existing function artifact"
+  type        = map(list(string))
+  default = {
+    insert_shares = ["scrape_shares.py"]
+  }
+}
+
 variable "manage_legacy_source_objects" {
   description = "Whether Terraform manages legacy function source archives and storage objects"
   type        = bool
