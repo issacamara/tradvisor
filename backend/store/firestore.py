@@ -6,7 +6,7 @@ import base64
 import json
 import os
 from collections.abc import Callable, Mapping
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal, cast
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode, urljoin
@@ -24,6 +24,10 @@ class FirestoreConflict(RuntimeError):
 
 class CursorError(ValueError):
     """A continuation cursor is malformed or does not match this query."""
+
+
+class SnapshotExpired(CursorError):
+    """A continuation cursor is older than the retained snapshot window."""
 
 
 class _StoredRecord(BaseModel):
@@ -95,7 +99,10 @@ def _encode_cursor(
     order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
     values: list[dict[str, Any]],
     cursor_context: tuple[str, int] | None,
+    now: datetime,
 ) -> str:
+    issued_at = now.astimezone(timezone.utc)
+    expiry_at = issued_at + timedelta(hours=24)
     payload = {
         "v": 1,
         "collection": collection,
@@ -103,6 +110,8 @@ def _encode_cursor(
         "order_by": [list(item) for item in order_by],
         "values": values,
         "context": None if cursor_context is None else list(cursor_context),
+        "issued_at": issued_at.isoformat().replace("+00:00", "Z"),
+        "expiry_at": expiry_at.isoformat().replace("+00:00", "Z"),
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -118,6 +127,7 @@ def _decode_cursor(
     filters: tuple[tuple[str, str, str], ...],
     order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
     cursor_context: tuple[str, int] | None,
+    now: datetime,
 ) -> list[dict[str, Any]]:
     try:
         if not cursor or len(cursor) > 2048:
@@ -135,18 +145,36 @@ def _decode_cursor(
             or payload.get("order_by") != expected_order
             or payload.get("context")
             != (None if cursor_context is None else list(cursor_context))
+            or not isinstance(payload.get("issued_at"), str)
+            or not isinstance(payload.get("expiry_at"), str)
             or not isinstance(payload.get("values"), list)
             or len(payload["values"]) != len(order_by)
         ):
             raise ValueError
         values = payload["values"]
+        issued_at = _parse_cursor_time(payload["issued_at"])
+        expiry_at = _parse_cursor_time(payload["expiry_at"])
+        current_time = now.astimezone(timezone.utc)
+        if issued_at > current_time or expiry_at != issued_at + timedelta(hours=24):
+            raise ValueError
+        if current_time >= expiry_at:
+            raise SnapshotExpired("snapshot_expired")
         for value in values:
             if not isinstance(value, dict) or len(value) != 1:
                 raise ValueError
             _python_value(value)
         return cast(list[dict[str, Any]], values)
+    except SnapshotExpired:
+        raise
     except (TypeError, ValueError, UnicodeError, json.JSONDecodeError) as error:
         raise CursorError("malformed continuation cursor") from error
+
+
+def _parse_cursor_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    if parsed.tzinfo is None:
+        raise ValueError
+    return parsed.astimezone(timezone.utc)
 
 
 class FirestoreRestStore(TransactionalStore):
@@ -158,6 +186,7 @@ class FirestoreRestStore(TransactionalStore):
         project_id: str | None = None,
         database_id: str | None = None,
         host: str | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         configured_host = host or os.environ.get("FIRESTORE_EMULATOR_HOST")
         if not configured_host:
@@ -165,6 +194,7 @@ class FirestoreRestStore(TransactionalStore):
         if not configured_host.startswith(("http://", "https://")):
             configured_host = f"http://{configured_host}"
         self._root = configured_host.rstrip("/")
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._project_id = str(project_id or os.environ.get("GOOGLE_CLOUD_PROJECT", "tradvisor-test"))
         self._database_id = str(
             database_id or os.environ.get("GOOGLE_CLOUD_FIRESTORE_DATABASE", "(default)")
@@ -235,7 +265,7 @@ class FirestoreRestStore(TransactionalStore):
             structured["startAt"] = {
                 "before": False,
                 "values": _decode_cursor(
-                    cursor, collection, filters, order_by, cursor_context
+                    cursor, collection, filters, order_by, cursor_context, self._clock()
                 ),
             }
         body: dict[str, Any] = {
@@ -270,7 +300,7 @@ class FirestoreRestStore(TransactionalStore):
                 else:
                     ordered_values.append(cast(dict[str, Any], last_fields[field]))
             next_cursor = _encode_cursor(
-                collection, filters, order_by, ordered_values, cursor_context
+                collection, filters, order_by, ordered_values, cursor_context, self._clock()
             )
         return Page(tuple(item.record for item in items), next_cursor)
 

@@ -44,6 +44,7 @@ class FakeStore:
         self.callbacks: list[Callable[[Transaction], Any]] = []
         self.retry_once_with: VersionedDocument[BaseModel] | None = None
         self.retry_once_with_control: VersionedDocument[BaseModel] | None = None
+        self.page_items: tuple[BaseModel, ...] = ()
 
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None:
         return self.documents.get(key.path)
@@ -68,7 +69,7 @@ class FakeStore:
                 "cursor_context": cursor_context,
             }
         )
-        return Page((), "next" if cursor is None else None)
+        return Page(self.page_items, "next" if cursor is None else None)
 
     def run(
         self, callback: Callable[[Transaction], Any], *, max_attempts: int
@@ -295,7 +296,9 @@ def test_execution_identity_is_one_to_one_with_order(
         key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
     )
     key = repo.execution_key(generation, order_id)
-    first = PaperExecution.model_construct(order_id=order_id, execution_id=order_id)
+    first = PaperExecution.model_construct(
+        generation=generation, order_id=order_id, execution_id=order_id
+    )
     repo.write_in_transaction(
         FakeTransaction(),
         key=key,
@@ -305,7 +308,7 @@ def test_execution_identity_is_one_to_one_with_order(
     )
 
     duplicate_identity = PaperExecution.model_construct(
-        order_id=order_id, execution_id=OpaqueIdentifier("fill-2")
+        generation=generation, order_id=order_id, execution_id=OpaqueIdentifier("fill-2")
     )
     with pytest.raises(RepositoryError, match="execution identity"):
         repo.write_in_transaction(
@@ -327,7 +330,10 @@ def test_completed_execution_is_idempotent_but_immutable(
         key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
     )
     key = repo.execution_key(generation, order_id)
-    execution = PaperExecution.model_construct(order_id=order_id, execution_id=order_id, quantity=1)
+    execution = PaperExecution.model_construct(
+        generation=generation, order_id=order_id, execution_id=order_id, quantity=1
+    )
+    assert store.documents[repo.control_key().path].state_version == 0
     first = repo.write_in_transaction(
         FakeTransaction(),
         key=key,
@@ -343,8 +349,9 @@ def test_completed_execution_is_idempotent_but_immutable(
         expected_state_version=0,
     )
     assert repeated == first
+    assert store.documents[repo.control_key().path].state_version == 1
     changed = PaperExecution.model_construct(
-        order_id=order_id, execution_id=order_id, quantity=2
+        generation=generation, order_id=order_id, execution_id=order_id, quantity=2
     )
     with pytest.raises(RepositoryError, match="immutable"):
         repo.write_in_transaction(
@@ -422,6 +429,38 @@ def test_reset_read_race_hides_retired_generation(
         repo.get_order(generation, OpaqueIdentifier("order-1"))
 
     with pytest.raises(GenerationConflict, match="not the active"):
+        repo.list_orders(generation, limit=10)
+
+
+def test_generation_payload_must_match_point_and_history_paths(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    with pytest.raises(RepositoryError, match="record generation"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=repo.order_key(generation, OpaqueIdentifier("order-1")),
+            record=PaperOrder.model_construct(generation="g2", order_id="order-1"),
+            schema_version=1,
+            expected_state_version=None,
+        )
+
+    order_key = repo.order_key(generation, OpaqueIdentifier("order-1"))
+    store.documents[order_key.path] = VersionedDocument(
+        key=order_key,
+        schema_version=1,
+        state_version=0,
+        record=PaperOrder.model_construct(generation="g2", order_id="order-1"),
+    )
+    with pytest.raises(RepositoryError, match="record generation"):
+        repo.get_order(generation, OpaqueIdentifier("order-1"))
+
+    store.page_items = (PaperOrder.model_construct(generation="g2", order_id="order-2"),)
+    with pytest.raises(RepositoryError, match="record generation"):
         repo.list_orders(generation, limit=10)
 
 

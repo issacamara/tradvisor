@@ -278,15 +278,17 @@ class PaperRepositories:
 
         self._validate_owner_path(key)
         generation = self._generation_for_key(key)
+        control_document: VersionedDocument[BaseModel] | None = None
         if generation is not None:
-            control = self._store.get_in_transaction(transaction, self.control_key())
-            if control is None:
+            control_document = self._store.get_in_transaction(transaction, self.control_key())
+            if control_document is None:
                 raise GenerationConflict("cannot write a generation without portfolio control")
-            control_record = self._record(control.record, PortfolioControl)
+            control_record = self._record(control_document.record, PortfolioControl)
             if control_record.active_generation != generation:
                 raise GenerationConflict(
                     f"generation {generation} is not the active portfolio generation"
                 )
+            self._validate_payload_generation(record, generation)
         if schema_version < 1:
             raise ValueError("schema_version must be positive")
         current = self._store.get_in_transaction(transaction, key)
@@ -314,6 +316,20 @@ class PaperRepositories:
         self._store.put_in_transaction(
             transaction, cast(VersionedDocument[BaseModel], document)
         )
+        if control_document is not None:
+            control_record = self._record(control_document.record, PortfolioControl)
+            advanced_control = control_record.model_copy(
+                update={"state_version": control_record.state_version + 1}
+            )
+            self._store.put_in_transaction(
+                transaction,
+                VersionedDocument(
+                    key=control_document.key,
+                    schema_version=control_document.schema_version,
+                    state_version=control_document.state_version + 1,
+                    record=advanced_control,
+                ),
+            )
         return document
 
     def _validate_owner_path(self, key: DocumentKey) -> None:
@@ -382,7 +398,10 @@ class PaperRepositories:
         )
         if context != self._active_generation_context(generation):
             raise GenerationConflict("portfolio changed during history read")
-        return Page(tuple(self._record(item, record_type) for item in result.items), result.next_cursor)
+        records = tuple(self._record(item, record_type) for item in result.items)
+        for record in records:
+            self._validate_payload_generation(record, str(generation))
+        return Page(records, result.next_cursor)
 
     def _active_generation_context(self, generation: OpaqueIdentifier) -> tuple[str, int]:
         control = self.get_control()
@@ -407,7 +426,16 @@ class PaperRepositories:
                 )
             return self._typed(self._store.get_in_transaction(transaction, key), record_type)
 
-        return self._store.run(read, max_attempts=MAX_SNAPSHOT_ATTEMPTS)
+        result = self._store.run(read, max_attempts=MAX_SNAPSHOT_ATTEMPTS)
+        if result is not None:
+            self._validate_payload_generation(result.record, str(generation))
+        return result
+
+    @staticmethod
+    def _validate_payload_generation(record: BaseModel, generation: str) -> None:
+        payload_generation = getattr(record, "generation", None)
+        if payload_generation is None or str(payload_generation) != generation:
+            raise RepositoryError("record generation does not match its path generation")
 
     @staticmethod
     def _record(value: BaseModel, record_type: type[Record]) -> Record:

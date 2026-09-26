@@ -13,7 +13,8 @@ from backend.store.repositories import (
     VersionedDocument,
     consistent_read,
 )
-from backend.store.firestore import FirestoreConflict, FirestoreRestStore
+from backend.store.firestore import FirestoreConflict, FirestoreRestStore, SnapshotExpired
+from backend.store.firestore_sdk import FirestoreSdkStore
 from backend.store.transactions import TransactionRunner, run_transaction
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "GenerationConflict",
     "FirestoreConflict",
     "FirestoreRestStore",
+    "FirestoreSdkStore",
+    "SnapshotExpired",
     "OwnerContext",
     "Page",
     "PaperRepositories",

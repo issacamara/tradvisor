@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock, Thread
@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel
 
-from backend.store.firestore import CursorError, FirestoreRestStore
+from backend.store.firestore import CursorError, FirestoreRestStore, SnapshotExpired
 from backend.contracts.paper import PortfolioControl
 from backend.store.repositories import (
     DocumentKey,
@@ -471,6 +471,51 @@ def test_firestore_rest_adapter_rejects_malformed_cursor(
             order_by=(("accepted_at", "desc"), ("order_id", "desc")),
             limit=2,
             cursor="definitely-not-a-cursor",
+        )
+
+
+def test_firestore_rest_adapter_expires_cursor_after_24_hours(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, _ = firestore_emulator
+    current_time = [datetime(2026, 9, 26, tzinfo=timezone.utc)]
+    store = FirestoreRestStore(
+        host=emulator_host,
+        clock=lambda: current_time[0],
+        project_id="local-project",
+        database_id="local-db",
+    )
+    collection = "analysis_batches/b1/results"
+
+    def seed(transaction: Transaction) -> None:
+        for record_id in ("a", "b"):
+            store.put_in_transaction(
+                transaction,
+                VersionedDocument(
+                    key=DocumentKey(collection, record_id),
+                    schema_version=1,
+                    state_version=0,
+                    record=Record(generation="b1", value=1),
+                ),
+            )
+
+    store.run(seed, max_attempts=1)
+    first = store.page(
+        collection,
+        filters=(),
+        order_by=(("__name__", "asc"),),
+        limit=1,
+        cursor=None,
+    )
+    assert first.next_cursor is not None
+    current_time[0] += timedelta(hours=24)
+    with pytest.raises(SnapshotExpired, match="snapshot_expired"):
+        store.page(
+            collection,
+            filters=(),
+            order_by=(("__name__", "asc"),),
+            limit=1,
+            cursor=first.next_cursor,
         )
 
 
