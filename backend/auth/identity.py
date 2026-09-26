@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import hmac
 from typing import Any, Protocol, cast
 
+from backend.recovery.register import StorageAdapter
+
 class AuthenticationError(Exception):
     """A request cannot be authenticated or currently admitted."""
 
@@ -36,6 +38,24 @@ class TokenVerifier(Protocol):
 
 class AdmissionRepository(Protocol):
     async def is_admitted(self, uid: str, email: str) -> bool: ...
+
+
+class AdmissionDenyFence(Protocol):
+    def is_denied(self, uid: str) -> bool: ...
+
+
+class RegisterAdmissionDenyFence:
+    """Read the immutable register head as the restore-resistant deny source."""
+
+    def __init__(self, register: StorageAdapter) -> None:
+        self._register = register
+
+    def is_denied(self, uid: str) -> bool:
+        head = self._register.get_head(uid)
+        if head is None:
+            return False
+        intent = self._register.get_intent(head.operation_id)
+        return intent is not None and intent.subject == uid and intent.action == "deny"
 
 
 def normalize_email(value: str) -> str:
@@ -78,17 +98,30 @@ class FirebaseIdTokenVerifier:
 class FirestoreAdmissionRepository:
     """Read the administrator-owned admission record on every protected request."""
 
-    def __init__(self, client: Any | None = None) -> None:
+    def __init__(self, client: Any | None = None, deny_fence: AdmissionDenyFence | None = None) -> None:
         if client is None:
             from google.cloud import firestore
 
             client = firestore.Client()
         self._client = client
+        self._deny_fence = deny_fence
 
     async def is_admitted(self, uid: str, email: str) -> bool:
-        snapshot = await asyncio.to_thread(
-            self._client.collection("application_admissions").document(uid).get
+        if self._deny_fence is not None and await asyncio.to_thread(self._deny_fence.is_denied, uid):
+            return False
+        snapshot, deny_fence = await asyncio.gather(
+            asyncio.to_thread(self._client.collection("application_admissions").document(uid).get),
+            asyncio.to_thread(self._client.collection("application_admission_denials").document(uid).get),
         )
+        if not snapshot.exists or not deny_fence.exists:
+            fence_sequence = 0
+        else:
+            fence_record = deny_fence.to_dict()
+            fence_sequence = (
+                int(fence_record["decision_sequence"])
+                if isinstance(fence_record, dict) and isinstance(fence_record.get("decision_sequence"), int)
+                else 0
+            )
         if not snapshot.exists:
             return False
         record = snapshot.to_dict()
@@ -96,6 +129,10 @@ class FirestoreAdmissionRepository:
             isinstance(record, dict)
             and record.get("active") is True
             and isinstance(record.get("email"), str)
+            and isinstance(record.get("decision_operation_id"), str)
+            and isinstance(record.get("decision_sequence"), int)
+            and record.get("decision_sequence", 0) >= 1
+            and record.get("decision_sequence", 0) > fence_sequence
             and hmac.compare_digest(normalize_email(record["email"]), normalize_email(email))
         )
 
