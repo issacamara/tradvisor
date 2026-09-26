@@ -314,8 +314,22 @@ def _latest_completed_session(
         and _session_cutoff(session) <= now
     ]
     if not completed:
+        acceptance_date = now.astimezone(EXCHANGE_TZ).date()
+        if any(session.status == "unknown" and session.session_date <= acceptance_date for session in sessions):
+            raise OrderAcceptanceError(
+                "calendar_unavailable", "Unknown calendar session may affect recommendation freshness.", status_code=503
+            )
         raise OrderAcceptanceError("recommendation_stale", "No completed trading session is available.")
-    return max(completed, key=lambda session: (session.session_date, session.session_index or -1))
+    latest = max(completed, key=lambda session: (session.session_date, session.session_index or -1))
+    acceptance_date = now.astimezone(EXCHANGE_TZ).date()
+    if any(
+        session.status == "unknown" and latest.session_date < session.session_date <= acceptance_date
+        for session in sessions
+    ):
+        raise OrderAcceptanceError(
+            "calendar_unavailable", "Unknown calendar session may affect recommendation freshness.", status_code=503
+        )
+    return latest
 
 
 def _intended_session(
@@ -336,6 +350,15 @@ def _intended_session(
             "calendar_unavailable", "Verified calendar does not cover the intended and grace sessions.", status_code=503
         )
     intended, grace_session = following[:2]
+    if any(
+        session.status == "unknown"
+        and acceptance_date < session.session_date <= grace_session.session_date
+        for session in sessions
+    ):
+        raise OrderAcceptanceError(
+            "calendar_unavailable", "Unknown calendar session may affect intended or grace session selection.",
+            status_code=503,
+        )
     if intended.session_index is None or grace_session.official_close_at is None:
         raise OrderAcceptanceError(
             "calendar_unavailable", "Verified calendar session indexes or close times are missing.", status_code=503

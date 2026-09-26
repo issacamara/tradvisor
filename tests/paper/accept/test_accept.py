@@ -68,6 +68,22 @@ def sessions() -> tuple[NormalizedSession, ...]:
     )
 
 
+def unknown_session(day: date) -> NormalizedSession:
+    provenance = Provenance(source_id="calendar-source", collected_at=NOW, basis="actual")
+    return NormalizedSession(
+        calendar_version="calendar-v1",
+        session_id=f"session-{day.isoformat()}",
+        session_date=day,
+        session_index=None,
+        exchange_timezone="Africa/Abidjan",
+        status="unknown",
+        official_close_at=None,
+        source_evidence=(provenance,),
+        revision={"revision": 1, "known_at": NOW, "provenance": provenance},
+        reason_codes=("calendar_unavailable",),
+    )
+
+
 @dataclass
 class EvidenceReader:
     recommendation: RecommendationEvidence
@@ -165,6 +181,42 @@ def test_buy_uses_fresh_recommendation_and_reserves_gross_plus_frozen_fee() -> N
     assert summary is not None
     assert summary.record.reserved_cash == money("201")
     assert summary.record.pending_order_count == 1
+
+
+def test_unknown_session_after_latest_completed_session_blocks_freshness() -> None:
+    _, repositories, generation, recovery_id = configured()
+    evidence = reader()
+    evidence.calendar_sessions = (
+        sessions()[0],
+        unknown_session(date(2026, 1, 4)),
+        *sessions()[1:],
+    )
+
+    with pytest.raises(OrderAcceptanceError) as error:
+        accept_order(repositories, request(generation, recovery_id), evidence, now=NOW)
+
+    assert error.value.code == "calendar_unavailable"
+    assert error.value.status_code == 503
+    assert repositories.get_summary(generation).record.pending_order_count == 0  # type: ignore[union-attr]
+
+
+def test_unknown_session_through_grace_session_blocks_session_selection() -> None:
+    _, repositories, generation, recovery_id = configured()
+    evidence = reader()
+    evidence.calendar_sessions = (
+        sessions()[0],
+        sessions()[1],
+        session(date(2026, 1, 7), 13),
+        session(date(2026, 1, 8), 14),
+        unknown_session(date(2026, 1, 6)),
+    )
+
+    with pytest.raises(OrderAcceptanceError) as error:
+        accept_order(repositories, request(generation, recovery_id), evidence, now=NOW)
+
+    assert error.value.code == "calendar_unavailable"
+    assert error.value.status_code == 503
+    assert repositories.get_summary(generation).record.pending_order_count == 0  # type: ignore[union-attr]
 
 
 def test_order_retry_replays_one_atomic_reservation_and_receipt() -> None:
