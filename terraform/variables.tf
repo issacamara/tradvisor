@@ -125,6 +125,34 @@ variable "configure_v1_runtime" {
   default     = false
 }
 
+variable "configure_v1_monitoring" {
+  description = "Opt in to development-only bounded V1 log retention and alert policies"
+  type        = bool
+  default     = false
+}
+
+variable "v1_log_retention_days" {
+  description = "Finite retention for V1 application logs"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.v1_log_retention_days >= 1 && var.v1_log_retention_days <= 90
+    error_message = "V1 log retention must be between 1 and 90 days."
+  }
+}
+
+variable "v1_monitoring_check_interval_seconds" {
+  description = "Finite interval for V1 freshness and failure checks"
+  type        = number
+  default     = 900
+
+  validation {
+    condition     = var.v1_monitoring_check_interval_seconds >= 300 && var.v1_monitoring_check_interval_seconds <= 86400
+    error_message = "V1 monitoring checks must run between five minutes and one day apart."
+  }
+}
+
 variable "v1_runtime_service_account_id" {
   description = "Dedicated service account ID for the opt-in V1 runtime"
   type        = string
