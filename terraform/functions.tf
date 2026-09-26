@@ -32,13 +32,14 @@ resource "google_cloudfunctions2_function" "functions" {
 
 locals {
   workflow_stages = [
-    { source = "shares", functions = ["scrape_shares", "insert_shares"], targets = ["stocks.shares"] },
-    { source = "bonds", functions = ["scrape_bonds", "insert_bonds"], targets = ["stocks.bonds"] },
-    { source = "dividends", functions = ["scrape_dividends", "insert_dividends"], targets = ["stocks.dividends"] },
-    { source = "capitalizations", functions = ["scrape_capitalizations", "insert_capitalizations"], targets = ["stocks.capitalizations"] },
-    { source = "financials", functions = ["scrape_financials", "insert_financials"], targets = ["stocks.financials"] },
-    { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"] },
+    { source = "shares", functions = ["scrape_shares", "insert_shares"], targets = ["stocks.shares"], writer_key = "stocks.shares" },
+    { source = "bonds", functions = ["scrape_bonds", "insert_bonds"], targets = ["stocks.bonds"], writer_key = "stocks.bonds" },
+    { source = "dividends", functions = ["scrape_dividends", "insert_dividends"], targets = ["stocks.dividends"], writer_key = "stocks.dividends" },
+    { source = "capitalizations", functions = ["scrape_capitalizations", "insert_capitalizations"], targets = ["stocks.capitalizations"], writer_key = "stocks.capitalizations" },
+    { source = "financials", functions = ["scrape_financials", "insert_financials"], targets = ["stocks.financials"], writer_key = "stocks.financials" },
+    { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"], writer_key = "stocks.ratings" },
   ]
+  workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
   paused_schedule_keys = toset(["job5", "job6"])
 }
 

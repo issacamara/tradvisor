@@ -411,7 +411,7 @@ def test_calendar_correction_racing_fill_rejects_and_releases_without_fee() -> N
     assert summary_after.reserved_cash.micros == 0
 
 
-def test_unknown_calendar_fails_closed_and_rejects_without_execution() -> None:
+def test_unknown_calendar_stays_pending_without_execution() -> None:
     store, repositories, order, recovery_id = _pending_order()
 
     result = _run(
@@ -423,7 +423,7 @@ def test_unknown_calendar_fails_closed_and_rejects_without_execution() -> None:
         now=NOW,
     )[0]
 
-    assert result.state == "rejected"
+    assert result.state == "pending"
     assert result.reason == "calendar_unavailable"
     assert repositories.get_execution(order.generation, order.order_id) is None
 

@@ -190,6 +190,10 @@ def _execute_one(
             else _record(position_doc.record, PaperPosition)
         )
         correction_reason = _calendar_rejection(order, evidence)
+        if correction_reason == "calendar_unavailable":
+            result_state = "pending"
+            result_reason = correction_reason
+            return
         if correction_reason is not None:
             _write_terminal(
                 repositories,
