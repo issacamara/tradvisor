@@ -13,11 +13,14 @@ from backend.store.repositories import (
     VersionedDocument,
     consistent_read,
 )
+from backend.store.firestore import FirestoreConflict, FirestoreRestStore
 from backend.store.transactions import TransactionRunner, run_transaction
 
 __all__ = [
     "DocumentKey",
     "GenerationConflict",
+    "FirestoreConflict",
+    "FirestoreRestStore",
     "OwnerContext",
     "Page",
     "PaperRepositories",

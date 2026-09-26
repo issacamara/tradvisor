@@ -20,6 +20,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install backend test dependencies
+        run: python -m pip install -e "backend[test,type]"
+
+      - name: Run application store tests
+        run: python -m pytest tests/store -q
+
+      - name: Type check application store
+        run: mypy --strict backend/store tests/store
+
       - name: Check Python syntax
         run: python -m compileall archive/legacy-ingestion/scripts
 

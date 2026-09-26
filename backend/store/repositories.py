@@ -161,12 +161,12 @@ class PaperRepositories:
         )
 
     def execution_key(
-        self, generation: OpaqueIdentifier, execution_id: OpaqueIdentifier
+        self, generation: OpaqueIdentifier, order_id: OpaqueIdentifier
     ) -> DocumentKey:
         return DocumentKey(
             f"paper_portfolios/{_segment(str(self._owner.uid))}/generations/"
             f"{_segment(str(generation))}/executions",
-            _segment(str(execution_id)),
+            _segment(str(order_id)),
         )
 
     def cash_movement_key(
@@ -206,10 +206,10 @@ class PaperRepositories:
         return self._typed(self._store.get(self.order_key(generation, order_id)), PaperOrder)
 
     def get_execution(
-        self, generation: OpaqueIdentifier, execution_id: OpaqueIdentifier
+        self, generation: OpaqueIdentifier, order_id: OpaqueIdentifier
     ) -> VersionedDocument[PaperExecution] | None:
         return self._typed(
-            self._store.get(self.execution_key(generation, execution_id)), PaperExecution
+            self._store.get(self.execution_key(generation, order_id)), PaperExecution
         )
 
     def get_cash_movement(
@@ -289,6 +289,7 @@ class PaperRepositories:
         if schema_version < 1:
             raise ValueError("schema_version must be positive")
         current = self._store.get_in_transaction(transaction, key)
+        self._validate_record_identity(key, record, current)
         actual_version = None if current is None else current.state_version
         if actual_version != expected_state_version:
             raise VersionConflict(
@@ -328,6 +329,24 @@ class PaperRepositories:
                 return unquote(key.document_id)
             raise RepositoryError("generation collection path is incomplete")
         return unquote(parts[index + 1])
+
+    @staticmethod
+    def _validate_record_identity(
+        key: DocumentKey,
+        record: Record,
+        current: VersionedDocument[BaseModel] | None,
+    ) -> None:
+        if not key.collection.endswith("/executions"):
+            return
+        if not isinstance(record, PaperExecution):
+            raise RepositoryError("execution writes require a PaperExecution record")
+        order_id = unquote(key.document_id)
+        if record.order_id != order_id or record.execution_id != record.order_id:
+            raise RepositoryError("execution identity must equal its order identity")
+        if current is not None:
+            existing = PaperRepositories._record(current.record, PaperExecution)
+            if existing.execution_id != record.execution_id:
+                raise RepositoryError("an order cannot receive a second execution identity")
 
     def _page(
         self,

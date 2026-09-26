@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from backend.contracts.scalars import OpaqueIdentifier
+from backend.contracts.paper import PaperExecution
 from backend.store.repositories import (
     DocumentKey,
     GenerationConflict,
@@ -141,7 +142,7 @@ def test_document_paths_are_stable_and_owner_scoped(
     )
     assert repo.position_key(generation, symbol).document_id == "ABC"
     assert repo.order_key(generation, OpaqueIdentifier("order-1")).document_id == "order-1"
-    assert repo.execution_key(generation, OpaqueIdentifier("fill-1")).document_id == "fill-1"
+    assert repo.execution_key(generation, OpaqueIdentifier("order-1")).document_id == "order-1"
     assert repo.cash_movement_key(generation, OpaqueIdentifier("cash-1")).document_id == "cash-1"
     assert repo.receipt_key("request-1").path.startswith(
         "paper_portfolios/verified-user/command_receipts/"
@@ -280,6 +281,38 @@ def test_reset_race_rejects_old_generation_on_retry(
     with pytest.raises(GenerationConflict, match="not the active"):
         repo.transact(stale_write)
     assert key.path not in store.documents
+
+
+def test_execution_identity_is_one_to_one_with_order(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    order_id = OpaqueIdentifier("order-1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    key = repo.execution_key(generation, order_id)
+    first = PaperExecution.model_construct(order_id=order_id, execution_id=order_id)
+    repo.write_in_transaction(
+        FakeTransaction(),
+        key=key,
+        record=first,
+        schema_version=1,
+        expected_state_version=None,
+    )
+
+    duplicate_identity = PaperExecution.model_construct(
+        order_id=order_id, execution_id=OpaqueIdentifier("fill-2")
+    )
+    with pytest.raises(RepositoryError, match="execution identity"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=key,
+            record=duplicate_identity,
+            schema_version=1,
+            expected_state_version=0,
+        )
 
 
 def test_order_query_is_bounded_ordered_and_generation_scoped(
