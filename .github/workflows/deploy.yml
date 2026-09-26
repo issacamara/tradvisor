@@ -1,0 +1,48 @@
+name: Development delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Reviewed action; apply remains environment-gated"
+        required: true
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  delivery:
+    if: github.ref_name == 'V1'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.action == 'apply' && 'development-apply' || 'development-plan' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Authenticate to Google Cloud with workload identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+      - name: Validate delivery context
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          TF_VAR_project_id: dev-tradvisor
+          TF_STATE_BUCKET: dev-tradvisor-tfstate
+          TF_STATE_PREFIX: state/dev
+          DEPLOY_ACTION: ${{ inputs.action }}
+        run: bash scripts/deployment/guard.sh
+      - name: Initialize Terraform backend
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=dev-tradvisor-tfstate" -backend-config="prefix=state/dev"
+      - name: Plan development changes
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+      - name: Apply reviewed development plan
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        run: terraform apply -auto-approve
