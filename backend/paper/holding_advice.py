@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from math import isfinite
 from typing import Literal
 
 from backend.analysis.ema import EmaSeries
@@ -12,30 +13,22 @@ from backend.analysis.rsi import RsiSeries
 from backend.contracts.paper import PaperPosition
 
 Action = Literal["keep", "sell", "insufficient_data", "not_applicable"]
+_FIXED_LOSS_PERCENT = 95
+_TRAILING_ACTIVATION_PERCENT = 108
+_TRAILING_STOP_PERCENT = 96
+_TECHNICAL_RSI_CEILING = 45
+_DURATION_SESSIONS = 30
 
 
 @dataclass(frozen=True, slots=True)
 class FrozenExitPolicy:
-    """Immutable position policy; percentages are integer percentage points."""
+    """Reference to the immutable V1 exit policy."""
 
     policy_ref: str
-    fixed_loss_percent: int = 95
-    trailing_activation_percent: int = 108
-    trailing_stop_percent: int = 96
-    technical_rsi_ceiling: int = 45
-    duration_sessions: int = 30
 
     def __post_init__(self) -> None:
         if not self.policy_ref:
             raise ValueError("policy_ref is required")
-        if not 0 < self.fixed_loss_percent <= 100:
-            raise ValueError("fixed-loss percentage must be in (0, 100]")
-        if self.trailing_activation_percent <= 100:
-            raise ValueError("trailing activation percentage must exceed 100")
-        if not 0 < self.trailing_stop_percent <= 100:
-            raise ValueError("trailing stop percentage must be in (0, 100]")
-        if not 0 <= self.technical_rsi_ceiling <= 100 or self.duration_sessions < 0:
-            raise ValueError("technical RSI and duration policy values are invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,11 +53,12 @@ def _assessable_value(point: object | None) -> float | None:
     if point is None or getattr(point, "status", None) != "assessable":
         return None
     value = getattr(point, "value", None)
-    return value if isinstance(value, (int, float)) else None
+    return float(value) if isinstance(value, (int, float)) and isfinite(value) else None
 
 
 def _valid_close(session: SessionInput | None) -> int | None:
-    if session is None or session.close_state != "traded" or session.close_micros is None:
+    if (session is None or session.close_state != "traded"
+            or session.close_micros is None or session.close_micros <= 0):
         return None
     return session.close_micros
 
@@ -165,17 +159,17 @@ def evaluate_holding_advice(
     else:
         # Compare ratios as integers, avoiding rounded average-entry prices.
         if current_price * position.quantity * 100 <= (
-            position.remaining_gross_cost.micros * policy.fixed_loss_percent
+            position.remaining_gross_cost.micros * _FIXED_LOSS_PERCENT
         ):
             reasons.append("fixed_loss")
         if not activated and current_price * position.quantity * 100 >= (
-            position.remaining_gross_cost.micros * policy.trailing_activation_percent
+            position.remaining_gross_cost.micros * _TRAILING_ACTIVATION_PERCENT
         ):
             activated = True
         if activated:
             if high is None:
                 unavailable.append("trailing")
-            elif current_price * 100 <= high * policy.trailing_stop_percent:
+            elif current_price * 100 <= high * _TRAILING_STOP_PERCENT:
                 reasons.append("trailing_stop")
 
     current_ema20 = _points_by_session(ema20).get(current.session_id)
@@ -187,11 +181,8 @@ def evaluate_holding_advice(
     elif ema20_value <= ema50_value:
         reasons.append("ema20_at_or_below_ema50")
 
+    # Never compress a missing exchange session into the prior observation.
     previous = by_index.get(current.session_index - 1)
-    # Use the preceding entry in the authoritative grid, not a calendar-day offset.
-    prior = next((s for s in ordered if s.session_index < current.session_index), None)
-    if prior is not None and previous is None:
-        previous = prior
     prior_price = _valid_close(previous)
     prior_ema20 = _assessable_value(_points_by_session(ema20).get(previous.session_id)) if previous else None
     current_rsi = _assessable_value(_points_by_session(rsi14).get(current.session_id))
@@ -200,13 +191,13 @@ def evaluate_holding_advice(
         unavailable.append("technical_pullback")
     elif (current_price / 1_000_000 < ema20_value
           and prior_price / 1_000_000 < prior_ema20
-          and current_rsi < policy.technical_rsi_ceiling):
+          and current_rsi < _TECHNICAL_RSI_CEILING):
         reasons.append("two_closes_below_ema20_with_weak_rsi")
 
     opening_index = opening.session_index if opening is not None else None
     if opening_index is None:
         unavailable.append("duration")
-    elif current.session_index - opening_index >= policy.duration_sessions:
+    elif current.session_index - opening_index >= _DURATION_SESSIONS:
         reasons.append("duration")
 
     unique_reasons = tuple(dict.fromkeys(reasons))

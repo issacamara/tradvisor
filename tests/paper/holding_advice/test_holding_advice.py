@@ -55,6 +55,7 @@ def evaluate(
     ema20_values: dict[int, float | None] | None = None,
     ema50_values: dict[int, float | None] | None = None,
     rsi_values: dict[int, float | None] | None = None,
+    missing_session_index: int | None = None,
     active_generation: str = "generation-1",
     current_state_version: int = 4,
     expected_state_version: int = 4,
@@ -78,8 +79,9 @@ def evaluate(
             true_range_micros=None,
             source_price_revision=index,
         )
-        for index in range(current_index + 1)
+        for index in range(current_index + 1) if index != missing_session_index
     )
+    sessions_by_index = {session.session_index: session for session in sessions}
     inputs = AnalyticalInputSnapshot(
         snapshot_id="snapshot-1",
         contract_version="analysis-input-v1",
@@ -99,9 +101,9 @@ def evaluate(
                     session_id=f"session-{index}", session_index=index, period=period,
                     value=values.get(index, 90.0 if period == 20 else 80.0),
                     status="assessable" if values.get(index, 1) is not None else "missing_inputs",
-                    close_segment=1, input_close_state=sessions[index].close_state,
+                    close_segment=1, input_close_state=sessions_by_index[index].close_state,
                 )
-                for index in range(current_index + 1)
+                for index in range(current_index + 1) if index != missing_session_index
             ),
             checkpoints=(),
         )
@@ -114,9 +116,9 @@ def evaluate(
                 session_id=f"session-{index}", session_index=index,
                 value=rsi_values.get(index, 50.0),
                 status="assessable" if rsi_values.get(index, 1) is not None else "missing_inputs",
-                close_segment=1, input_close_state=sessions[index].close_state,
+                close_segment=1, input_close_state=sessions_by_index[index].close_state,
             )
-            for index in range(current_index + 1)
+            for index in range(current_index + 1) if index != missing_session_index
         ),
         checkpoints=(),
     )
@@ -130,7 +132,7 @@ def evaluate(
         ema20=ema(20, ema20_values),
         ema50=ema(50, ema50_values),
         rsi14=rsi,
-        evaluation_session=sessions[current_index].session_date,
+        evaluation_session=sessions_by_index[current_index].session_date,
     )
 
 
@@ -180,6 +182,16 @@ def test_rsi_below_45_with_two_closes_below_ema20_triggers() -> None:
         rsi_values={1: 44.999},
     )
     assert "two_closes_below_ema20_with_weak_rsi" in result.sell_reasons
+
+
+def test_missing_exchange_session_does_not_compress_technical_lookback() -> None:
+    result = evaluate(
+        position(), duration=2, current_index=2, missing_session_index=1,
+        prices={0: (80_000_000, "traded"), 2: (80_000_000, "traded")},
+        ema20_values={0: 90.0, 2: 90.0}, rsi_values={2: 44.0},
+    )
+    assert "two_closes_below_ema20_with_weak_rsi" not in result.sell_reasons
+    assert "technical_pullback" in result.unavailable_checks
 
 
 @pytest.mark.parametrize(("elapsed", "expected"), [(0, "keep"), (29, "keep"), (30, "sell"), (31, "sell")])
@@ -254,12 +266,17 @@ def test_full_close_and_reopen_resets_position_lifetime_state() -> None:
 
 
 def test_position_keeps_its_old_frozen_policy_reference() -> None:
-    newer = FrozenExitPolicy("exit-policy-v2", fixed_loss_percent=90)
+    newer = FrozenExitPolicy("exit-policy-v2")
     old_position = position(policy_ref="exit-policy-v1")
     result = evaluate(old_position, policy=newer)
     assert result.action == "not_applicable"
     assert result.unavailable_checks == ("exit_policy_mismatch",)
     assert result.exit_policy_ref == "exit-policy-v1"
+
+
+def test_policy_reference_cannot_be_reused_with_altered_thresholds() -> None:
+    with pytest.raises(TypeError):
+        FrozenExitPolicy("exit-policy-v1", fixed_loss_percent=90)  # type: ignore[call-arg]
 
 
 def test_carried_close_cannot_create_a_new_high_or_trigger_price_exits() -> None:
