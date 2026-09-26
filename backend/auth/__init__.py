@@ -1,5 +1,11 @@
 """Request authentication and current admission checks."""
 
+from backend.auth.current_user import (
+    CurrentUserRepository,
+    CurrentUserState,
+    CurrentUserUnavailable,
+    FirestoreCurrentUserRepository,
+)
 from backend.auth.identity import (
     AdmittedIdentity,
     AuthenticationError,
@@ -11,7 +17,11 @@ from backend.auth.identity import (
 __all__ = [
     "AdmittedIdentity",
     "AuthenticationError",
+    "CurrentUserRepository",
+    "CurrentUserState",
+    "CurrentUserUnavailable",
     "FirebaseIdTokenVerifier",
     "FirestoreAdmissionRepository",
+    "FirestoreCurrentUserRepository",
     "authenticate_request",
 ]

@@ -64,6 +64,27 @@ def test_missing_and_unverified_identity_are_rejected_before_admission() -> None
     assert repository.calls == []
 
 
+def test_revoked_or_invalid_firebase_token_fails_closed_before_admission() -> None:
+    repository = AdmissionFixture()
+
+    def rejected_token(_token: str, *, check_revoked: bool) -> Mapping[str, Any]:
+        assert check_revoked is True
+        raise RuntimeError("revoked token provider detail")
+
+    with pytest.raises(AuthenticationError) as denied:
+        asyncio.run(
+            authenticate_request(
+                "Bearer fixture-token",
+                FirebaseIdTokenVerifier(rejected_token),
+                repository,
+            )
+        )
+
+    assert (denied.value.status_code, denied.value.code) == (401, "unauthenticated")
+    assert repository.calls == []
+    assert "revoked token provider detail" not in str(denied.value)
+
+
 def test_current_admission_is_checked_again_on_every_request() -> None:
     repository = AdmissionFixture()
     verifier = verifier_for({"uid": "user-1", "email": "a@example.com", "email_verified": True})

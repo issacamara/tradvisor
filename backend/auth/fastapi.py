@@ -27,7 +27,12 @@ def admitted_identity_dependency(
             code = error.code
             if code == "admission_unavailable":
                 raise HTTPException(status_code=503, detail=code, headers=headers) from error
-            raise HTTPException(status_code=error.status_code, detail=code, headers=headers) from error
+            public_code = "admission_denied" if code == "email_unverified" else code
+            raise HTTPException(
+                status_code=error.status_code,
+                detail=public_code,
+                headers=headers,
+            ) from error
         request.state.owner_uid = identity.uid
         return identity
 
