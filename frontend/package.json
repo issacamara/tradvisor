@@ -10,8 +10,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "npx serve out",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "lint": "node ../scripts/ci/lint_frontend.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "vitest run --config ../scripts/ci/vitest.config.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

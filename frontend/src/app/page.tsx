@@ -1,5 +1,5 @@
-import { WorkspaceShell } from "@/components/workspace-shell";
+import { AuthScreen } from "@/features/auth/sign-in";
 
 export default function HomePage() {
-  return <WorkspaceShell workspace="overview" />;
+  return <AuthScreen />;
 }
