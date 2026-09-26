@@ -468,3 +468,4 @@ def entry_point(request=None):
 if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
     if __name__ == "__main__":
         print(entry_point())
+

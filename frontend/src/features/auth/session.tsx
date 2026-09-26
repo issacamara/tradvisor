@@ -13,6 +13,7 @@ export type SessionActions = {
   resendVerification(email: string, password: string): Promise<void>;
   signOut(): void;
   refreshAdmission(): Promise<void>;
+  request(path: string, init?: RequestInit): Promise<Response>;
 };
 
 type FirebaseResponse = { idToken?: string; error?: { message?: string }; users?: Array<{ emailVerified?: boolean }> };
@@ -70,6 +71,15 @@ function useSessionValue(): SessionActions {
   const [message, setMessage] = useState("");
   const wasAdmitted = useRef(false);
 
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    const apiUrl = process.env.NEXT_PUBLIC_TRADVISOR_API_URL;
+    if (!apiUrl || !token) throw new Error("Protected API access is not available.");
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    return fetch(`${apiUrl.replace(/\/$/, "")}${path}`, { ...init, headers, cache: "no-store", credentials: "omit" });
+  }, [token]);
+
   const refreshAdmission = useCallback(async () => {
     if (!token) return;
     const apiUrl = process.env.NEXT_PUBLIC_TRADVISOR_API_URL;
@@ -118,7 +128,7 @@ function useSessionValue(): SessionActions {
   }, [refreshAdmission, token]);
 
   return useMemo(() => ({
-    status, message, refreshAdmission,
+    status, message, refreshAdmission, request,
     async signIn(email, password) {
       setMessage("");
       try {
@@ -160,7 +170,7 @@ function useSessionValue(): SessionActions {
       }
     },
     signOut() { wasAdmitted.current = false; setToken(null); setStatus("signed_out"); setMessage(""); },
-  }), [message, refreshAdmission, status]);
+  }), [message, refreshAdmission, request, status]);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

@@ -638,3 +638,4 @@ def test_load_requires_explicit_session_and_source_columns() -> None:
 
     assert normalized.empty
     assert evidence["missing_session_evidence"] == 1
+

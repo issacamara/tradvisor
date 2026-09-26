@@ -1,51 +1,49 @@
 import os
+import io
+
 import functions_framework
+import pandas as pd
 import yaml
-from helper import process_files, load_files
-from google.cloud import bigquery
-from google.auth import default
+
+from helper import load_files, move_csv_file, move_csv_file_gcp, insert_into_duckdb, upsert_into_bigquery, get_project_number
 
 
-def cleanup_old_ratings():
-    """Keep only the latest 2 years of ratings for each symbol."""
-    credentials, project_id = default()
-    client = bigquery.Client(credentials=credentials, project=project_id)
-    
-    # Get current year
-    from datetime import datetime
-    current_year = datetime.now().year
-    min_year = current_year - 1  # Keep current year and previous year
-    
-    # Delete records older than min_year
-    query = f"""
-        DELETE FROM `{project_id}.stocks.ratings`
-        WHERE rating_year < {min_year}
-    """
-    
-    try:
-        query_job = client.query(query)
-        query_job.result()
-        print(f"Cleaned up ratings older than {min_year}")
-    except Exception as e:
-        print(f"Cleanup error (may be empty table): {e}")
+def process_rating_files(config, files):
+    """Load rating observations without assuming the share-price date column."""
+    for file in files:
+        if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
+            from google.auth import default
+
+            frame = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
+            _, project_id = default()
+            project_number = get_project_number(project_id)
+            upsert_into_bigquery(
+                frame,
+                project_id,
+                "stocks",
+                "ratings",
+                ["symbol", "source_revision_id"],
+                update_matched=False,
+            )
+            move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)
+        else:
+            frame = pd.read_csv(file, sep="|")
+            insert_into_duckdb(frame, config["duckdb"]["database"], "ratings")
+            move_csv_file(config["csv_directory"], config["archive"], file)
 
 
 @functions_framework.http
 def entry_point(request=None):
-    # Load configuration from YAML file
-    with open("config.yml", 'r') as file:
+    """Load all dated rating observations without deleting older history."""
+    with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
 
-    # Cleanup old ratings (keep only latest 2 years)
-    cleanup_old_ratings()
-
     asset = "ratings"
-    csv_files = load_files(config, asset)
-    process_files(config, csv_files, asset)
-
+    process_rating_files(config, load_files(config, asset))
     return "Data insertion successfully completed !\n"
 
-if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
+
+if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
     pass
 else:
     print(entry_point())

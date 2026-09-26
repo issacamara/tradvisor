@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 from bs4 import BeautifulSoup
@@ -9,10 +10,82 @@ import yaml
 from helper import save_dataframe_as_csv
 
 
+PAYMENT_COLUMNS = (
+    "payment_id",
+    "symbol",
+    "amount",
+    "payment_date",
+    "fiscal_year",
+    "payment_status",
+    "amount_unit",
+    "amount_basis",
+    "distribution_type",
+    "coverage_start_date",
+    "coverage_end_date",
+    "coverage_status",
+    "source_record",
+)
+
+
+def _first_value(record, *names):
+    for name in names:
+        value = record.get(name)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _payment_id(record, duplicate_index=0):
+    source_id = _first_value(record, "payment_id", "distribution_id", "id", "uid")
+    if source_id is not None:
+        identity = {"source_id": str(source_id)}
+    else:
+        identity = {
+            "symbol": _first_value(record, "symbol", "s"),
+            "amount": _first_value(record, "amount", "dividend", "m"),
+            "payment_date": _first_value(record, "payment_date", "date", "p"),
+            "fiscal_year": _first_value(record, "fiscal_year", "exercise_year", "exercice", "e"),
+            "source_record": record,
+            "duplicate_index": duplicate_index,
+        }
+    payload = json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _normalized_payment(record, duplicate_index=0):
+    """Keep unsupported source semantics explicit instead of interpreting them."""
+    return {
+        "payment_id": _payment_id(record, duplicate_index),
+        "symbol": _first_value(record, "symbol", "SYMBOL", "s"),
+        "amount": _first_value(record, "amount", "dividend", "DIVIDEND", "m"),
+        "payment_date": _first_value(record, "payment_date", "PAYMENT_DATE", "date", "p"),
+        "fiscal_year": _first_value(record, "fiscal_year", "FISCAL_YEAR", "exercise_year", "exercice", "e"),
+        "payment_status": _first_value(record, "payment_status", "status", "state"),
+        "amount_unit": _first_value(record, "amount_unit", "unit", "currency_unit"),
+        "amount_basis": _first_value(record, "amount_basis", "basis", "gross_net"),
+        "distribution_type": _first_value(record, "distribution_type", "dividend_type", "type"),
+        "coverage_start_date": _first_value(record, "coverage_start_date", "coverage_start"),
+        "coverage_end_date": _first_value(record, "coverage_end_date", "coverage_end"),
+        "coverage_status": _first_value(record, "coverage_status", "coverage_complete"),
+        "source_record": json.dumps(record, sort_keys=True, ensure_ascii=False, default=str),
+    }
+
+
+def _rows_to_frame(records):
+    occurrences = {}
+    rows = []
+    for record in records:
+        fingerprint = json.dumps(record, sort_keys=True, ensure_ascii=False, default=str)
+        duplicate_index = occurrences.get(fingerprint, 0)
+        occurrences[fingerprint] = duplicate_index + 1
+        rows.append(_normalized_payment(record, duplicate_index))
+    return pd.DataFrame(rows, columns=PAYMENT_COLUMNS)
+
+
 def scrape_dividends(url):
     """Scrape dividend data from BRVM website (Richbourse).
 
-    Returns DataFrame with columns: SYMBOL, DIVIDEND, PAYMENT_DATE, FISCAL_YEAR
+    Returns normalized payment facts using lowercase contract field names.
     """
     params = {"hl": "en"}
     headers = {
@@ -53,37 +126,8 @@ def scrape_dividends(url):
             json_data = json.loads(raw_json)
 
             for item in json_data:
-                symbol = item.get("s")
-                dividend = round(float(item.get("m", 0)), 4)
-                payment_date = item.get("p")
-
-                # Validate date string or handle unknown/missing
-                if not payment_date or "inconnue" in str(payment_date).lower():
-                    payment_date = None
-
-                # Extract fiscal year from the dividend announcement/exercise
-                # RichBourse data may contain exercise year in the item
-                fiscal_year = item.get("e") or item.get("exercice") or item.get("fiscal_year")
-                
-                # If not in the data, try to infer from payment date
-                # Dividends paid in year X typically relate to fiscal year X-1
-                if not fiscal_year and payment_date:
-                    try:
-                        # Payment date format is typically YYYY-MM-DD
-                        payment_year = int(payment_date.split("-")[0])
-                        fiscal_year = payment_year - 1
-                    except (ValueError, IndexError):
-                        pass
-
-                if symbol:
-                    all_data.append(
-                        {
-                            "SYMBOL": symbol,
-                            "DIVIDEND": dividend,
-                            "PAYMENT_DATE": payment_date,
-                            "FISCAL_YEAR": fiscal_year,
-                        }
-                    )
+                if _first_value(item, "s", "symbol"):
+                    all_data.append(item)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             print(f"Error parsing rbSimData JSON: {e}")
 
@@ -129,9 +173,7 @@ def scrape_dividends(url):
                         .replace("\xa0", "")
                         .replace(",", ".")
                     )
-                    dividend = (
-                        float(dividend_text) if dividend_text else 0.0
-                    )
+                    amount = float(dividend_text) if dividend_text else None
 
                     # Column 5: Payment Date
                     payment_date = cells[5].get_text(strip=True)
@@ -150,23 +192,12 @@ def scrape_dividends(url):
                         else:
                             payment_date = None
 
-                    # Try to extract fiscal year from the row
-                    # Sometimes it's in a separate column or can be inferred
-                    # Dividends paid in year X typically relate to fiscal year X-1
-                    fiscal_year = None
-                    if payment_date:
-                        try:
-                            payment_year = int(payment_date.split("-")[0])
-                            fiscal_year = payment_year - 1
-                        except (ValueError, IndexError):
-                            pass
-
                     all_data.append(
                         {
-                            "SYMBOL": symbol,
-                            "DIVIDEND": dividend,
-                            "PAYMENT_DATE": payment_date,
-                            "FISCAL_YEAR": fiscal_year,
+                            "symbol": symbol,
+                            "amount": amount,
+                            "payment_date": payment_date,
+                            "source_table_row": [cell.get_text(" ", strip=True) for cell in cells],
                         }
                     )
                 except Exception:
@@ -175,9 +206,7 @@ def scrape_dividends(url):
     if not all_data:
         raise ValueError("No dividend data could be extracted.")
 
-    df = pd.DataFrame(all_data)
-
-    return df
+    return _rows_to_frame(all_data)
 
 
 @functions_framework.http
