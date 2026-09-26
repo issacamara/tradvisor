@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from fastapi import HTTPException, Request
 
@@ -18,7 +18,8 @@ class GoogleWorkloadTokenVerifier:
         from google.oauth2 import id_token
         from google.auth.transport import requests
 
-        claims = id_token.verify_oauth2_token(token, requests.Request(), audience=audience)  # type: ignore[no-untyped-call]
+        verifier = cast(Any, id_token.verify_oauth2_token)
+        claims: dict[str, Any] = verifier(token, requests.Request(), audience=audience)
         subject = claims.get("email")
         if not isinstance(subject, str) or claims.get("email_verified") is not True:
             raise ValueError("workload token has no verified service identity")
