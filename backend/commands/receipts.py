@@ -149,8 +149,8 @@ def execute_with_receipt(
             ):
                 raise ReceiptError("idempotency_conflict", "Idempotency key was used for another intent.")
             if (
-                command.expected_generation is not None
-                and control.active_generation != command.expected_generation
+                existing.generation is not None
+                and control.active_generation != existing.generation
             ):
                 raise ReceiptError(
                     "generation_superseded",

@@ -159,13 +159,14 @@ def receipt_record(
     accepted_at: datetime = NOW - timedelta(days=1),
     recovery_id: str = str(RECOVERY),
     generation: str | None = "generation-1",
+    operation: str = "place_order",
 ) -> VersionedDocument[BaseModel]:
     record = PaperCommandReceipt(
         owner_uid=OWNER,
         idempotency_key=key,
         request_fingerprint=fingerprint,
         recovery_id=recovery_id,
-        operation="place_order",
+        operation=operation,
         outcome_id="outcome-1",
         generation=generation,
         state_version=1,
@@ -316,6 +317,77 @@ def test_superseded_generation_never_replays_outcome() -> None:
         )
     assert superseded.value.code == "generation_superseded"
     assert "outcome-1" not in str(superseded.value)
+
+
+def test_reset_retry_replays_against_its_committed_replacement_generation() -> None:
+    store = FakeStore()
+    repositories = make_repositories(store)
+    control_key = repositories.control_key()
+    current = store.documents[control_key.path]
+    assert isinstance(current.record, PortfolioControl)
+    store.documents[control_key.path] = VersionedDocument(
+        key=control_key,
+        schema_version=current.schema_version,
+        state_version=current.state_version,
+        record=current.record.model_copy(
+            update={"active_generation": OpaqueIdentifier("generation-2")}
+        ),
+    )
+    key = key_at(NOW - timedelta(days=1))
+    store.documents[repositories.receipt_key(key).path] = receipt_record(
+        repositories,
+        key,
+        generation="generation-2",
+        operation="reset_portfolio",
+    )
+
+    result = execute_with_receipt(
+        store,
+        repositories,
+        command(key),
+        "a" * 64,
+        now=NOW,
+        apply_mutation=lambda _tx: pytest.fail("reset retry must replay"),
+    )
+
+    assert result.replayed
+    assert result.receipt.operation == "reset_portfolio"
+    assert result.receipt.generation == "generation-2"
+
+
+def test_setup_receipt_is_rejected_after_its_generation_is_reset() -> None:
+    store = FakeStore()
+    repositories = make_repositories(store)
+    control_key = repositories.control_key()
+    current = store.documents[control_key.path]
+    assert isinstance(current.record, PortfolioControl)
+    store.documents[control_key.path] = VersionedDocument(
+        key=control_key,
+        schema_version=current.schema_version,
+        state_version=current.state_version,
+        record=current.record.model_copy(
+            update={"active_generation": OpaqueIdentifier("generation-2")}
+        ),
+    )
+    key = key_at(NOW - timedelta(days=1))
+    store.documents[repositories.receipt_key(key).path] = receipt_record(
+        repositories,
+        key,
+        generation="generation-1",
+        operation="setup_portfolio",
+    )
+
+    with pytest.raises(ReceiptError) as superseded:
+        execute_with_receipt(
+            store,
+            repositories,
+            command(key),
+            "a" * 64,
+            now=NOW,
+            apply_mutation=lambda _tx: pytest.fail("superseded setup must not mutate"),
+        )
+
+    assert superseded.value.code == "generation_superseded"
 
 
 def test_purged_old_receipt_key_cannot_become_a_new_mutation() -> None:
