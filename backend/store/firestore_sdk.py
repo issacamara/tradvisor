@@ -178,6 +178,24 @@ class FirestoreSdkStore(TransactionalStore):
             self._client.document(document.key.path), self._encode_document(document)
         )
 
+    def put_with_server_timestamps_in_transaction(
+        self,
+        transaction: Transaction,
+        document: VersionedDocument[BaseModel],
+        *,
+        fields: tuple[str, ...],
+    ) -> None:
+        if not fields or len(fields) != len(set(fields)):
+            raise ValueError("server timestamp fields must be nonempty and unique")
+        record = document.record.model_dump(mode="python")
+        if any(field not in record for field in fields):
+            raise ValueError("server timestamp field must exist on the document")
+        firestore = importlib.import_module("google.cloud.firestore")
+        data = self._encode_document(document)
+        for field in fields:
+            data[field] = firestore.SERVER_TIMESTAMP
+        self._sdk_transaction(transaction).set(self._client.document(document.key.path), data)
+
     def _resource_name(self, path: str) -> str:
         return f"projects/{self._project_id}/databases/{self._database_id}/documents/{path}"
 

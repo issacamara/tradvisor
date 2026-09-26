@@ -361,6 +361,29 @@ class FirestoreRestStore(TransactionalStore):
         rest_transaction = self._rest_transaction(transaction)
         rest_transaction.writes.append({"update": self._encode_document(document)})
 
+    def put_with_server_timestamps_in_transaction(
+        self,
+        transaction: Transaction,
+        document: VersionedDocument[BaseModel],
+        *,
+        fields: tuple[str, ...],
+    ) -> None:
+        if not fields or len(fields) != len(set(fields)):
+            raise ValueError("server timestamp fields must be nonempty and unique")
+        record = document.record.model_dump(mode="python")
+        if any(field not in record for field in fields):
+            raise ValueError("server timestamp field must exist on the document")
+        rest_transaction = self._rest_transaction(transaction)
+        rest_transaction.writes.append(
+            {
+                "update": self._encode_document(document),
+                "updateTransforms": [
+                    {"fieldPath": field, "setToServerValue": "REQUEST_TIME"}
+                    for field in fields
+                ],
+            }
+        )
+
     def _begin_transaction(self) -> str:
         response = self._request(
             "POST", urljoin(self._root, self._documents_root.rstrip("/") + ":beginTransaction"), {}
