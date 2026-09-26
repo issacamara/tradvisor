@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date
 
 from backend.contracts.paper import PaperPosition
 from backend.contracts.scalars import NonNegativeMoney

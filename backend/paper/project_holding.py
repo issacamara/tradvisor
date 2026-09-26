@@ -51,6 +51,8 @@ def advance_holding(
     if previous_session is not None and evaluation_session <= previous_session:
         return HoldingProjection(position, advice)
     next_high = advice.high_water_close_micros
+    if next_high is None and position.high_water_close is not None:
+        next_high = position.high_water_close.micros
     if position.high_water_close is not None and next_high is not None:
         next_high = max(position.high_water_close.micros, next_high)
     next_high_money = (
