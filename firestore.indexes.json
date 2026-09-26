@@ -1,0 +1,42 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "accepted_at", "order": "DESCENDING"},
+        {"fieldPath": "order_id", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "accepted_at", "order": "DESCENDING"},
+        {"fieldPath": "order_id", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "executions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "processed_at", "order": "DESCENDING"},
+        {"fieldPath": "order_id", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "cash_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "occurred_at", "order": "DESCENDING"},
+        {"fieldPath": "movement_id", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

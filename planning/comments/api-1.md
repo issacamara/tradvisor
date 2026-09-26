@@ -7,6 +7,12 @@
 **Status:** FINAL - architecture handoff baseline; not an implemented API
 **References:** BRD v1.23; architecture v1.0; financial calculation contract v1.1
 
+**Approved amendment v0.14 (2026-09-26, owner decision for issue #28):** The v0.13
+text below remains the frozen historical baseline. For the V1 implementation,
+`GET /paper/cash-movements` history is ordered by `(occurred_at, movement_id)`
+descending. This amendment changes only that history ordering choice; it does not
+rewrite or relabel v0.13.
+
 ## 1. Authority And Review Boundary
 
 **Integration baseline approved 2026-09-20:** Integration Design v1.0 (companion baseline document) is normative for session timing, execution-price publication and recovery-register ordering/completeness. Its sections 2-4 supersede earlier unspecified integrations and fence-first reset sequencing. Use a verified officialization-plus-60-seconds cutoff; publish immutable execution revisions with server timestamps and transactionally checked control records; persist restrictive recovery intent before live fencing/denial. Scan register intents and ordered heads before reopening, block globally on incomplete inventory, and block affected subjects on unresolved chains/intents. Isolate the old database and workers before reopening the restored target. The linked verification matrix remains required implementation work.

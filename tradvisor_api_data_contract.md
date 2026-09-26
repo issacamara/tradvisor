@@ -5,6 +5,12 @@
 **Status:** FINAL - architecture handoff baseline; not an implemented API
 **References:** BRD v1.23; architecture v1.0; financial calculation contract v1.1
 
+**Approved amendment v0.14 (2026-09-26, owner decision for issue #28):** The v0.13
+text below remains the frozen historical baseline. For the V1 implementation,
+`GET /paper/cash-movements` history is ordered by `(occurred_at, movement_id)`
+descending. This amendment changes only that history ordering choice; it does not
+rewrite or relabel v0.13.
+
 ## 1. Authority And Review Boundary
 
 **Integration baseline approved 2026-09-20:** [Integration Design v1.0](tradvisor_integration_draft.md) is normative for session timing, execution-price publication and recovery-register ordering/completeness. Its sections 2-4 supersede earlier unspecified integrations and fence-first reset sequencing. Use a verified officialization-plus-60-seconds cutoff; publish immutable execution revisions with server timestamps and transactionally checked control records; persist restrictive recovery intent before live fencing/denial. Scan register intents and ordered heads before reopening, block globally on incomplete inventory, and block affected subjects on unresolved chains/intents. Isolate the old database and workers before reopening the restored target. The linked verification matrix remains required implementation work.
@@ -248,4 +254,4 @@ Required implementation contract tests:
 
 Sell-from-Keep with recorded acknowledgment, command freshness, the section 1 technical package, the section 8 calendar approach, correction behavior, recovery command fencing, restored-order rejection, register retention and operational roles are approved. Session-completion rules, race-safe price publication and recovery-register ordering/completeness/failure scope are also approved through the integration baseline. Company-reference enrichment direction and WCAG 2.2 AA target are approved; actual provenance and conformance require verification. Reuse `scrape_financials.py` and `scrape_financials_init.py`, including the existing downstream insertion path; no new extraction implementation, standalone benchmark or EUR 1/month allowance is required. Verify integration, extracted-field contracts and actual operating costs during delivery. This correction authorizes no provider calls or production runs. Source semantics/category mapping, financial-input coverage, generated schemas, calculation/concurrency tests, backup costs and restore drills are implementation or release verification, not outstanding approval of these policies. Name the technical operator and support contact before launch. Approval does not establish implementation or passing checks.
 
-Implementation should generate versioned OpenAPI from typed backend request/response models and derive the TypeScript client. This finalized contract specifies those models, not evidence they exist or have passed tests. Version 0.13 synchronizes handoff status/references only; endpoint, scalar and financial semantics are unchanged. Preserve the architecture's seven component boundaries. Architecture v1.0 section 13 separates task readiness from infrastructure/deployment and release acceptance gates.
+Implementation should generate versioned OpenAPI from typed backend request/response models and derive the TypeScript client. This finalized contract specifies those models, not evidence they exist or have passed tests. Version 0.13 synchronizes the frozen handoff baseline; the approved v0.14 amendment above changes only V1 cash-history ordering. Preserve the architecture's seven component boundaries. Architecture v1.0 section 13 separates task readiness from infrastructure/deployment and release acceptance gates.
