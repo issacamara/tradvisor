@@ -9,6 +9,21 @@ variable "region" {
   type        = string
   default     = "europe-central2"
 }
+
+variable "recovery_register_cleanup_members" {
+  description = "Explicit principals allowed to delete recovery-register objects after evidence-qualified cleanup; empty by default"
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for member in var.recovery_register_cleanup_members :
+      can(regex("^(user|group|serviceAccount):", member))
+    ])
+    error_message = "Cleanup principals must use a user:, group:, or serviceAccount: member identity."
+  }
+}
+
 variable "functions" {
   description = "List of function names"
   type        = list(string)
