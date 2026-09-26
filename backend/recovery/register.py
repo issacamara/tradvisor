@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
-from typing import Callable, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol, cast
 
 Action = Literal["reset", "deny", "grant", "recovery"]
 UTC = timezone.utc
@@ -110,6 +110,95 @@ class StorageAdapter(Protocol):
     def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage: ...
 
     def list_heads(self, cursor: str | None, *, limit: int) -> InventoryPage: ...
+
+
+class GcsStorageAdapter:
+    """Versioned GCS implementation of the recovery register adapter."""
+
+    def __init__(self, bucket: Any) -> None:
+        self._bucket = bucket
+
+    def get_intent(self, operation_id: str) -> Intent | None:
+        return cast(Intent | None, _load_record(self._bucket.blob(f"intents/{operation_id}.json"), Intent))
+
+    def create_intent(self, intent: Intent) -> bool:
+        blob = self._bucket.blob(f"intents/{intent.operation_id}.json")
+        try:
+            blob.upload_from_string(_encode_record(intent), content_type="application/json", if_generation_match=0)
+        except Exception as error:
+            if _is_precondition_failure(error):
+                return False
+            raise
+        return True
+
+    def get_head(self, subject: str) -> SubjectHead | None:
+        return cast(SubjectHead | None, _load_record(self._bucket.blob(f"heads/{subject}.json"), SubjectHead))
+
+    def compare_and_set_head(
+        self,
+        subject: str,
+        expected_generation: int | None,
+        operation_id: str,
+        sequence: int,
+    ) -> SubjectHead | None:
+        blob = self._bucket.blob(f"heads/{subject}.json")
+        generation = 1 if expected_generation is None else expected_generation + 1
+        value = SubjectHead(subject, operation_id, sequence, generation)
+        try:
+            blob.upload_from_string(
+                _encode_record(value), content_type="application/json", if_generation_match=0 if expected_generation is None else expected_generation
+            )
+        except Exception as error:
+            if _is_precondition_failure(error):
+                return None
+            raise
+        return value
+
+    def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage:
+        return _list_records(self._bucket, "intents/", cursor, limit, Intent)
+
+    def list_heads(self, cursor: str | None, *, limit: int) -> InventoryPage:
+        return _list_records(self._bucket, "heads/", cursor, limit, SubjectHead)
+
+
+def _encode_record(record: Intent | SubjectHead) -> str:
+    payload = {"record_type": type(record).__name__, **asdict(record)}
+    if isinstance(record, Intent):
+        payload["created_at"] = record.created_at.isoformat()
+    return json.dumps(payload, sort_keys=True)
+
+
+def _load_record(blob: Any, record_type: type[Intent] | type[SubjectHead]) -> Intent | SubjectHead | None:
+    try:
+        raw = blob.download_as_text()
+    except Exception as error:
+        if _is_not_found(error):
+            return None
+        raise
+    payload = json.loads(raw)
+    if record_type is Intent:
+        payload.pop("record_type", None)
+        payload["created_at"] = datetime.fromisoformat(payload["created_at"])
+        return Intent(**payload)
+    payload.pop("record_type", None)
+    return SubjectHead(**payload)
+
+
+def _list_records(bucket: Any, prefix: str, cursor: str | None, limit: int, record_type: type[Intent] | type[SubjectHead]) -> InventoryPage:
+    names = sorted(blob.name for blob in bucket.list_blobs(prefix=prefix) if blob.name.endswith(".json"))
+    start = names.index(cursor) + 1 if cursor in names else 0
+    selected = names[start : start + limit]
+    items = tuple(item for name in selected if (item := _load_record(bucket.blob(name), record_type)) is not None)
+    next_cursor = selected[-1] if len(selected) == limit else None
+    return InventoryPage(items=items, next_cursor=next_cursor, complete=next_cursor is None)
+
+
+def _is_not_found(error: Exception) -> bool:
+    return getattr(error, "code", None) == 404 or error.__class__.__name__ == "NotFound"
+
+
+def _is_precondition_failure(error: Exception) -> bool:
+    return getattr(error, "code", None) in (409, 412) or error.__class__.__name__ in {"Conflict", "PreconditionFailed"}
 
 
 PageLister = Callable[..., InventoryPage]
