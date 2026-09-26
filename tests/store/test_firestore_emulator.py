@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.store.firestore import FirestoreRestStore
 from backend.contracts.paper import PortfolioControl
 from backend.store.repositories import (
+    DocumentKey,
     GenerationConflict,
     OwnerContext,
     PaperRepositories,
@@ -47,6 +48,7 @@ class _LocalFirestoreState:
     def __init__(self) -> None:
         self.documents: dict[str, tuple[int, dict[str, object]]] = {}
         self.transactions: dict[str, dict[str, int]] = {}
+        self.query_requests: list[dict[str, Any]] = []
         self.lock = Lock()
 
 
@@ -74,6 +76,32 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                     version = self.state.documents.get(path, (0, {}))[0] + 1
                     self.state.documents[path] = (version, document)
             self._respond(200, {})
+            return
+        if self.path.endswith(":runQuery"):
+            body = self._body()
+            query = cast(dict[str, Any], body["structuredQuery"])
+            parent = str(body["parent"]).split("/documents/", 1)[1]
+            collection_id = str(query["from"][0]["collectionId"])
+            with self.state.lock:
+                self.state.query_requests.append(body)
+                candidates = [
+                    document
+                    for path, (_, document) in self.state.documents.items()
+                    if path.startswith(f"{parent}/{collection_id}/")
+                ]
+                candidates = [
+                    document
+                    for document in candidates
+                    if self._matches_filters(document, query.get("where"))
+                ]
+                for ordering in reversed(query.get("orderBy", [])):
+                    field = str(ordering["field"]["fieldPath"])
+                    candidates.sort(
+                        key=lambda document: self._field_value(document, field),
+                        reverse=ordering["direction"] == "DESCENDING",
+                    )
+                candidates = candidates[: int(query["limit"])]
+            self._respond_list(200, [{"document": document} for document in candidates])
             return
         self._respond(404, {})
 
@@ -110,16 +138,49 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _respond_list(self, status: int, body: list[dict[str, object]]) -> None:
+        payload = json.dumps(body).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    @staticmethod
+    def _field_value(document: dict[str, object], field: str) -> str | int:
+        fields = cast(dict[str, dict[str, object]], document["fields"])
+        value = fields[field]
+        if "integerValue" in value:
+            return int(str(value["integerValue"]))
+        return str(next(iter(value.values())))
+
+    @classmethod
+    def _matches_filters(
+        cls, document: dict[str, object], where: dict[str, object] | None
+    ) -> bool:
+        if where is None:
+            return True
+        composite = cast(dict[str, object], where["compositeFilter"])
+        filters = cast(list[dict[str, object]], composite["filters"])
+        for item in filters:
+            field_filter = cast(dict[str, object], item["fieldFilter"])
+            field = str(cast(dict[str, object], field_filter["field"])["fieldPath"])
+            actual = cls._field_value(document, field)
+            expected = cls._field_value({"fields": {"value": field_filter["value"]}}, "value")
+            if field_filter["op"] == "EQUAL" and actual != expected:
+                return False
+        return True
+
 
 @pytest.fixture
-def firestore_emulator() -> Iterator[str]:
+def firestore_emulator() -> Iterator[tuple[str, _LocalFirestoreState]]:
     state = _LocalFirestoreState()
     _FirestoreEmulatorHandler.state = state
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FirestoreEmulatorHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
+        yield f"http://127.0.0.1:{server.server_address[1]}", state
     finally:
         server.shutdown()
         thread.join(timeout=5)
@@ -127,10 +188,15 @@ def firestore_emulator() -> Iterator[str]:
 
 
 def test_firestore_rest_adapter_retries_reset_write_race(
-    firestore_emulator: str,
+    firestore_emulator: tuple[str, _LocalFirestoreState],
 ) -> None:
-    first_store = FirestoreRestStore(host=firestore_emulator)
-    reset_store = FirestoreRestStore(host=firestore_emulator)
+    emulator_host, state = firestore_emulator
+    first_store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
+    reset_store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
     owner = OwnerContext(uid=OpaqueIdentifier("verified-user"))
     first = PaperRepositories(first_store, owner)
     reset = PaperRepositories(reset_store, owner)
@@ -175,3 +241,57 @@ def test_firestore_rest_adapter_retries_reset_write_race(
 
     assert attempts == 2
     assert first_store.get(generation_key) is None
+    assert state.documents["paper_portfolios/verified-user"][1]["name"] == (
+        "projects/local-project/databases/local-db/documents/paper_portfolios/verified-user"
+    )
+
+
+def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, state = firestore_emulator
+    store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
+    collection = "paper_portfolios/verified-user/generations/g1/orders"
+    documents = (
+        ("order-a", "g1", 1),
+        ("order-b", "g1", 2),
+        ("order-c", "g2", 3),
+    )
+
+    def seed(transaction: Transaction) -> None:
+        for order_id, generation, value in documents:
+            store.put_in_transaction(
+                transaction,
+                VersionedDocument(
+                    key=DocumentKey(collection, order_id),
+                    schema_version=1,
+                    state_version=0,
+                    record=Record(generation=generation, value=value),
+                ),
+            )
+
+    store.run(seed, max_attempts=1)
+    page = store.page(
+        collection,
+        filters=(("generation", "==", "g1"),),
+        order_by=(("value", "desc"), ("generation", "asc")),
+        limit=10,
+        cursor=None,
+    )
+
+    assert [Record.model_validate(item.model_dump()).value for item in page.items] == [2, 1]
+    query = state.query_requests[0]
+    assert query["parent"] == (
+        "projects/local-project/databases/local-db/documents/"
+        "paper_portfolios/verified-user/generations/g1"
+    )
+    structured = cast(dict[str, Any], query["structuredQuery"])
+    assert structured["where"]["compositeFilter"]["filters"][0]["fieldFilter"]["field"] == {
+        "fieldPath": "generation"
+    }
+    assert structured["orderBy"] == [
+        {"field": {"fieldPath": "value"}, "direction": "DESCENDING"},
+        {"field": {"fieldPath": "generation"}, "direction": "ASCENDING"},
+    ]

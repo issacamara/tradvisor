@@ -1,25 +1,19 @@
-"""Small Firestore REST adapter used by local emulator and future SDK adapters."""
+"""Small Firestore REST adapter used by the local emulator and SDK adapters."""
 
 from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from typing import Any, Literal, cast
 from urllib.error import HTTPError
-from urllib.parse import urlencode, urljoin, quote
+from urllib.parse import quote, urlencode, urljoin
 from urllib.request import Request, urlopen
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.store.repositories import (
-    DocumentKey,
-    Page,
-    TransactionalStore,
-    VersionedDocument,
-)
+from backend.store.repositories import DocumentKey, Page, TransactionalStore, VersionedDocument
 from backend.store.transactions import Transaction
 
 
@@ -37,52 +31,80 @@ class _RestTransaction:
         self.writes: list[dict[str, Any]] = []
 
 
-def _json_default(value: object) -> object:
+def _firestore_value(value: object) -> dict[str, Any]:
+    if value is None:
+        return {"nullValue": None}
+    if isinstance(value, bool):
+        return {"booleanValue": value}
+    if isinstance(value, int):
+        return {"integerValue": str(value)}
+    if isinstance(value, float):
+        return {"doubleValue": value}
     if isinstance(value, datetime):
-        return {"__tradvisor_datetime__": value.isoformat()}
+        return {"timestampValue": value.isoformat().replace("+00:00", "Z")}
     if isinstance(value, date):
-        return {"__tradvisor_date__": value.isoformat()}
+        return {"stringValue": value.isoformat()}
+    if isinstance(value, str):
+        if "T" in value and value.endswith("Z"):
+            return {"timestampValue": value}
+        return {"stringValue": value}
+    if isinstance(value, Mapping):
+        return {
+            "mapValue": {
+                "fields": {str(key): _firestore_value(item) for key, item in value.items()}
+            }
+        }
+    if isinstance(value, (list, tuple)):
+        return {"arrayValue": {"values": [_firestore_value(item) for item in value]}}
     raise TypeError(f"unsupported document value: {type(value).__name__}")
 
 
-def _restore_json_types(value: object) -> object:
-    if isinstance(value, list):
-        return [_restore_json_types(item) for item in value]
-    if isinstance(value, dict):
-        if set(value) == {"__tradvisor_datetime__"}:
-            return datetime.fromisoformat(str(value["__tradvisor_datetime__"]))
-        if set(value) == {"__tradvisor_date__"}:
-            return date.fromisoformat(str(value["__tradvisor_date__"]))
-        return {str(key): _restore_json_types(item) for key, item in value.items()}
-    if isinstance(value, str) and "T" in value and value.endswith("Z"):
-        return datetime.fromisoformat(value[:-1] + "+00:00")
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value)
-        except ValueError:
-            pass
-    return value
+def _python_value(value: Mapping[str, Any]) -> object:
+    if "nullValue" in value:
+        return None
+    if "booleanValue" in value:
+        return value["booleanValue"]
+    if "integerValue" in value:
+        return int(value["integerValue"])
+    if "doubleValue" in value:
+        return float(value["doubleValue"])
+    if "timestampValue" in value:
+        timestamp = str(value["timestampValue"])
+        return datetime.fromisoformat(
+            timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
+        )
+    if "stringValue" in value:
+        return value["stringValue"]
+    if "arrayValue" in value:
+        return [_python_value(item) for item in value["arrayValue"].get("values", [])]
+    if "mapValue" in value:
+        return {key: _python_value(item) for key, item in value["mapValue"].get("fields", {}).items()}
+    raise ValueError("unsupported Firestore value")
 
 
 class FirestoreRestStore(TransactionalStore):
-    """Firestore document/transaction adapter using only the REST protocol.
+    """Firestore document/transaction adapter using the REST protocol."""
 
-    The adapter deliberately reads ``FIRESTORE_EMULATOR_HOST`` by default and
-    does not create credentials. Production callers must supply an explicit
-    host and project through their authenticated runtime adapter.
-    """
-
-    def __init__(self, *, project_id: str | None = None, host: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        project_id: str | None = None,
+        database_id: str | None = None,
+        host: str | None = None,
+    ) -> None:
         configured_host = host or os.environ.get("FIRESTORE_EMULATOR_HOST")
         if not configured_host:
             raise ValueError("Firestore REST adapter requires an explicit local emulator host")
-        if not configured_host.startswith("http://") and not configured_host.startswith("https://"):
+        if not configured_host.startswith(("http://", "https://")):
             configured_host = f"http://{configured_host}"
         self._root = configured_host.rstrip("/")
-        configured_project = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT", "tradvisor-test")
-        self._project_id = str(configured_project)
+        self._project_id = str(project_id or os.environ.get("GOOGLE_CLOUD_PROJECT", "tradvisor-test"))
+        self._database_id = str(
+            database_id or os.environ.get("GOOGLE_CLOUD_FIRESTORE_DATABASE", "(default)")
+        )
         self._documents_root = (
-            f"/v1/projects/{quote(self._project_id, safe='')}/databases/(default)/documents/"
+            f"/v1/projects/{quote(self._project_id, safe='')}/databases/"
+            f"{quote(self._database_id, safe='()')}/documents/"
         )
 
     def run(self, callback: Callable[[Transaction], Any], *, max_attempts: int) -> Any:
@@ -99,8 +121,7 @@ class FirestoreRestStore(TransactionalStore):
         raise FirestoreConflict("transaction retry budget exhausted")
 
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None:
-        response = self._request("GET", self._document_url(key))
-        return self._decode_document(response, key)
+        return self._decode_document(self._request("GET", self._document_url(key)), key)
 
     def page(
         self,
@@ -111,21 +132,61 @@ class FirestoreRestStore(TransactionalStore):
         limit: int,
         cursor: str | None,
     ) -> Page[BaseModel]:
-        query = {"pageSize": str(limit)}
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        parts = collection.split("/")
+        parent = "/".join(parts[:-1])
+        structured: dict[str, Any] = {
+            "from": [{"collectionId": parts[-1]}],
+            "orderBy": [
+                {"field": {"fieldPath": field}, "direction": direction.upper() + "ENDING"}
+                for field, direction in order_by
+            ],
+            "limit": limit,
+        }
+        operators = {
+            "==": "EQUAL",
+            ">": "GREATER_THAN",
+            ">=": "GREATER_THAN_OR_EQUAL",
+            "<": "LESS_THAN",
+            "<=": "LESS_THAN_OR_EQUAL",
+        }
+        field_filters = [
+            {
+                "fieldFilter": {
+                    "field": {"fieldPath": field},
+                    "op": operators[operator],
+                    "value": _firestore_value(value),
+                }
+            }
+            for field, operator, value in filters
+        ]
+        if field_filters:
+            structured["where"] = {"compositeFilter": {"op": "AND", "filters": field_filters}}
         if cursor is not None:
-            query["pageToken"] = cursor
-        response = self._request(
-            "GET", self._collection_url(collection) + "?" + urlencode(query)
+            structured["startAt"] = {"values": [_firestore_value(cursor)]}
+        body: dict[str, Any] = {
+            "parent": self._resource_name(parent),
+            "structuredQuery": structured,
+        }
+        response = self._request_many(
+            "POST", urljoin(self._root, self._documents_root.rstrip("/") + ":runQuery"), body
         )
         items = tuple(
-            document
-            for document in (
-                self._decode_document(raw, DocumentKey(collection, raw["name"].rsplit("/", 1)[-1]))
-                for raw in response.get("documents", [])
-            )
-            if document is not None
+            decoded
+            for result in response
+            for decoded in [
+                self._decode_document(
+                    result.get("document", {}),
+                    DocumentKey(
+                        collection,
+                        result.get("document", {}).get("name", "").rsplit("/", 1)[-1],
+                    ),
+                )
+            ]
+            if decoded is not None
         )
-        return Page(tuple(item.record for item in items), response.get("nextPageToken"))
+        return Page(tuple(item.record for item in items), None)
 
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey
@@ -156,11 +217,14 @@ class FirestoreRestStore(TransactionalStore):
             {"transaction": transaction.token, "writes": transaction.writes},
         )
 
+    def _resource_name(self, path: str) -> str:
+        return (
+            f"projects/{self._project_id}/databases/{self._database_id}/documents/"
+            f"{quote(path, safe='/')}"
+        )
+
     def _document_url(self, key: DocumentKey) -> str:
         return urljoin(self._root, self._documents_root + quote(key.path, safe="/"))
-
-    def _collection_url(self, collection: str) -> str:
-        return urljoin(self._root, self._documents_root + quote(collection, safe="/"))
 
     @staticmethod
     def _rest_transaction(transaction: Transaction) -> _RestTransaction:
@@ -168,20 +232,17 @@ class FirestoreRestStore(TransactionalStore):
             raise TypeError("FirestoreRestStore requires its own transaction handle")
         return transaction
 
-    @staticmethod
-    def _encode_document(document: VersionedDocument[BaseModel]) -> dict[str, Any]:
+    def _encode_document(self, document: VersionedDocument[BaseModel]) -> dict[str, Any]:
+        record_fields = {
+            key: _firestore_value(value)
+            for key, value in document.record.model_dump(mode="python").items()
+        }
         return {
-            "name": document.key.path,
+            "name": self._resource_name(document.key.path),
             "fields": {
-                "schema_version": {"integerValue": str(document.schema_version)},
-                "state_version": {"integerValue": str(document.state_version)},
-                "record_json": {
-                    "stringValue": json.dumps(
-                        document.record.model_dump(mode="python"),
-                        default=_json_default,
-                        sort_keys=True,
-                    )
-                },
+                "_schema_version": {"integerValue": str(document.schema_version)},
+                "_document_state_version": {"integerValue": str(document.state_version)},
+                **record_fields,
             },
         }
 
@@ -192,17 +253,26 @@ class FirestoreRestStore(TransactionalStore):
         if not response:
             return None
         fields = response["fields"]
-        record = _restore_json_types(json.loads(fields["record_json"]["stringValue"]))
+        record = {
+            field: _python_value(value)
+            for field, value in fields.items()
+            if field not in {"_schema_version", "_document_state_version"}
+        }
         return VersionedDocument(
             key=key,
-            schema_version=int(fields["schema_version"]["integerValue"]),
-            state_version=int(fields["state_version"]["integerValue"]),
+            schema_version=int(fields["_schema_version"]["integerValue"]),
+            state_version=int(fields["_document_state_version"]["integerValue"]),
             record=_StoredRecord.model_validate(record),
         )
 
-    def _request(
-        self, method: str, url: str, body: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _request(self, method: str, url: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        return cast(dict[str, Any], self._request_payload(method, url, body))
+
+    def _request_many(self, method: str, url: str, body: dict[str, Any]) -> list[dict[str, Any]]:
+        return cast(list[dict[str, Any]], self._request_payload(method, url, body))
+
+    @staticmethod
+    def _request_payload(method: str, url: str, body: dict[str, Any] | None = None) -> object:
         request = Request(
             url,
             data=None if body is None else json.dumps(body).encode("utf-8"),
@@ -218,4 +288,4 @@ class FirestoreRestStore(TransactionalStore):
             if error.code == 409:
                 raise FirestoreConflict("Firestore transaction conflict") from error
             raise
-        return {} if not payload else cast(dict[str, Any], json.loads(payload))
+        return {} if not payload else json.loads(payload)
