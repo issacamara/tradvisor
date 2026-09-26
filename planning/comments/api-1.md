@@ -76,7 +76,7 @@ Guard shape: `{code, status: pass|fail|unknown, observed, threshold, evidence_re
 | `GET /paper/portfolio` | None | Consistent active-generation summary, holdings, reserved/available resources and holding advice. No portfolio yet returns `setup_required`, null summary and empty positions. Unpriced positions produce incomplete valuation, not zero-valued holdings or a misleading total. |
 | `GET /paper/orders` | Optional status `pending`, `executed`, `rejected` or `expired`, limit/cursor | Active-generation orders, `(accepted_at, order_id)` descending. |
 | `GET /paper/executions` | Limit/cursor | Active-generation fills, `(processed_at, order_id)` descending. |
-| `GET /paper/cash-movements` | Limit/cursor | Active-generation ledger, `(created_at, movement_id)` descending. |
+| `GET /paper/cash-movements` | Limit/cursor | Active-generation ledger, `(occurred_at, movement_id)` descending. |
 
 All paths above append to `/v1`. Lists default to 50 and permit `1..100` items; no unbounded history response. Opaque authenticated cursors bind to owner where personalized, generation/state version, analytical batch, filters, order and last key. Expire cursors after 24 hours or earlier if the referenced snapshot is no longer retained. Return 409 `cursor_stale` on state/generation/filter mismatch and 410 `snapshot_expired` on expiry; clients restart pagination. Pin personalized lists to the state version; reject concurrent-change pagination rather than pretending it is a historical database snapshot. Shared batches remain pinned when the latest publication changes. Do not silently mix batches.
 

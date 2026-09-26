@@ -94,6 +94,7 @@ def _encode_cursor(
     filters: tuple[tuple[str, str, str], ...],
     order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
     values: list[dict[str, Any]],
+    cursor_context: tuple[str, int] | None,
 ) -> str:
     payload = {
         "v": 1,
@@ -101,6 +102,7 @@ def _encode_cursor(
         "filters": [list(item) for item in filters],
         "order_by": [list(item) for item in order_by],
         "values": values,
+        "context": None if cursor_context is None else list(cursor_context),
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -115,6 +117,7 @@ def _decode_cursor(
     collection: str,
     filters: tuple[tuple[str, str, str], ...],
     order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
+    cursor_context: tuple[str, int] | None,
 ) -> list[dict[str, Any]]:
     try:
         if not cursor or len(cursor) > 2048:
@@ -130,6 +133,8 @@ def _decode_cursor(
             or payload.get("collection") != collection
             or payload.get("filters") != expected_filters
             or payload.get("order_by") != expected_order
+            or payload.get("context")
+            != (None if cursor_context is None else list(cursor_context))
             or not isinstance(payload.get("values"), list)
             or len(payload["values"]) != len(order_by)
         ):
@@ -193,6 +198,7 @@ class FirestoreRestStore(TransactionalStore):
         order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
         limit: int,
         cursor: str | None,
+        cursor_context: tuple[str, int] | None = None,
     ) -> Page[BaseModel]:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
@@ -228,7 +234,9 @@ class FirestoreRestStore(TransactionalStore):
         if cursor is not None:
             structured["startAt"] = {
                 "before": False,
-                "values": _decode_cursor(cursor, collection, filters, order_by),
+                "values": _decode_cursor(
+                    cursor, collection, filters, order_by, cursor_context
+                ),
             }
         body: dict[str, Any] = {
             "parent": self._resource_name(parent),
@@ -261,7 +269,9 @@ class FirestoreRestStore(TransactionalStore):
                     ordered_values.append({"referenceValue": last_document["name"]})
                 else:
                     ordered_values.append(cast(dict[str, Any], last_fields[field]))
-            next_cursor = _encode_cursor(collection, filters, order_by, ordered_values)
+            next_cursor = _encode_cursor(
+                collection, filters, order_by, ordered_values, cursor_context
+            )
         return Page(tuple(item.record for item in items), next_cursor)
 
     def get_in_transaction(

@@ -108,6 +108,7 @@ class QueryReader(Protocol):
         order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
         limit: int,
         cursor: str | None,
+        cursor_context: tuple[str, int] | None = None,
     ) -> Page[BaseModel]: ...
 
 
@@ -193,30 +194,30 @@ class PaperRepositories:
     def get_summary(
         self, generation: OpaqueIdentifier
     ) -> VersionedDocument[PortfolioSummary] | None:
-        return self._typed(self._store.get(self.generation_key(generation)), PortfolioSummary)
+        return self._read_active(self.generation_key(generation), generation, PortfolioSummary)
 
     def get_position(
         self, generation: OpaqueIdentifier, symbol: OpaqueIdentifier
     ) -> VersionedDocument[PaperPosition] | None:
-        return self._typed(self._store.get(self.position_key(generation, symbol)), PaperPosition)
+        return self._read_active(self.position_key(generation, symbol), generation, PaperPosition)
 
     def get_order(
         self, generation: OpaqueIdentifier, order_id: OpaqueIdentifier
     ) -> VersionedDocument[PaperOrder] | None:
-        return self._typed(self._store.get(self.order_key(generation, order_id)), PaperOrder)
+        return self._read_active(self.order_key(generation, order_id), generation, PaperOrder)
 
     def get_execution(
         self, generation: OpaqueIdentifier, order_id: OpaqueIdentifier
     ) -> VersionedDocument[PaperExecution] | None:
-        return self._typed(
-            self._store.get(self.execution_key(generation, order_id)), PaperExecution
+        return self._read_active(
+            self.execution_key(generation, order_id), generation, PaperExecution
         )
 
     def get_cash_movement(
         self, generation: OpaqueIdentifier, movement_id: OpaqueIdentifier
     ) -> VersionedDocument[CashMovement] | None:
-        return self._typed(
-            self._store.get(self.cash_movement_key(generation, movement_id)), CashMovement
+        return self._read_active(
+            self.cash_movement_key(generation, movement_id), generation, CashMovement
         )
 
     @staticmethod
@@ -369,6 +370,7 @@ class PaperRepositories:
     ) -> Page[Record]:
         if not 1 <= limit <= MAX_PAGE_SIZE:
             raise ValueError(f"limit must be between 1 and {MAX_PAGE_SIZE}")
+        context = self._active_generation_context(generation)
         result = self._store.page(
             f"paper_portfolios/{_segment(str(self._owner.uid))}/generations/"
             f"{_segment(str(generation))}/{collection}",
@@ -376,8 +378,36 @@ class PaperRepositories:
             order_by=order_by,
             limit=limit,
             cursor=cursor,
+            cursor_context=context,
         )
+        if context != self._active_generation_context(generation):
+            raise GenerationConflict("portfolio changed during history read")
         return Page(tuple(self._record(item, record_type) for item in result.items), result.next_cursor)
+
+    def _active_generation_context(self, generation: OpaqueIdentifier) -> tuple[str, int]:
+        control = self.get_control()
+        if control is None or control.record.active_generation != generation:
+            raise GenerationConflict(f"generation {generation} is not the active portfolio generation")
+        return str(generation), control.state_version
+
+    def _read_active(
+        self,
+        key: DocumentKey,
+        generation: OpaqueIdentifier,
+        record_type: type[Record],
+    ) -> VersionedDocument[Record] | None:
+        def read(transaction: Transaction) -> VersionedDocument[Record] | None:
+            control = self._store.get_in_transaction(transaction, self.control_key())
+            if control is None:
+                raise GenerationConflict("cannot read a generation without portfolio control")
+            control_record = self._record(control.record, PortfolioControl)
+            if control_record.active_generation != generation:
+                raise GenerationConflict(
+                    f"generation {generation} is not the active portfolio generation"
+                )
+            return self._typed(self._store.get_in_transaction(transaction, key), record_type)
+
+        return self._store.run(read, max_attempts=MAX_SNAPSHOT_ATTEMPTS)
 
     @staticmethod
     def _record(value: BaseModel, record_type: type[Record]) -> Record:

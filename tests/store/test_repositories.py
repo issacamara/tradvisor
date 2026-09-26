@@ -9,7 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from backend.contracts.scalars import OpaqueIdentifier
-from backend.contracts.paper import PaperExecution
+from backend.contracts.paper import PaperExecution, PaperOrder
 from backend.store.repositories import (
     DocumentKey,
     GenerationConflict,
@@ -56,6 +56,7 @@ class FakeStore:
         order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
         limit: int,
         cursor: str | None,
+        cursor_context: tuple[str, int] | None = None,
     ) -> Page[BaseModel]:
         self.queries.append(
             {
@@ -64,6 +65,7 @@ class FakeStore:
                 "order_by": order_by,
                 "limit": limit,
                 "cursor": cursor,
+                "cursor_context": cursor_context,
             }
         )
         return Page((), "next" if cursor is None else None)
@@ -360,6 +362,9 @@ def test_order_query_is_bounded_ordered_and_generation_scoped(
 ) -> None:
     store, repo = repositories
     generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
     page = repo.list_orders(generation, limit=25, cursor="opaque-cursor")
 
     assert page.items == ()
@@ -370,6 +375,7 @@ def test_order_query_is_bounded_ordered_and_generation_scoped(
             "order_by": (("accepted_at", "desc"), ("order_id", "desc")),
             "limit": 25,
             "cursor": "opaque-cursor",
+            "cursor_context": ("g1", 0),
         }
     ]
     with pytest.raises(ValueError, match="limit must be between"):
@@ -381,6 +387,9 @@ def test_all_generation_history_queries_have_stable_compound_order(
 ) -> None:
     store, repo = repositories
     generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
     repo.list_executions(generation, limit=10)
     repo.list_cash_movements(generation, limit=10)
     assert [query["order_by"] for query in store.queries] == [
@@ -388,6 +397,32 @@ def test_all_generation_history_queries_have_stable_compound_order(
         (("occurred_at", "desc"), ("movement_id", "desc")),
     ]
     assert all(query["filters"] == (("generation", "==", "g1"),) for query in store.queries)
+
+
+def test_reset_read_race_hides_retired_generation(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    order_key = repo.order_key(generation, OpaqueIdentifier("order-1"))
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    store.documents[order_key.path] = VersionedDocument(
+        key=order_key,
+        schema_version=1,
+        state_version=0,
+        record=PaperOrder.model_construct(generation="g1", order_id="order-1"),
+    )
+    store.retry_once_with_control = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=1, record=_control("g2")
+    )
+
+    with pytest.raises(GenerationConflict, match="not the active"):
+        repo.get_order(generation, OpaqueIdentifier("order-1"))
+
+    with pytest.raises(GenerationConflict, match="not the active"):
+        repo.list_orders(generation, limit=10)
 
 
 def test_publication_results_are_immutable_and_bounded_by_batch(
@@ -433,6 +468,7 @@ def test_publication_results_are_immutable_and_bounded_by_batch(
         "order_by": (("__name__", "asc"),),
         "limit": 10,
         "cursor": None,
+        "cursor_context": None,
     }
 
 

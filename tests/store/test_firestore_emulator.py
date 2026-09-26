@@ -402,6 +402,63 @@ def test_firestore_rest_adapter_publication_name_cursor_uses_reference_value(
     }
 
 
+def test_firestore_rest_adapter_rejects_cursor_after_state_change(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, _ = firestore_emulator
+    store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
+    reset_store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
+    collection = "paper_portfolios/verified-user/generations/g1/orders"
+
+    def seed(transaction: Transaction) -> None:
+        for order_id, value in (("a", 1), ("b", 2)):
+            store.put_in_transaction(
+                transaction,
+                VersionedDocument(
+                    key=DocumentKey(collection, order_id),
+                    schema_version=1,
+                    state_version=0,
+                    record=Record(generation="g1", value=value),
+                ),
+            )
+
+    store.run(seed, max_attempts=1)
+    first = store.page(
+        collection,
+        filters=(("generation", "==", "g1"),),
+        order_by=(("value", "desc"), ("generation", "asc")),
+        limit=1,
+        cursor=None,
+        cursor_context=("g1", 0),
+    )
+    assert first.next_cursor is not None
+    reset_store.run(
+        lambda transaction: reset_store.put_in_transaction(
+            transaction,
+            VersionedDocument(
+                key=DocumentKey("paper_portfolios", "verified-user"),
+                schema_version=1,
+                state_version=1,
+                record=_control("g1"),
+            ),
+        ),
+        max_attempts=1,
+    )
+    with pytest.raises(CursorError, match="malformed"):
+        store.page(
+            collection,
+            filters=(("generation", "==", "g1"),),
+            order_by=(("value", "desc"), ("generation", "asc")),
+            limit=1,
+            cursor=first.next_cursor,
+            cursor_context=("g1", 1),
+        )
+
+
 def test_firestore_rest_adapter_rejects_malformed_cursor(
     firestore_emulator: tuple[str, _LocalFirestoreState],
 ) -> None:
