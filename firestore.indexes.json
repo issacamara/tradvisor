@@ -36,6 +36,14 @@
         {"fieldPath": "occurred_at", "order": "DESCENDING"},
         {"fieldPath": "movement_id", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "intended_session", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

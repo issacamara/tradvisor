@@ -643,4 +643,12 @@ def test_history_composite_index_matches_repository_query() -> None:
                 {"fieldPath": "movement_id", "order": "DESCENDING"},
             ],
         },
+        {
+            "collectionGroup": "orders",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {"fieldPath": "status", "order": "ASCENDING"},
+                {"fieldPath": "intended_session", "order": "ASCENDING"},
+            ],
+        },
     ]
