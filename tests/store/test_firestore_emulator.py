@@ -571,6 +571,15 @@ def test_history_composite_index_matches_repository_query() -> None:
             "queryScope": "COLLECTION",
             "fields": [
                 {"fieldPath": "generation", "order": "ASCENDING"},
+                {"fieldPath": "accepted_at", "order": "DESCENDING"},
+                {"fieldPath": "order_id", "order": "DESCENDING"},
+            ],
+        },
+        {
+            "collectionGroup": "orders",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {"fieldPath": "generation", "order": "ASCENDING"},
                 {"fieldPath": "status", "order": "ASCENDING"},
                 {"fieldPath": "accepted_at", "order": "DESCENDING"},
                 {"fieldPath": "order_id", "order": "DESCENDING"},

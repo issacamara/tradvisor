@@ -7,6 +7,12 @@
 **Status:** FINAL - architecture handoff baseline; not an implemented API
 **References:** BRD v1.23; architecture v1.0; financial calculation contract v1.1
 
+**Approved amendment v0.14 (2026-09-26, owner decision for issue #28):** The v0.13
+text below remains the frozen historical baseline. For the V1 implementation,
+`GET /paper/cash-movements` history is ordered by `(occurred_at, movement_id)`
+descending. This amendment changes only that history ordering choice; it does not
+rewrite or relabel v0.13.
+
 ## 1. Authority And Review Boundary
 
 **Integration baseline approved 2026-09-20:** Integration Design v1.0 (companion baseline document) is normative for session timing, execution-price publication and recovery-register ordering/completeness. Its sections 2-4 supersede earlier unspecified integrations and fence-first reset sequencing. Use a verified officialization-plus-60-seconds cutoff; publish immutable execution revisions with server timestamps and transactionally checked control records; persist restrictive recovery intent before live fencing/denial. Scan register intents and ordered heads before reopening, block globally on incomplete inventory, and block affected subjects on unresolved chains/intents. Isolate the old database and workers before reopening the restored target. The linked verification matrix remains required implementation work.
@@ -76,7 +82,7 @@ Guard shape: `{code, status: pass|fail|unknown, observed, threshold, evidence_re
 | `GET /paper/portfolio` | None | Consistent active-generation summary, holdings, reserved/available resources and holding advice. No portfolio yet returns `setup_required`, null summary and empty positions. Unpriced positions produce incomplete valuation, not zero-valued holdings or a misleading total. |
 | `GET /paper/orders` | Optional status `pending`, `executed`, `rejected` or `expired`, limit/cursor | Active-generation orders, `(accepted_at, order_id)` descending. |
 | `GET /paper/executions` | Limit/cursor | Active-generation fills, `(processed_at, order_id)` descending. |
-| `GET /paper/cash-movements` | Limit/cursor | Active-generation ledger, `(occurred_at, movement_id)` descending. |
+| `GET /paper/cash-movements` | Limit/cursor | Active-generation ledger, `(created_at, movement_id)` descending. |
 
 All paths above append to `/v1`. Lists default to 50 and permit `1..100` items; no unbounded history response. Opaque authenticated cursors bind to owner where personalized, generation/state version, analytical batch, filters, order and last key. Expire cursors after 24 hours or earlier if the referenced snapshot is no longer retained. Return 409 `cursor_stale` on state/generation/filter mismatch and 410 `snapshot_expired` on expiry; clients restart pagination. Pin personalized lists to the state version; reject concurrent-change pagination rather than pretending it is a historical database snapshot. Shared batches remain pinned when the latest publication changes. Do not silently mix batches.
 
