@@ -203,7 +203,11 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
             if actual == expected:
                 continue
             descending = ordering["direction"] == "DESCENDING"
-            return actual < expected if descending else actual > expected
+            if isinstance(actual, str) and isinstance(expected, str):
+                return actual < expected if descending else actual > expected
+            if isinstance(actual, int) and isinstance(expected, int):
+                return actual < expected if descending else actual > expected
+            return False
         return False
 
 
