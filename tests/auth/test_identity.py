@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, cast
 
 import pytest
 
@@ -11,8 +12,10 @@ from backend.auth.identity import (
     AuthenticationError,
     FirebaseIdTokenVerifier,
     FirestoreAdmissionRepository,
+    RegisterAdmissionDenyFence,
     authenticate_request,
 )
+from backend.recovery.register import Intent, StorageAdapter
 
 
 class AdmissionFixture:
@@ -118,7 +121,12 @@ def test_firestore_membership_matches_active_uid_and_normalized_email() -> None:
         exists = True
 
         def to_dict(self) -> dict[str, object]:
-            return {"active": True, "email": "a@example.com"}
+            return {
+                "active": True,
+                "email": "a@example.com",
+                "decision_operation_id": "grant-1",
+                "decision_sequence": 1,
+            }
 
     class Document:
         def get(self) -> Snapshot:
@@ -129,11 +137,147 @@ def test_firestore_membership_matches_active_uid_and_normalized_email() -> None:
             assert uid == "user-1"
             return Document()
 
+    class EmptySnapshot:
+        exists = False
+
+        def to_dict(self) -> dict[str, object]:
+            return {}
+
+    class EmptyDocument:
+        def get(self) -> EmptySnapshot:
+            return EmptySnapshot()
+
+    class EmptyCollection:
+        def document(self, uid: str) -> EmptyDocument:
+            assert uid == "user-1"
+            return EmptyDocument()
+
     class Client:
         def collection(self, name: str) -> Collection:
-            assert name == "application_admissions"
-            return Collection()
+            if name == "application_admissions":
+                return Collection()
+            assert name == "application_admission_denials"
+            return EmptyCollection()  # type: ignore[return-value]
 
     repository: AdmissionRepository = FirestoreAdmissionRepository(Client())
     assert asyncio.run(repository.is_admitted("user-1", "A@example.com"))
     assert not asyncio.run(repository.is_admitted("user-1", "other@example.com"))
+
+
+def test_restored_old_allowlist_is_rejected_by_durable_deny_fence() -> None:
+    class Snapshot:
+        exists = True
+
+        def __init__(self, record: dict[str, object]) -> None:
+            self.record = record
+
+        def to_dict(self) -> dict[str, object]:
+            return self.record
+
+    class Document:
+        def __init__(self, snapshot: Snapshot) -> None:
+            self.snapshot = snapshot
+
+        def get(self) -> Snapshot:
+            return self.snapshot
+
+    class Collection:
+        def __init__(self, snapshot: Snapshot) -> None:
+            self.snapshot = snapshot
+
+        def document(self, uid: str) -> Document:
+            return Document(self.snapshot)
+
+    class Client:
+        def collection(self, name: str) -> Collection:
+            if name == "application_admissions":
+                return Collection(Snapshot({
+                    "active": True,
+                    "email": "a@example.com",
+                    "decision_operation_id": "old-grant",
+                    "decision_sequence": 1,
+                }))
+            assert name == "application_admission_denials"
+            return Collection(Snapshot({"decision_sequence": 2}))
+
+    repository: AdmissionRepository = FirestoreAdmissionRepository(Client())
+    assert not asyncio.run(repository.is_admitted("user-1", "A@example.com"))
+
+
+def test_register_head_deny_fence_rejects_restored_allowlist() -> None:
+    from backend.recovery.register import InventoryPage, Intent, SubjectHead, build_intent
+
+    class Register:
+        def get_head(self, subject: str) -> SubjectHead:
+            return SubjectHead(subject, "deny-2", 2, 2)
+
+        def get_intent(self, operation_id: str) -> Intent:
+            return build_intent(
+                operation_id=operation_id,
+                subject="user-1",
+                action="deny",
+                generation="g1",
+                operator="operator-1",
+                predecessor="grant-1",
+                sequence=2,
+                created_at=datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc),
+            )
+
+        def create_intent(self, intent: Intent) -> bool:
+            raise AssertionError
+
+        def compare_and_set_head(self, subject: str, expected_generation: int | None, operation_id: str, sequence: int) -> SubjectHead | None:
+            raise AssertionError
+
+        def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage:
+            return InventoryPage((), None)
+
+        def list_heads(self, cursor: str | None, *, limit: int) -> InventoryPage:
+            return InventoryPage((), None)
+
+    class Snapshot:
+        exists = True
+
+        def to_dict(self) -> dict[str, object]:
+            return {"active": True, "email": "a@example.com", "decision_operation_id": "old-grant", "decision_sequence": 1}
+
+    class Document:
+        def get(self) -> Snapshot:
+            return Snapshot()
+
+    class Client:
+        def collection(self, name: str) -> Any:
+            return type("Collection", (), {"document": lambda self, uid: Document()})()
+
+    repository: AdmissionRepository = FirestoreAdmissionRepository(
+        Client(), RegisterAdmissionDenyFence(Register())
+    )
+    assert not asyncio.run(repository.is_admitted("user-1", "A@example.com"))
+
+
+def test_pending_register_deny_fence_rejects_after_projection_interruption() -> None:
+    from backend.recovery.register import InventoryPage, SubjectHead, build_intent
+
+    pending = build_intent(
+        operation_id="deny-2",
+        subject="user-1",
+        action="deny",
+        generation="g1",
+        operator="operator-1",
+        predecessor="grant-1",
+        sequence=1,
+        created_at=datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc),
+    )
+
+    class Register:
+        def get_head(self, subject: str) -> SubjectHead:
+            return SubjectHead(subject, "grant-1", 1, 1)
+
+        def get_intent(self, operation_id: str) -> Intent | None:
+            return None
+
+        def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage:
+            return InventoryPage((pending,), None)
+
+    fence = RegisterAdmissionDenyFence(cast(StorageAdapter, Register()))
+    assert fence.is_denied("user-1")

@@ -25,8 +25,10 @@ from backend.auth.identity import (
     AdmittedIdentity,
     FirebaseIdTokenVerifier,
     FirestoreAdmissionRepository,
+    RegisterAdmissionDenyFence,
     TokenVerifier,
 )
+from backend.recovery.register import GcsStorageAdapter
 from backend.contracts.envelopes import ApiError, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.routes import MeResource
 from backend.contracts.scalars import STARTING_CASH_MAX_XOF, STARTING_CASH_MIN_XOF
@@ -49,8 +51,22 @@ def _firestore_client() -> object:
 
 
 @lru_cache(maxsize=1)
+def _production_register() -> GcsStorageAdapter:
+    from google.cloud import storage  # type: ignore[attr-defined]
+
+    client = storage.Client()
+    if not client.project:
+        raise RuntimeError("recovery register project is unavailable")
+    bucket = client.bucket(f"{client.project}-v1-recovery-register")
+    return GcsStorageAdapter(bucket)
+
+
+@lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
-    return FirestoreAdmissionRepository(_firestore_client())
+    register = _production_register()
+    return FirestoreAdmissionRepository(
+        _firestore_client(), deny_fence=RegisterAdmissionDenyFence(register)
+    )
 
 
 @lru_cache(maxsize=1)

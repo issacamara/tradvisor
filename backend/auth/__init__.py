@@ -8,6 +8,7 @@ from backend.auth.current_user import (
 )
 from backend.auth.identity import (
     AdmittedIdentity,
+    RegisterAdmissionDenyFence,
     AuthenticationError,
     FirebaseIdTokenVerifier,
     FirestoreAdmissionRepository,
@@ -16,6 +17,7 @@ from backend.auth.identity import (
 
 __all__ = [
     "AdmittedIdentity",
+    "RegisterAdmissionDenyFence",
     "AuthenticationError",
     "CurrentUserRepository",
     "CurrentUserState",
