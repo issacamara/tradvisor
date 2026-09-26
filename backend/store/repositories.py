@@ -95,6 +95,16 @@ class Page(Generic[Record]):
     next_cursor: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class WriteRequest:
+    """One validated mutation request in a read-before-write transaction plan."""
+
+    key: DocumentKey
+    record: BaseModel
+    schema_version: int
+    expected_state_version: int | None
+
+
 class DocumentReader(Protocol):
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None: ...
 
@@ -186,10 +196,16 @@ class PaperRepositories:
         )
 
     def get_control(self) -> VersionedDocument[PortfolioControl] | None:
-        return self._typed(self._store.get(self.control_key()), PortfolioControl)
+        result = self._typed(self._store.get(self.control_key()), PortfolioControl)
+        if result is not None:
+            self._validate_record_identity(result.key, result.record, None)
+        return result
 
     def get_preferences(self) -> VersionedDocument[PaperPreferences] | None:
-        return self._typed(self._store.get(self.preferences_key()), PaperPreferences)
+        result = self._typed(self._store.get(self.preferences_key()), PaperPreferences)
+        if result is not None:
+            self._validate_record_identity(result.key, result.record, None)
+        return result
 
     def get_summary(
         self, generation: OpaqueIdentifier
@@ -227,10 +243,16 @@ class PaperRepositories:
     def get_execution_price(
         self, price_revision_id: OpaqueIdentifier
     ) -> VersionedDocument[ExecutionPrice] | None:
-        return self._typed(self._store.get(self.execution_price_key(price_revision_id)), ExecutionPrice)
+        result = self._typed(self._store.get(self.execution_price_key(price_revision_id)), ExecutionPrice)
+        if result is not None:
+            self._validate_record_identity(result.key, result.record, None)
+        return result
 
     def get_receipt(self, key: IdempotencyKey) -> VersionedDocument[PaperCommandReceipt] | None:
-        return self._typed(self._store.get(self.receipt_key(key)), PaperCommandReceipt)
+        result = self._typed(self._store.get(self.receipt_key(key)), PaperCommandReceipt)
+        if result is not None:
+            self._validate_record_identity(result.key, result.record, None)
+        return result
 
     def list_orders(
         self, generation: OpaqueIdentifier, *, limit: int, cursor: str | None = None
@@ -274,63 +296,112 @@ class PaperRepositories:
         schema_version: int,
         expected_state_version: int | None,
     ) -> VersionedDocument[Record]:
-        """Create or advance a document after checking its observed version."""
+        """Create or advance one document through the read-before-write seam."""
 
-        self._validate_owner_path(key)
-        generation = self._generation_for_key(key)
+        result = self.write_many_in_transaction(
+            transaction,
+            requests=(
+                WriteRequest(
+                    key=key,
+                    record=record,
+                    schema_version=schema_version,
+                    expected_state_version=expected_state_version,
+                ),
+            ),
+        )
+        return cast(VersionedDocument[Record], result[0])
+
+    def write_many_in_transaction(
+        self, transaction: Transaction, *, requests: tuple[WriteRequest, ...]
+    ) -> tuple[VersionedDocument[BaseModel], ...]:
+        """Read and validate every mutation target before applying any write."""
+
+        if not requests:
+            raise ValueError("at least one write request is required")
+        keys = [request.key.path for request in requests]
+        if len(keys) != len(set(keys)):
+            raise RepositoryError("duplicate document keys in one transaction")
+        for request in requests:
+            self._validate_owner_path(request.key)
+        generations = {
+            generation
+            for generation in (self._generation_for_key(request.key) for request in requests)
+            if generation is not None
+        }
         control_document: VersionedDocument[BaseModel] | None = None
-        if generation is not None:
+        control_record: PortfolioControl | None = None
+        if generations:
             control_document = self._store.get_in_transaction(transaction, self.control_key())
             if control_document is None:
                 raise GenerationConflict("cannot write a generation without portfolio control")
             control_record = self._record(control_document.record, PortfolioControl)
-            if control_record.active_generation != generation:
-                raise GenerationConflict(
-                    f"generation {generation} is not the active portfolio generation"
-                )
-            self._validate_payload_generation(record, generation)
-        if schema_version < 1:
-            raise ValueError("schema_version must be positive")
-        current = self._store.get_in_transaction(transaction, key)
-        self._validate_record_identity(key, record, current)
-        if current is not None and key.collection.endswith("/executions"):
-            existing_execution = self._record(current.record, PaperExecution)
-            if (
-                current.schema_version == schema_version
-                and existing_execution.model_dump(mode="python")
-                == record.model_dump(mode="python")
-            ):
-                return cast(VersionedDocument[Record], current)
-            raise RepositoryError("execution records are immutable")
-        actual_version = None if current is None else current.state_version
-        if actual_version != expected_state_version:
-            raise VersionConflict(
-                f"expected state version {expected_state_version}, found {actual_version}"
+            self._validate_record_identity(self.control_key(), control_record, None)
+            if any(control_record.active_generation != generation for generation in generations):
+                raise GenerationConflict("generation is not the active portfolio generation")
+
+        current_documents = {
+            request.key.path: self._store.get_in_transaction(transaction, request.key)
+            for request in requests
+        }
+        planned: list[VersionedDocument[BaseModel]] = []
+        control_advances = 0
+        for request in requests:
+            if request.schema_version < 1:
+                raise ValueError("schema_version must be positive")
+            generation = self._generation_for_key(request.key)
+            if generation is not None:
+                self._validate_payload_generation(request.record, generation)
+            current = current_documents[request.key.path]
+            self._validate_record_identity(
+                request.key, request.record, None if current is None else current.record
             )
-        document = VersionedDocument(
-            key=key,
-            schema_version=schema_version,
-            state_version=0 if actual_version is None else actual_version + 1,
-            record=record,
-        )
-        self._store.put_in_transaction(
-            transaction, cast(VersionedDocument[BaseModel], document)
-        )
-        if control_document is not None:
-            control_record = self._record(control_document.record, PortfolioControl)
+            if current is not None:
+                self._validate_record_identity(request.key, current.record, None)
+            if current is not None and request.key.collection.endswith("/executions"):
+                existing_execution = self._record(current.record, PaperExecution)
+                if (
+                    current.schema_version == request.schema_version
+                    and existing_execution.model_dump(mode="python")
+                    == request.record.model_dump(mode="python")
+                ):
+                    planned.append(current)
+                    continue
+                raise RepositoryError("execution records are immutable")
+            actual_version = None if current is None else current.state_version
+            if actual_version != request.expected_state_version:
+                raise VersionConflict(
+                    f"expected state version {request.expected_state_version}, found {actual_version}"
+                )
+            planned.append(
+                VersionedDocument(
+                    key=request.key,
+                    schema_version=request.schema_version,
+                    state_version=0 if actual_version is None else actual_version + 1,
+                    record=request.record,
+                )
+            )
+            if generation is not None:
+                control_advances += 1
+
+        for current, document in zip(
+            (current_documents[request.key.path] for request in requests), planned, strict=True
+        ):
+            if current is not document:
+                self._store.put_in_transaction(transaction, document)
+        if control_document is not None and control_record is not None and control_advances:
             advanced_control = control_record.model_copy(
-                update={"state_version": control_record.state_version + 1}
+                update={"state_version": control_record.state_version + control_advances}
             )
             self._store.put_in_transaction(
                 transaction,
                 VersionedDocument(
                     key=control_document.key,
                     schema_version=control_document.schema_version,
-                    state_version=control_document.state_version + 1,
+                    state_version=control_document.state_version + control_advances,
                     record=advanced_control,
                 ),
             )
-        return document
+        return tuple(planned)
 
     def _validate_owner_path(self, key: DocumentKey) -> None:
         owner_segment = _segment(str(self._owner.uid))
@@ -356,23 +427,75 @@ class PaperRepositories:
             raise RepositoryError("generation collection path is incomplete")
         return unquote(parts[index + 1])
 
-    @staticmethod
     def _validate_record_identity(
+        self,
         key: DocumentKey,
-        record: Record,
-        current: VersionedDocument[BaseModel] | None,
+        record: BaseModel,
+        current: BaseModel | None,
     ) -> None:
-        if not key.collection.endswith("/executions"):
-            return
-        if not isinstance(record, PaperExecution):
-            raise RepositoryError("execution writes require a PaperExecution record")
-        order_id = unquote(key.document_id)
-        if record.order_id != order_id or record.execution_id != record.order_id:
-            raise RepositoryError("execution identity must equal its order identity")
-        if current is not None:
-            existing = PaperRepositories._record(current.record, PaperExecution)
-            if existing.execution_id != record.execution_id:
-                raise RepositoryError("an order cannot receive a second execution identity")
+        document_id = unquote(key.document_id)
+        owner_uid = str(self._owner.uid)
+        if key.collection == "paper_portfolios":
+            if not isinstance(record, PortfolioControl):
+                record = PortfolioControl.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, PortfolioControl) or str(record.owner_uid) != document_id:
+                raise RepositoryError("control owner does not match its document key")
+        elif key.collection == "users":
+            if not isinstance(record, PaperPreferences):
+                record = PaperPreferences.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, PaperPreferences):
+                raise RepositoryError("preferences record does not match its document key")
+        elif key.collection.endswith("/positions"):
+            if not isinstance(record, PaperPosition):
+                record = PaperPosition.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, PaperPosition) or str(record.symbol) != document_id:
+                raise RepositoryError("position symbol does not match its document key")
+        elif key.collection.endswith("/orders"):
+            if not isinstance(record, PaperOrder):
+                record = PaperOrder.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, PaperOrder):
+                raise RepositoryError("order writes require a PaperOrder record")
+            if (
+                str(getattr(record, "order_id", "")) != document_id
+                or str(getattr(record, "owner_uid", "")) != owner_uid
+            ):
+                raise RepositoryError("order identity does not match its document key")
+        elif key.collection.endswith("/executions"):
+            if not isinstance(record, PaperExecution):
+                record = PaperExecution.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, PaperExecution):
+                raise RepositoryError("execution writes require a PaperExecution record")
+            if (
+                str(getattr(record, "order_id", "")) != document_id
+                or str(getattr(record, "execution_id", ""))
+                != str(getattr(record, "order_id", ""))
+                or str(getattr(record, "owner_uid", "")) != owner_uid
+            ):
+                raise RepositoryError("execution identity does not match its document key")
+            if current is not None:
+                existing = self._record(current, PaperExecution)
+                if existing.execution_id != record.execution_id:
+                    raise RepositoryError("an order cannot receive a second execution identity")
+        elif key.collection.endswith("/cash_movements"):
+            if not isinstance(record, CashMovement):
+                record = CashMovement.model_validate(record.model_dump(mode="python"))
+            if not isinstance(record, CashMovement):
+                raise RepositoryError("cash movement writes require a CashMovement record")
+            if (
+                str(getattr(record, "movement_id", "")) != document_id
+                or str(getattr(record, "owner_uid", "")) != owner_uid
+            ):
+                raise RepositoryError("cash movement identity does not match its document key")
+        elif key.collection == "execution_prices":
+            if not isinstance(record, ExecutionPrice) or str(record.price_revision_id) != document_id:
+                raise RepositoryError("execution price identity does not match its document key")
+        elif key.collection.endswith("/command_receipts"):
+            if not isinstance(record, PaperCommandReceipt) or str(record.owner_uid) != owner_uid:
+                raise RepositoryError("receipt owner does not match its document key")
+        elif "/generations/" in key.collection:
+            generation = self._generation_for_key(key)
+            if generation is not None and str(getattr(record, "generation", "")) != generation:
+                raise RepositoryError("record generation does not match its path generation")
 
     def _page(
         self,
@@ -401,7 +524,27 @@ class PaperRepositories:
         records = tuple(self._record(item, record_type) for item in result.items)
         for record in records:
             self._validate_payload_generation(record, str(generation))
+            self._validate_record_identity(
+                self._page_key(collection, generation, record), record, None
+            )
         return Page(records, result.next_cursor)
+
+    def _page_key(
+        self, collection: str, generation: OpaqueIdentifier, record: Record
+    ) -> DocumentKey:
+        identity = {
+            "orders": "order_id",
+            "executions": "order_id",
+            "cash_movements": "movement_id",
+            "positions": "symbol",
+        }.get(collection)
+        if identity is None:
+            raise RepositoryError("unsupported paper history collection")
+        return DocumentKey(
+            f"paper_portfolios/{_segment(str(self._owner.uid))}/generations/"
+            f"{_segment(str(generation))}/{collection}",
+            _segment(str(getattr(record, identity, ""))),
+        )
 
     def _active_generation_context(self, generation: OpaqueIdentifier) -> tuple[str, int]:
         control = self.get_control()
@@ -424,7 +567,11 @@ class PaperRepositories:
                 raise GenerationConflict(
                     f"generation {generation} is not the active portfolio generation"
                 )
-            return self._typed(self._store.get_in_transaction(transaction, key), record_type)
+            result = self._typed(self._store.get_in_transaction(transaction, key), record_type)
+            if result is not None:
+                self._validate_payload_generation(result.record, str(generation))
+                self._validate_record_identity(result.key, result.record, None)
+            return result
 
         result = self._store.run(read, max_attempts=MAX_SNAPSHOT_ATTEMPTS)
         if result is not None:

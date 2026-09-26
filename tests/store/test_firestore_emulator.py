@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,9 @@ class HistoryRecord(BaseModel):
     generation: str
     accepted_at: datetime
     order_id: str
+
+
+TEST_CURSOR_SECRET = "local-test-cursor-secret"
 
 
 def _control(generation: str | None) -> PortfolioControl:
@@ -233,10 +237,12 @@ def test_firestore_rest_adapter_retries_reset_write_race(
 ) -> None:
     emulator_host, state = firestore_emulator
     first_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     reset_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     owner = OwnerContext(uid=OpaqueIdentifier("verified-user"))
     first = PaperRepositories(first_store, owner)
@@ -292,7 +298,8 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
 ) -> None:
     emulator_host, state = firestore_emulator
     store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     collection = "paper_portfolios/verified-user/generations/g1/orders"
     documents = (
@@ -365,7 +372,8 @@ def test_firestore_rest_adapter_publication_name_cursor_uses_reference_value(
 ) -> None:
     emulator_host, state = firestore_emulator
     store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     collection = "analysis_batches/b1/results"
 
@@ -410,10 +418,12 @@ def test_firestore_rest_adapter_rejects_cursor_after_state_change(
 ) -> None:
     emulator_host, _ = firestore_emulator
     store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     reset_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db"
+        host=emulator_host, project_id="local-project", database_id="local-db",
+        cursor_secret=TEST_CURSOR_SECRET,
     )
     collection = "paper_portfolios/verified-user/generations/g1/orders"
 
@@ -466,7 +476,7 @@ def test_firestore_rest_adapter_rejects_malformed_cursor(
     firestore_emulator: tuple[str, _LocalFirestoreState],
 ) -> None:
     emulator_host, _ = firestore_emulator
-    store = FirestoreRestStore(host=emulator_host)
+    store = FirestoreRestStore(host=emulator_host, cursor_secret=TEST_CURSOR_SECRET)
     with pytest.raises(CursorError, match="malformed"):
         store.page(
             "paper_portfolios/u/generations/g1/orders",
@@ -484,6 +494,7 @@ def test_firestore_rest_adapter_expires_cursor_after_24_hours(
     current_time = [datetime(2026, 9, 26, tzinfo=timezone.utc)]
     store = FirestoreRestStore(
         host=emulator_host,
+        cursor_secret=TEST_CURSOR_SECRET,
         clock=lambda: current_time[0],
         project_id="local-project",
         database_id="local-db",
@@ -511,6 +522,23 @@ def test_firestore_rest_adapter_expires_cursor_after_24_hours(
         cursor=None,
     )
     assert first.next_cursor is not None
+    for field, value in (
+        ("issued_at", "2026-09-26T01:00:00Z"),
+        ("expiry_at", "2026-09-27T01:00:00Z"),
+    ):
+        payload = json.loads(base64.urlsafe_b64decode(first.next_cursor + "===").decode("utf-8"))
+        payload[field] = value
+        tampered = base64.urlsafe_b64encode(
+            json.dumps(payload).encode("utf-8")
+        ).rstrip(b"=").decode()
+        with pytest.raises(CursorError, match="malformed"):
+            store.page(
+                collection,
+                filters=(),
+                order_by=(("__name__", "asc"),),
+                limit=1,
+                cursor=tampered,
+            )
     current_time[0] += timedelta(hours=24)
     with pytest.raises(SnapshotExpired, match="snapshot_expired"):
         store.page(

@@ -8,7 +8,7 @@ import pytest
 from pydantic import BaseModel
 
 from backend.store.firestore_sdk import FirestoreSdkStore
-from backend.store.repositories import DocumentKey
+from backend.store.repositories import DocumentKey, VersionedDocument
 
 
 class Record(BaseModel):
@@ -35,13 +35,15 @@ class _FakeTransaction:
     def __init__(self, snapshots: tuple[_Snapshot, ...]) -> None:
         self.snapshots = snapshots
         self.requested: list[_Reference] = []
+        self.events: list[str] = []
 
     def get(self, reference: _Reference) -> Iterator[_Snapshot]:
         self.requested.append(reference)
+        self.events.append(f"read:{reference.path}")
         return iter(self.snapshots)
 
     def set(self, reference: _Reference, value: dict[str, Any]) -> None:
-        raise AssertionError(f"unexpected write to {reference.path}: {value}")
+        self.events.append(f"write:{reference.path}")
 
 
 class _FakeClient:
@@ -112,7 +114,9 @@ def test_sdk_transactional_read_consumes_snapshot_iterator() -> None:
             ),
         )
     )
-    store = FirestoreSdkStore(project_id="local-project", client=_FakeClient())
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=_FakeClient()
+    )
 
     result = store.get_in_transaction(transaction, key)
 
@@ -126,9 +130,46 @@ def test_sdk_transactional_read_consumes_snapshot_iterator() -> None:
 def test_sdk_transactional_read_returns_none_for_empty_snapshot_iterator() -> None:
     key = DocumentKey("paper_portfolios/u/generations/g1/orders", "missing")
     transaction = _FakeTransaction(())
-    store = FirestoreSdkStore(project_id="local-project", client=_FakeClient())
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=_FakeClient()
+    )
 
     assert store.get_in_transaction(transaction, key) is None
+
+
+def test_sdk_fake_multi_record_transaction_reads_before_writes() -> None:
+    first_key = DocumentKey("paper_portfolios/u/generations/g1/orders", "order-1")
+    second_key = DocumentKey("paper_portfolios/u/generations/g1/positions", "ABC")
+    snapshot = _Snapshot(
+        {
+            "_schema_version": 1,
+            "_document_state_version": 0,
+            "generation": "g1",
+            "value": 7,
+        }
+    )
+    transaction = _FakeTransaction((snapshot,))
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=_FakeClient()
+    )
+
+    assert store.get_in_transaction(transaction, first_key) is not None
+    assert store.get_in_transaction(transaction, second_key) is not None
+    store.put_in_transaction(
+        transaction,
+        VersionedDocument(first_key, 1, 1, Record(generation="g1", value=8)),
+    )
+    store.put_in_transaction(
+        transaction,
+        VersionedDocument(second_key, 1, 1, Record(generation="g1", value=9)),
+    )
+
+    assert [event.split(":", 1)[0] for event in transaction.events] == [
+        "read",
+        "read",
+        "write",
+        "write",
+    ]
 
 
 def test_sdk_pager_fetches_one_extra_and_omits_cursor_on_final_exact_page(
@@ -144,7 +185,9 @@ def test_sdk_pager_fetches_one_extra_and_omits_cursor_on_final_exact_page(
         "backend.store.firestore_sdk.importlib.import_module",
         lambda name: fake_firestore,
     )
-    store = FirestoreSdkStore(project_id="local-project", client=client)
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=client
+    )
 
     page = store.page(
         "analysis_batches/b1/results",

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 from collections.abc import Callable, Mapping
@@ -100,6 +102,7 @@ def _encode_cursor(
     values: list[dict[str, Any]],
     cursor_context: tuple[str, int] | None,
     now: datetime,
+    secret: str,
 ) -> str:
     issued_at = now.astimezone(timezone.utc)
     expiry_at = issued_at + timedelta(hours=24)
@@ -113,9 +116,8 @@ def _encode_cursor(
         "issued_at": issued_at.isoformat().replace("+00:00", "Z"),
         "expiry_at": expiry_at.isoformat().replace("+00:00", "Z"),
     }
-    encoded = base64.urlsafe_b64encode(
-        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    ).rstrip(b"=").decode("ascii")
+    payload["signature"] = _cursor_signature(payload, secret)
+    encoded = base64.urlsafe_b64encode(_cursor_json(payload)).rstrip(b"=").decode("ascii")
     if len(encoded) > 2048:
         raise CursorError("continuation cursor exceeds the maximum length")
     return encoded
@@ -128,6 +130,7 @@ def _decode_cursor(
     order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
     cursor_context: tuple[str, int] | None,
     now: datetime,
+    secret: str,
 ) -> list[dict[str, Any]]:
     try:
         if not cursor or len(cursor) > 2048:
@@ -148,8 +151,13 @@ def _decode_cursor(
             or not isinstance(payload.get("issued_at"), str)
             or not isinstance(payload.get("expiry_at"), str)
             or not isinstance(payload.get("values"), list)
+            or not isinstance(payload.get("signature"), str)
             or len(payload["values"]) != len(order_by)
         ):
+            raise ValueError
+        supplied_signature = str(payload["signature"])
+        unsigned_payload = {key: value for key, value in payload.items() if key != "signature"}
+        if not hmac.compare_digest(supplied_signature, _cursor_signature(unsigned_payload, secret)):
             raise ValueError
         values = payload["values"]
         issued_at = _parse_cursor_time(payload["issued_at"])
@@ -177,6 +185,17 @@ def _parse_cursor_time(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _cursor_json(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def _cursor_signature(payload: dict[str, Any], secret: str) -> str:
+    if not secret:
+        raise ValueError("cursor signing secret must not be empty")
+    digest = hmac.new(secret.encode("utf-8"), _cursor_json(payload), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
 class FirestoreRestStore(TransactionalStore):
     """Firestore document/transaction adapter using the REST protocol."""
 
@@ -187,6 +206,7 @@ class FirestoreRestStore(TransactionalStore):
         database_id: str | None = None,
         host: str | None = None,
         clock: Callable[[], datetime] | None = None,
+        cursor_secret: str | None = None,
     ) -> None:
         configured_host = host or os.environ.get("FIRESTORE_EMULATOR_HOST")
         if not configured_host:
@@ -195,6 +215,10 @@ class FirestoreRestStore(TransactionalStore):
             configured_host = f"http://{configured_host}"
         self._root = configured_host.rstrip("/")
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        configured_cursor_secret = cursor_secret or os.environ.get("FIRESTORE_CURSOR_SECRET")
+        if not configured_cursor_secret:
+            raise ValueError("Firestore REST adapter requires a cursor signing secret")
+        self._cursor_secret = configured_cursor_secret
         self._project_id = str(project_id or os.environ.get("GOOGLE_CLOUD_PROJECT", "tradvisor-test"))
         self._database_id = str(
             database_id or os.environ.get("GOOGLE_CLOUD_FIRESTORE_DATABASE", "(default)")
@@ -265,7 +289,13 @@ class FirestoreRestStore(TransactionalStore):
             structured["startAt"] = {
                 "before": False,
                 "values": _decode_cursor(
-                    cursor, collection, filters, order_by, cursor_context, self._clock()
+                    cursor,
+                    collection,
+                    filters,
+                    order_by,
+                    cursor_context,
+                    self._clock(),
+                    self._cursor_secret,
                 ),
             }
         body: dict[str, Any] = {
@@ -301,7 +331,13 @@ class FirestoreRestStore(TransactionalStore):
                 else:
                     ordered_values.append(cast(dict[str, Any], last_fields[field]))
             next_cursor = _encode_cursor(
-                collection, filters, order_by, ordered_values, cursor_context, self._clock()
+                collection,
+                filters,
+                order_by,
+                ordered_values,
+                cursor_context,
+                self._clock(),
+                self._cursor_secret,
             )
         return Page(tuple(item.record for item in items), next_cursor)
 

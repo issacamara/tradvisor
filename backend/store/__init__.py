@@ -11,6 +11,7 @@ from backend.store.repositories import (
     SnapshotChanged,
     VersionConflict,
     VersionedDocument,
+    WriteRequest,
     consistent_read,
 )
 from backend.store.firestore import FirestoreConflict, FirestoreRestStore, SnapshotExpired
@@ -32,6 +33,7 @@ __all__ = [
     "SnapshotChanged",
     "TransactionRunner",
     "VersionedDocument",
+    "WriteRequest",
     "VersionConflict",
     "consistent_read",
     "run_transaction",

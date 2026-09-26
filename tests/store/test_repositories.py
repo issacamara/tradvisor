@@ -9,7 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from backend.contracts.scalars import OpaqueIdentifier
-from backend.contracts.paper import PaperExecution, PaperOrder
+from backend.contracts.paper import CashMovement, PaperExecution, PaperOrder, PaperPosition
 from backend.store.repositories import (
     DocumentKey,
     GenerationConflict,
@@ -21,6 +21,7 @@ from backend.store.repositories import (
     SnapshotChanged,
     VersionConflict,
     VersionedDocument,
+    WriteRequest,
     consistent_read,
 )
 from backend.store.transactions import Transaction
@@ -45,6 +46,7 @@ class FakeStore:
         self.retry_once_with: VersionedDocument[BaseModel] | None = None
         self.retry_once_with_control: VersionedDocument[BaseModel] | None = None
         self.page_items: tuple[BaseModel, ...] = ()
+        self.events: list[str] = []
 
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None:
         return self.documents.get(key.path)
@@ -96,6 +98,7 @@ class FakeStore:
         self, transaction: Transaction, key: DocumentKey
     ) -> VersionedDocument[BaseModel] | None:
         assert isinstance(transaction, FakeTransaction)
+        self.events.append(f"read:{key.path}")
         if key.path in transaction.writes:
             return transaction.writes[key.path]
         return self.documents.get(key.path)
@@ -104,6 +107,7 @@ class FakeStore:
         self, transaction: Transaction, document: VersionedDocument[BaseModel]
     ) -> None:
         assert isinstance(transaction, FakeTransaction)
+        self.events.append(f"write:{document.key.path}")
         transaction.writes[document.key.path] = document
         if transaction.commit_immediately:
             self.documents.update(transaction.writes)
@@ -286,6 +290,38 @@ def test_reset_race_rejects_old_generation_on_retry(
     assert key.path not in store.documents
 
 
+def test_multi_record_write_reads_everything_before_any_write(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    requests = (
+        WriteRequest(
+            key=repo.order_key(generation, OpaqueIdentifier("order-1")),
+            record=PaperOrder.model_construct(
+                generation="g1", order_id="order-1", owner_uid="verified-user"
+            ),
+            schema_version=1,
+            expected_state_version=None,
+        ),
+        WriteRequest(
+            key=repo.position_key(generation, OpaqueIdentifier("ABC")),
+            record=PaperPosition.model_construct(generation="g1", symbol="ABC"),
+            schema_version=1,
+            expected_state_version=None,
+        ),
+    )
+
+    repo.transact(lambda transaction: repo.write_many_in_transaction(transaction, requests=requests))
+
+    first_write = next(index for index, event in enumerate(store.events) if event.startswith("write:"))
+    assert all(event.startswith("read:") for event in store.events[:first_write])
+    assert store.events[-1].startswith("write:paper_portfolios/verified-user")
+
+
 def test_execution_identity_is_one_to_one_with_order(
     repositories: tuple[FakeStore, PaperRepositories],
 ) -> None:
@@ -297,7 +333,10 @@ def test_execution_identity_is_one_to_one_with_order(
     )
     key = repo.execution_key(generation, order_id)
     first = PaperExecution.model_construct(
-        generation=generation, order_id=order_id, execution_id=order_id
+        generation=generation,
+        order_id=order_id,
+        execution_id=order_id,
+        owner_uid="verified-user",
     )
     repo.write_in_transaction(
         FakeTransaction(),
@@ -308,7 +347,10 @@ def test_execution_identity_is_one_to_one_with_order(
     )
 
     duplicate_identity = PaperExecution.model_construct(
-        generation=generation, order_id=order_id, execution_id=OpaqueIdentifier("fill-2")
+        generation=generation,
+        order_id=order_id,
+        execution_id=OpaqueIdentifier("fill-2"),
+        owner_uid="verified-user",
     )
     with pytest.raises(RepositoryError, match="execution identity"):
         repo.write_in_transaction(
@@ -331,7 +373,11 @@ def test_completed_execution_is_idempotent_but_immutable(
     )
     key = repo.execution_key(generation, order_id)
     execution = PaperExecution.model_construct(
-        generation=generation, order_id=order_id, execution_id=order_id, quantity=1
+        generation=generation,
+        order_id=order_id,
+        execution_id=order_id,
+        owner_uid="verified-user",
+        quantity=1,
     )
     assert store.documents[repo.control_key().path].state_version == 0
     first = repo.write_in_transaction(
@@ -351,7 +397,11 @@ def test_completed_execution_is_idempotent_but_immutable(
     assert repeated == first
     assert store.documents[repo.control_key().path].state_version == 1
     changed = PaperExecution.model_construct(
-        generation=generation, order_id=order_id, execution_id=order_id, quantity=2
+        generation=generation,
+        order_id=order_id,
+        execution_id=order_id,
+        owner_uid="verified-user",
+        quantity=2,
     )
     with pytest.raises(RepositoryError, match="immutable"):
         repo.write_in_transaction(
@@ -419,7 +469,9 @@ def test_reset_read_race_hides_retired_generation(
         key=order_key,
         schema_version=1,
         state_version=0,
-        record=PaperOrder.model_construct(generation="g1", order_id="order-1"),
+        record=PaperOrder.model_construct(
+            generation="g1", order_id="order-1", owner_uid="verified-user"
+        ),
     )
     store.retry_once_with_control = VersionedDocument(
         key=repo.control_key(), schema_version=1, state_version=1, record=_control("g2")
@@ -462,6 +514,70 @@ def test_generation_payload_must_match_point_and_history_paths(
     store.page_items = (PaperOrder.model_construct(generation="g2", order_id="order-2"),)
     with pytest.raises(RepositoryError, match="record generation"):
         repo.list_orders(generation, limit=10)
+
+
+def test_payload_identity_must_match_document_keys(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(),
+        schema_version=1,
+        state_version=0,
+        record=_control("g1").model_copy(update={"owner_uid": "other-user"}),
+    )
+    with pytest.raises(RepositoryError, match="control owner"):
+        repo.get_control()
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    with pytest.raises(RepositoryError, match="order identity"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=repo.order_key(generation, OpaqueIdentifier("order-1")),
+            record=PaperOrder.model_construct(
+                generation="g1", order_id="other", owner_uid="verified-user"
+            ),
+            schema_version=1,
+            expected_state_version=None,
+        )
+    with pytest.raises(RepositoryError, match="position symbol"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=repo.position_key(generation, OpaqueIdentifier("ABC")),
+            record=PaperPosition.model_construct(generation="g1", symbol="DEF"),
+            schema_version=1,
+            expected_state_version=None,
+        )
+    with pytest.raises(RepositoryError, match="execution identity"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=repo.execution_key(generation, OpaqueIdentifier("order-1")),
+            record=PaperExecution.model_construct(
+                generation="g1",
+                order_id="order-1",
+                execution_id="order-1",
+                owner_uid="other-user",
+            ),
+            schema_version=1,
+            expected_state_version=None,
+        )
+    with pytest.raises(RepositoryError, match="cash movement identity"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=repo.cash_movement_key(generation, OpaqueIdentifier("movement-1")),
+            record=CashMovement.model_construct(
+                generation="g1",
+                movement_id="other-movement",
+                owner_uid="verified-user",
+            ),
+            schema_version=1,
+            expected_state_version=None,
+        )
 
 
 def test_publication_results_are_immutable_and_bounded_by_batch(

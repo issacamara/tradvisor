@@ -37,12 +37,16 @@ class FirestoreSdkStore(TransactionalStore):
         *,
         project_id: str,
         database_id: str = "(default)",
+        cursor_secret: str,
         client: Any | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._project_id = project_id
         self._database_id = database_id
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        if not cursor_secret:
+            raise ValueError("Firestore SDK adapter requires a cursor signing secret")
+        self._cursor_secret = cursor_secret
         if client is None:
             try:
                 firestore = importlib.import_module("google.cloud.firestore")
@@ -115,6 +119,7 @@ class FirestoreSdkStore(TransactionalStore):
                 order_by,
                 cursor_context,
                 self._clock(),
+                self._cursor_secret,
             )
             cursor_values: dict[Any, Any] = {}
             for (field, _), encoded in zip(order_by, encoded_values, strict=True):
@@ -143,6 +148,7 @@ class FirestoreSdkStore(TransactionalStore):
                 values,
                 cursor_context,
                 self._clock(),
+                self._cursor_secret,
             )
         items = tuple(
             decoded
