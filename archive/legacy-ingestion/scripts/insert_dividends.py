@@ -60,7 +60,7 @@ def process_dividends(conf, asset):
                 content = blob.download_as_text()
                 df = pd.read_csv(io.StringIO(content), sep='|')
                 rows_count = len(df)  # Get row count before upsert
-                # Upsert with symbol and fiscal_year as primary keys
+                # Fiscal year is an attribution, not payment identity.
                 def archive_csv():
                     from helper import move_csv_file_gcp
                     move_csv_file_gcp(bucket_url1, bucket_url2, blob.name)
@@ -70,7 +70,7 @@ def process_dividends(conf, asset):
                     project_id,
                     'stocks',
                     asset,
-                    ['symbol', 'fiscal_year'],
+                    ['payment_id'],
                     archive_csv,
                 )
                 print(f"Upserted {rows_count} rows into {asset} table")
