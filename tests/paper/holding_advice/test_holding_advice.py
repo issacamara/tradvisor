@@ -149,6 +149,32 @@ def test_trailing_activation_at_108_percent_latches() -> None:
     assert result.high_water_close_micros == 108_000_000
 
 
+def test_skipped_sessions_replay_trailing_activation_before_current_close() -> None:
+    result = evaluate(
+        position(), duration=2,
+        prices={0: (100_000_000, "traded"),
+                1: (110_000_000, "traded"),
+                2: (100_000_000, "traded")},
+    )
+    assert result.action == "sell"
+    assert result.sell_reasons == ("trailing_stop",)
+    assert result.trail_activated is True
+    assert result.high_water_close_micros == 110_000_000
+
+
+def test_skipped_carried_close_cannot_activate_trailing_protection() -> None:
+    result = evaluate(
+        position(), duration=2,
+        prices={0: (100_000_000, "traded"),
+                1: (110_000_000, "carried"),
+                2: (100_000_000, "traded")},
+    )
+    assert result.action == "insufficient_data"
+    assert result.unavailable_checks == ("technical_pullback",)
+    assert result.trail_activated is False
+    assert result.high_water_close_micros == 100_000_000
+
+
 @pytest.mark.parametrize("price,expected", [(96_000_000, "sell"), (96_000_001, "keep")])
 def test_activated_trailing_threshold_is_inclusive(price: int, expected: str) -> None:
     result = evaluate(
@@ -234,10 +260,16 @@ def test_additional_buy_uses_updated_weighted_gross_entry_and_preserves_exit_sta
 
 
 def test_additional_buy_does_not_retroactively_activate_from_old_high() -> None:
-    after_buy = position(high=120_000_000).model_copy(
+    previously_evaluated = BASE.fromordinal(BASE.toordinal() + 1)
+    after_buy = position(high=120_000_000, evaluated=previously_evaluated).model_copy(
         update={"quantity": 2, "remaining_gross_cost": money(220_000_000)}
     )
-    result = evaluate(after_buy, prices={1: (110_000_000, "traded")})
+    result = evaluate(
+        after_buy, duration=2,
+        prices={0: (100_000_000, "traded"),
+                1: (120_000_000, "traded"),
+                2: (110_000_000, "traded")},
+    )
     assert result.trail_activated is False
     assert result.high_water_close_micros == 120_000_000
 

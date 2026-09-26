@@ -164,18 +164,25 @@ def evaluate_holding_advice(
                                    evaluation_session=evaluation_session, reason="late_retry")
 
     high = position.high_water_close.micros if position.high_water_close else None
+    activated = position.trail_activated
     opening = next((s for s in ordered if s.session_date == position.opening_session), None)
-    if opening is not None:
-        for session in ordered:
-            if opening.session_index <= session.session_index <= current.session_index:
-                if (position.evaluated_through_session is None
-                        or (last_index is not None and session.session_index > last_index)):
-                    close = _valid_close(session)
-                    if close is not None:
-                        high = close if high is None else max(high, close)
+    replay_start_index = opening.session_index if opening is not None else current.session_index
+    for session in ordered:
+        if not replay_start_index <= session.session_index <= current.session_index:
+            continue
+        if last_index is not None and session.session_index <= last_index:
+            continue
+        close = _valid_close(session)
+        if close is None:
+            continue
+        if opening is not None:
+            high = close if high is None else max(high, close)
+        if not activated and close * position.quantity * 100 >= (
+            position.remaining_gross_cost.micros * _TRAILING_ACTIVATION_PERCENT
+        ):
+            activated = True
 
     current_price = _valid_close(current)
-    activated = position.trail_activated
     reasons: list[str] = []
     unavailable: list[str] = []
     if current_price is None:
@@ -186,10 +193,6 @@ def evaluate_holding_advice(
             position.remaining_gross_cost.micros * _FIXED_LOSS_PERCENT
         ):
             reasons.append("fixed_loss")
-        if not activated and current_price * position.quantity * 100 >= (
-            position.remaining_gross_cost.micros * _TRAILING_ACTIVATION_PERCENT
-        ):
-            activated = True
         if activated:
             if high is None:
                 unavailable.append("trailing")
