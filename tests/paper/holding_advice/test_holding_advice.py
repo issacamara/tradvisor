@@ -274,9 +274,17 @@ def test_position_keeps_its_old_frozen_policy_reference() -> None:
     assert result.exit_policy_ref == "exit-policy-v1"
 
 
-def test_policy_reference_cannot_be_reused_with_altered_thresholds() -> None:
-    with pytest.raises(TypeError):
-        FrozenExitPolicy("exit-policy-v1", fixed_loss_percent=90)  # type: ignore[call-arg]
+def test_unknown_matching_policy_reference_is_insufficient_and_not_evaluated() -> None:
+    unknown_policy = FrozenExitPolicy("exit-policy-unknown")
+    unknown_position = position(policy_ref="exit-policy-unknown")
+    result = evaluate(
+        unknown_position,
+        policy=unknown_policy,
+        prices={1: (95_000_000, "traded")},
+    )
+    assert result.action == "insufficient_data"
+    assert result.sell_reasons == ()
+    assert result.unavailable_checks == ("unsupported_basis",)
 
 
 def test_carried_close_cannot_create_a_new_high_or_trigger_price_exits() -> None:

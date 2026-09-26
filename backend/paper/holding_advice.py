@@ -13,6 +13,7 @@ from backend.analysis.rsi import RsiSeries
 from backend.contracts.paper import PaperPosition
 
 Action = Literal["keep", "sell", "insufficient_data", "not_applicable"]
+V1_EXIT_POLICY_REF = "exit-policy-v1"
 _FIXED_LOSS_PERCENT = 95
 _TRAILING_ACTIVATION_PERCENT = 108
 _TRAILING_STOP_PERCENT = 96
@@ -84,6 +85,26 @@ def _not_applicable(
     )
 
 
+def _unsupported_policy(
+    position: PaperPosition,
+    *,
+    state_version: int,
+    evaluation_session: date,
+) -> HoldingAdvice:
+    return HoldingAdvice(
+        action="insufficient_data",
+        generation=position.generation,
+        state_version=state_version,
+        exit_policy_ref=position.exit_policy_ref,
+        evaluation_session=evaluation_session,
+        sell_reasons=(),
+        unavailable_checks=("unsupported_basis",),
+        high_water_close_micros=position.high_water_close.micros if position.high_water_close else None,
+        trail_activated=position.trail_activated,
+        evaluated_through_session=position.evaluated_through_session,
+    )
+
+
 def evaluate_holding_advice(
     position: PaperPosition,
     *,
@@ -115,6 +136,9 @@ def evaluate_holding_advice(
     if position.exit_policy_ref != policy.policy_ref:
         return _not_applicable(position, state_version=current_state_version,
                                evaluation_session=evaluation_session, reason="exit_policy_mismatch")
+    if policy.policy_ref != V1_EXIT_POLICY_REF:
+        return _unsupported_policy(position, state_version=current_state_version,
+                                   evaluation_session=evaluation_session)
     if position.symbol != inputs.symbol:
         return _not_applicable(position, state_version=current_state_version,
                                evaluation_session=evaluation_session, reason="symbol_mismatch")
