@@ -107,11 +107,11 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                         key=lambda document: self._field_value(document, field),
                         reverse=ordering["direction"] == "DESCENDING",
                     )
-                start_after = query.get("startAfter")
-                if start_after is not None:
+                start_at = query.get("startAt")
+                if start_at is not None:
                     start_values = [
                         self._field_value({"fields": {"value": value}}, "value")
-                        for value in start_after["values"]
+                        for value in start_at["values"]
                     ]
                     orderings = query.get("orderBy", [])
                     candidates = [
@@ -167,6 +167,8 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _field_value(document: dict[str, object], field: str) -> str | int:
+        if field == "__name__":
+            return str(document["name"])
         fields = cast(dict[str, dict[str, object]], document["fields"])
         value = fields[field]
         if "integerValue" in value:
@@ -351,8 +353,53 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
         {"field": {"fieldPath": "order_id"}, "direction": "DESCENDING"},
     ]
     continuation_query = state.query_requests[1]["structuredQuery"]
-    assert "startAfter" in continuation_query
-    assert len(continuation_query["startAfter"]["values"]) == 2
+    assert continuation_query["startAt"]["before"] is False
+    assert len(continuation_query["startAt"]["values"]) == 2
+
+
+def test_firestore_rest_adapter_publication_name_cursor_uses_reference_value(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, state = firestore_emulator
+    store = FirestoreRestStore(
+        host=emulator_host, project_id="local-project", database_id="local-db"
+    )
+    collection = "analysis_batches/b1/results"
+
+    def seed(transaction: Transaction) -> None:
+        for record_id, value in (("a", 1), ("b", 2)):
+            store.put_in_transaction(
+                transaction,
+                VersionedDocument(
+                    key=DocumentKey(collection, record_id),
+                    schema_version=1,
+                    state_version=0,
+                    record=Record(generation="b1", value=value),
+                ),
+            )
+
+    store.run(seed, max_attempts=1)
+    first = store.page(
+        collection,
+        filters=(),
+        order_by=(("__name__", "asc"),),
+        limit=1,
+        cursor=None,
+    )
+    assert first.next_cursor is not None
+    second = store.page(
+        collection,
+        filters=(),
+        order_by=(("__name__", "asc"),),
+        limit=1,
+        cursor=first.next_cursor,
+    )
+    assert [Record.model_validate(item.model_dump()).value for item in second.items] == [2]
+    cursor_value = state.query_requests[1]["structuredQuery"]["startAt"]["values"][0]
+    assert cursor_value == {
+        "referenceValue": "projects/local-project/databases/local-db/documents/"
+        "analysis_batches/b1/results/a"
+    }
 
 
 def test_firestore_rest_adapter_rejects_malformed_cursor(
@@ -382,5 +429,23 @@ def test_history_composite_index_matches_repository_query() -> None:
                 {"fieldPath": "accepted_at", "order": "DESCENDING"},
                 {"fieldPath": "order_id", "order": "DESCENDING"},
             ],
-        }
+        },
+        {
+            "collectionGroup": "executions",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {"fieldPath": "generation", "order": "ASCENDING"},
+                {"fieldPath": "processed_at", "order": "DESCENDING"},
+                {"fieldPath": "order_id", "order": "DESCENDING"},
+            ],
+        },
+        {
+            "collectionGroup": "cash_movements",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {"fieldPath": "generation", "order": "ASCENDING"},
+                {"fieldPath": "occurred_at", "order": "DESCENDING"},
+                {"fieldPath": "movement_id", "order": "DESCENDING"},
+            ],
+        },
     ]

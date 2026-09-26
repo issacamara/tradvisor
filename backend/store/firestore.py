@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
-import base64
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from typing import Any, Literal, cast
@@ -80,6 +80,8 @@ def _python_value(value: Mapping[str, Any]) -> object:
         )
     if "stringValue" in value:
         return value["stringValue"]
+    if "referenceValue" in value:
+        return value["referenceValue"]
     if "arrayValue" in value:
         return [_python_value(item) for item in value["arrayValue"].get("values", [])]
     if "mapValue" in value:
@@ -224,8 +226,9 @@ class FirestoreRestStore(TransactionalStore):
         if field_filters:
             structured["where"] = {"compositeFilter": {"op": "AND", "filters": field_filters}}
         if cursor is not None:
-            structured["startAfter"] = {
-                "values": _decode_cursor(cursor, collection, filters, order_by)
+            structured["startAt"] = {
+                "before": False,
+                "values": _decode_cursor(cursor, collection, filters, order_by),
             }
         body: dict[str, Any] = {
             "parent": self._resource_name(parent),
@@ -250,10 +253,14 @@ class FirestoreRestStore(TransactionalStore):
         )
         next_cursor = None
         if len(response) == limit and items:
-            last_fields = response[-1].get("document", {}).get("fields", {})
-            ordered_values = [
-                cast(dict[str, Any], last_fields[field]) for field, _ in order_by
-            ]
+            last_document = response[-1].get("document", {})
+            last_fields = last_document.get("fields", {})
+            ordered_values = []
+            for field, _ in order_by:
+                if field == "__name__":
+                    ordered_values.append({"referenceValue": last_document["name"]})
+                else:
+                    ordered_values.append(cast(dict[str, Any], last_fields[field]))
             next_cursor = _encode_cursor(collection, filters, order_by, ordered_values)
         return Page(tuple(item.record for item in items), next_cursor)
 

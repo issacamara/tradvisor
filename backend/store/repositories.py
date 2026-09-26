@@ -248,7 +248,7 @@ class PaperRepositories:
     ) -> Page[PaperExecution]:
         return self._page(
             "executions", generation, PaperExecution, limit=limit, cursor=cursor,
-            order_by=(("processed_at", "desc"), ("execution_id", "desc")),
+            order_by=(("processed_at", "desc"), ("order_id", "desc")),
         )
 
     def list_cash_movements(
@@ -290,6 +290,15 @@ class PaperRepositories:
             raise ValueError("schema_version must be positive")
         current = self._store.get_in_transaction(transaction, key)
         self._validate_record_identity(key, record, current)
+        if current is not None and key.collection.endswith("/executions"):
+            existing_execution = self._record(current.record, PaperExecution)
+            if (
+                current.schema_version == schema_version
+                and existing_execution.model_dump(mode="python")
+                == record.model_dump(mode="python")
+            ):
+                return cast(VersionedDocument[Record], current)
+            raise RepositoryError("execution records are immutable")
         actual_version = None if current is None else current.state_version
         if actual_version != expected_state_version:
             raise VersionConflict(

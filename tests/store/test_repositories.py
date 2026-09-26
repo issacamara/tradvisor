@@ -315,6 +315,46 @@ def test_execution_identity_is_one_to_one_with_order(
         )
 
 
+def test_completed_execution_is_idempotent_but_immutable(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    order_id = OpaqueIdentifier("order-1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+    key = repo.execution_key(generation, order_id)
+    execution = PaperExecution.model_construct(order_id=order_id, execution_id=order_id, quantity=1)
+    first = repo.write_in_transaction(
+        FakeTransaction(),
+        key=key,
+        record=execution,
+        schema_version=1,
+        expected_state_version=None,
+    )
+    repeated = repo.write_in_transaction(
+        FakeTransaction(),
+        key=key,
+        record=execution,
+        schema_version=1,
+        expected_state_version=0,
+    )
+    assert repeated == first
+    changed = PaperExecution.model_construct(
+        order_id=order_id, execution_id=order_id, quantity=2
+    )
+    with pytest.raises(RepositoryError, match="immutable"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=key,
+            record=changed,
+            schema_version=1,
+            expected_state_version=0,
+        )
+    assert store.documents[key.path].state_version == 0
+
+
 def test_order_query_is_bounded_ordered_and_generation_scoped(
     repositories: tuple[FakeStore, PaperRepositories],
 ) -> None:
@@ -334,6 +374,20 @@ def test_order_query_is_bounded_ordered_and_generation_scoped(
     ]
     with pytest.raises(ValueError, match="limit must be between"):
         repo.list_orders(generation, limit=101)
+
+
+def test_all_generation_history_queries_have_stable_compound_order(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    repo.list_executions(generation, limit=10)
+    repo.list_cash_movements(generation, limit=10)
+    assert [query["order_by"] for query in store.queries] == [
+        (("processed_at", "desc"), ("order_id", "desc")),
+        (("occurred_at", "desc"), ("movement_id", "desc")),
+    ]
+    assert all(query["filters"] == (("generation", "==", "g1"),) for query in store.queries)
 
 
 def test_publication_results_are_immutable_and_bounded_by_batch(
