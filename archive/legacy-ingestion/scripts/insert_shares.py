@@ -318,7 +318,6 @@ def _archive_after_optional_load(
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
-    normalized = _assign_validated_available_at(normalized, commit_clock)
 
     if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
         from google.auth import default
@@ -338,7 +337,10 @@ def _archive_after_optional_load(
     else:
         if not normalized.empty:
             _insert_revisions_into_duckdb(
-                normalized, config["duckdb"]["database"], REVISION_TABLE
+                normalized,
+                config["duckdb"]["database"],
+                REVISION_TABLE,
+                commit_clock=commit_clock,
             )
         move_csv_file(config["csv_directory"], config["archive"], file)
     return evidence
@@ -396,12 +398,6 @@ def _insert_revisions_into_duckdb(
     unique_index = _quoted_identifier(f"{table}_symbol_session_revision_uidx")
     columns = ", ".join(_quoted_identifier(column) for column in NORMALIZED_COLUMNS)
     placeholders = ", ".join("?" for _ in NORMALIZED_COLUMNS)
-    committed_frame = _assign_validated_available_at(frame, commit_clock)
-    records = [
-        tuple(_database_value(row[column]) for column in NORMALIZED_COLUMNS)
-        for _, row in committed_frame.iterrows()
-    ]
-
     with connect(database_path) as connection:
         try:
             connection.execute(
@@ -412,6 +408,11 @@ def _insert_revisions_into_duckdb(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {unique_index} "
                 f"ON {quoted_table} ({unique_columns})"
             )
+            committed_frame = _assign_validated_available_at(frame, commit_clock)
+            records = [
+                tuple(_database_value(row[column]) for column in NORMALIZED_COLUMNS)
+                for _, row in committed_frame.iterrows()
+            ]
             connection.executemany(
                 f"INSERT OR IGNORE INTO {quoted_table} ({columns}) VALUES ({placeholders})",
                 records,

@@ -466,7 +466,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
         SimpleNamespace(name="shares.csv"),
         pd.DataFrame([_row()]),
         "shares",
-        commit_clock=lambda: datetime(2026, 9, 24, 12, tzinfo=timezone.utc),
+        commit_clock=lambda: pytest.fail("BigQuery path must not pre-write availability time"),
     )
 
     assert evidence["loadable"] == 1
@@ -479,7 +479,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
             loader.REVISION_TABLE,
             loader.REVISION_KEYS,
             False,
-            "2026-09-24 12:00:00",
+            None,
         ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
@@ -606,7 +606,7 @@ def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatc
     helper.get_project_number = lambda _project: "unused"
     helper.upsert_into_bigquery = lambda *_args: None
 
-    def insert(frame, _database, _asset):
+    def insert(frame, _database, _asset, **_kwargs):
         committed.update(frame["revision_id"])
 
     def archive(*_args):
