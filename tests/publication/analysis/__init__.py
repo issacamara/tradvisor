@@ -1,0 +1,1 @@
+"""Analytical publication tests."""
