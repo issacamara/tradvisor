@@ -7,16 +7,22 @@ name = "tradvisor-backend"
 version = "0.1.0"
 description = "Tradvisor V1 backend package foundation"
 requires-python = ">=3.11"
-dependencies = ["pydantic==2.10.6"]
+dependencies = [
+    "firebase-admin==6.6.0",
+    "fastapi==0.115.8",
+    "google-cloud-firestore>=2.16,<3",
+    "pydantic==2.10.6",
+    "uvicorn[standard]==0.34.0",
+]
 
 [project.optional-dependencies]
-test = ["pytest==8.3.5"]
+test = ["httpx==0.28.1", "pandas==2.2.2", "pytest==8.3.5"]
 type = ["mypy==1.15.0"]
-firestore = ["google-cloud-firestore>=2.16,<3"]
+firestore = []
 
 [tool.setuptools]
 package-dir = { backend = "." }
-packages = ["backend", "backend.analysis", "backend.commands", "backend.contracts", "backend.paper", "backend.publication", "backend.recovery", "backend.store"]
+packages = ["backend", "backend.analysis", "backend.auth", "backend.commands", "backend.contracts", "backend.paper", "backend.publication", "backend.recovery", "backend.store"]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
