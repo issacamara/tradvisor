@@ -36,6 +36,7 @@ class _FakeTransaction:
         self.snapshots = snapshots
         self.requested: list[_Reference] = []
         self.events: list[str] = []
+        self.writes: list[tuple[_Reference, dict[str, Any]]] = []
 
     def get(self, reference: _Reference) -> Iterator[_Snapshot]:
         self.requested.append(reference)
@@ -44,6 +45,7 @@ class _FakeTransaction:
 
     def set(self, reference: _Reference, value: dict[str, Any]) -> None:
         self.events.append(f"write:{reference.path}")
+        self.writes.append((reference, value))
 
 
 class _FakeClient:
@@ -172,6 +174,31 @@ def test_sdk_fake_multi_record_transaction_reads_before_writes() -> None:
         "write",
         "write",
     ]
+
+
+def test_sdk_server_timestamp_uses_firestore_transform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = object()
+    monkeypatch.setattr(
+        "backend.store.firestore_sdk.importlib.import_module",
+        lambda name: SimpleNamespace(SERVER_TIMESTAMP=sentinel),
+    )
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=_FakeClient()
+    )
+    transaction = _FakeTransaction(())
+    key = DocumentKey("execution_price_revisions", "revision-1")
+    record = Record(generation="source", value=7)
+
+    store.put_with_server_timestamps_in_transaction(
+        transaction,
+        VersionedDocument(key, 1, 0, record),
+        fields=("value",),
+    )
+
+    assert transaction.writes[0][0].path == key.path
+    assert transaction.writes[0][1]["value"] is sentinel
 
 
 def test_sdk_pager_fetches_one_extra_and_omits_cursor_on_final_exact_page(

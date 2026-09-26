@@ -39,6 +39,11 @@ class HistoryRecord(BaseModel):
     order_id: str
 
 
+class TimestampRecord(BaseModel):
+    value: int
+    committed_at: datetime | None
+
+
 TEST_CURSOR_SECRET = "local-test-cursor-secret"
 
 
@@ -61,6 +66,7 @@ class _LocalFirestoreState:
         self.documents: dict[str, tuple[int, dict[str, object]]] = {}
         self.transactions: dict[str, dict[str, int]] = {}
         self.query_requests: list[dict[str, Any]] = []
+        self.commit_time = datetime(2026, 9, 26, 12, 34, 56, tzinfo=timezone.utc)
         self.lock = Lock()
 
 
@@ -85,6 +91,12 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                 for write in cast(list[dict[str, Any]], body.get("writes", [])):
                     document = write["update"]
                     path = unquote(document["name"].split("/documents/", 1)[-1])
+                    fields = cast(dict[str, dict[str, Any]], document["fields"])
+                    for transform in cast(list[dict[str, str]], write.get("updateTransforms", [])):
+                        assert transform["setToServerValue"] == "REQUEST_TIME"
+                        fields[transform["fieldPath"]] = {
+                            "timestampValue": self.state.commit_time.isoformat().replace("+00:00", "Z")
+                        }
                     version = self.state.documents.get(path, (0, {}))[0] + 1
                     self.state.documents[path] = (version, document)
             self._respond(200, {})
@@ -560,6 +572,34 @@ def test_firestore_rest_adapter_expires_cursor_after_24_hours(
             limit=1,
             cursor=first.next_cursor,
         )
+
+
+def test_firestore_rest_server_timestamp_is_resolved_at_commit(
+    firestore_emulator: tuple[str, _LocalFirestoreState],
+) -> None:
+    emulator_host, state = firestore_emulator
+    store = FirestoreRestStore(host=emulator_host, cursor_secret=TEST_CURSOR_SECRET)
+    key = DocumentKey("execution_price_revisions", "revision-1")
+    placeholder = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+    store.run(
+        lambda transaction: store.put_with_server_timestamps_in_transaction(
+            transaction,
+            VersionedDocument(
+                key,
+                1,
+                0,
+                TimestampRecord(value=7, committed_at=placeholder),
+            ),
+            fields=("committed_at",),
+        ),
+        max_attempts=1,
+    )
+
+    stored = store.get(key)
+    assert stored is not None
+    assert stored.record.model_dump()["committed_at"] == state.commit_time
+    assert stored.record.model_dump()["committed_at"] != placeholder
 
 
 def test_history_composite_index_matches_repository_query() -> None:
