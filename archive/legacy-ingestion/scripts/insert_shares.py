@@ -211,7 +211,12 @@ def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: s
         _, project_id = default()
         if not normalized.empty:
             upsert_into_bigquery(
-                normalized, project_id, "stocks", asset, list(REVISION_KEYS)
+                normalized,
+                project_id,
+                "stocks",
+                asset,
+                list(REVISION_KEYS),
+                update_matched=False,
             )
         project_number = get_project_number(project_id)
         move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)

@@ -340,7 +340,12 @@ def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> No
 def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) -> None:
     signature = inspect.signature(actual_helper.upsert_into_bigquery)
     signature.bind(
-        pd.DataFrame(), "project", "stocks", "shares", list(loader.REVISION_KEYS)
+        pd.DataFrame(),
+        "project",
+        "stocks",
+        "shares",
+        list(loader.REVISION_KEYS),
+        update_matched=False,
     )
 
     calls = []
@@ -349,7 +354,15 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
     helper.move_csv_file = lambda *_args: calls.append("local-archive")
     helper.move_csv_file_gcp = lambda *args: calls.append(("gcs-archive", *args))
 
-    def upsert(frame, project_id, dataset, table, primary_keys):
+    def upsert(
+        frame,
+        project_id,
+        dataset,
+        table,
+        primary_keys,
+        *,
+        update_matched=True,
+    ):
         calls.append(
             (
                 "upsert",
@@ -358,6 +371,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
                 dataset,
                 table,
                 tuple(primary_keys),
+                update_matched,
             )
         )
 
@@ -378,7 +392,15 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
 
     assert evidence["loadable"] == 1
     assert calls == [
-        ("upsert", 1, "project", "stocks", "shares", loader.REVISION_KEYS),
+        (
+            "upsert",
+            1,
+            "project",
+            "stocks",
+            "shares",
+            loader.REVISION_KEYS,
+            False,
+        ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
 
