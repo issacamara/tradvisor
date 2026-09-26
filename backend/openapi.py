@@ -22,7 +22,6 @@ from backend.contracts.analysis import (
     NormalizedRating,
     Provenance,
     ReasonCode,
-    Score,
 )
 from backend.contracts.envelopes import (
     ApiError,
@@ -56,6 +55,7 @@ from backend.contracts.routes import (
     RouteErrorCode,
 )
 from backend.contracts.scalars import NonNegativeMoney, NonNegativeVersion, OpaqueIdentifier
+from backend.contracts.scalars import Score
 
 API_VERSION = "0.13"
 MAX_CHART_SESSIONS = 1000
