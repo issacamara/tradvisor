@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -32,6 +34,7 @@ from backend.recovery.register import GcsStorageAdapter
 from backend.contracts.envelopes import ApiError, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.routes import MeResource
 from backend.contracts.scalars import STARTING_CASH_MAX_XOF, STARTING_CASH_MIN_XOF
+from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 
 PRIVATE_NO_STORE: Final = "private, no-store"
 STARTING_CASH_DEFAULT_XOF: Final = 1_000_000
@@ -149,6 +152,19 @@ def create_app(
     @application.get("/healthz", include_in_schema=False)
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
+
+    @application.post("/internal/workflows/{workflow_name}/dispatch", include_in_schema=False)
+    async def dispatch_workflow(workflow_name: str) -> dict[str, str]:
+        try:
+            execution_name = await asyncio.to_thread(
+                dispatch_and_wait,
+                workflow_name,
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+                region=os.environ.get("WORKFLOW_REGION", "europe-central2"),
+            )
+        except WorkflowDispatchError as error:
+            raise HTTPException(status_code=500, detail="workflow_dispatch_failed") from error
+        return {"execution": execution_name}
 
     @application.get("/v1/me", response_model=ResponseEnvelope[MeResource])
     async def get_me(

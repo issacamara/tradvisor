@@ -124,6 +124,65 @@ resource "google_cloud_run_v2_service_iam_member" "v1_api_public_invoker" {
   member   = "allUsers"
 }
 
+resource "google_cloud_run_v2_service" "workflow_dispatcher" {
+  count               = var.manage_legacy_schedules ? 1 : 0
+  name                = "${var.v1_api_service_name}-workflow-dispatcher"
+  location            = var.region
+  project             = var.project_id
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  deletion_protection = true
+
+  template {
+    service_account = google_service_account.tradvisor_sa.email
+    timeout         = "900s"
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 1
+    }
+
+    max_instance_request_concurrency = 1
+
+    containers {
+      image = var.v1_api_image
+      ports {
+        container_port = 8080
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+
+      env {
+        name  = "WORKFLOW_REGION"
+        value = var.region
+      }
+
+      resources {
+        cpu_idle = true
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    precondition {
+      condition     = var.project_id == "dev-tradvisor"
+      error_message = "Workflow dispatcher configuration is restricted to the development project."
+    }
+
+    precondition {
+      condition     = length(trimspace(var.v1_api_image)) > 0
+      error_message = "Set an approved development API image before enabling the workflow dispatcher."
+    }
+  }
+}
+
 resource "google_cloud_run_v2_job" "v1_batch" {
   count               = local.v1_runtime_enabled ? 1 : 0
   name                = var.v1_batch_job_name
