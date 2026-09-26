@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -16,6 +17,10 @@ RAW_COLUMNS = (
     "volume",
     "close",
 )
+
+SOURCE_ID = "richbourse-shares"
+PARSER_VERSION = "shares-parser-v1"
+PRICE_BASIS_REF = "raw-v1"
 
 
 def parse_localized_decimal(value: str) -> Decimal | None:
@@ -79,7 +84,18 @@ def _normalize_single_separator(text: str, separator: str, original: str) -> str
 
 
 def _source_observation_id(row: dict[str, object], collected_at: str) -> str:
-    identity = "|".join([str(row[column]) for column in RAW_COLUMNS] + [collected_at])
+    identity = "|".join([build_source_revision_id(row), collected_at])
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def build_source_revision_id(row: dict[str, object]) -> str:
+    """Identify source content independently from a collection retry."""
+    identity = json.dumps(
+        {column: str(row[column]) for column in RAW_COLUMNS},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
@@ -140,10 +156,17 @@ def scrape_brvm_shares(url: str, *, collected_at: datetime | None = None) -> pd.
     for source_row in scrape(url):
         row: dict[str, object] = {
             **source_row,
+            "source_id": SOURCE_ID,
             "session_date": "",
             "session_date_status": "unknown",
             "trade_status": "unknown",
             "collected_at": collected_text,
+            "known_at": collected_text,
+            "parser_version": PARSER_VERSION,
+            "basis": "actual",
+            "price_basis_ref": PRICE_BASIS_REF,
+            "original_source_date": "",
+            "suspension_status": "unknown",
         }
         parse_errors = []
         for column in ("open", "high", "low", "volume", "close"):
@@ -161,7 +184,8 @@ def scrape_brvm_shares(url: str, *, collected_at: datetime | None = None) -> pd.
             volume = None
         if volume is not None and volume > 0 and volume == volume.to_integral_value():
             row["trade_status"] = "traded"
-        row["observation_id"] = _source_observation_id(row, collected_text)
+        row["source_revision_id"] = build_source_revision_id(source_row)
+        row["observation_id"] = _source_observation_id(source_row, collected_text)
         observations.append(row)
 
     return pd.DataFrame(observations)

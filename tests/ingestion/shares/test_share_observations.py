@@ -11,6 +11,7 @@ from types import ModuleType, SimpleNamespace
 
 import pandas as pd
 import pytest
+from backend.contracts.analytical_storage import SHARE_PRICE_REVISIONS_V1
 
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
@@ -88,6 +89,11 @@ def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkey
     assert observation["trade_status"] == "unknown"
     assert observation["collected_at"] == "2026-09-22T08:00:00Z"
     assert observation["observation_id"] != retry.iloc[0]["observation_id"]
+    assert observation["source_revision_id"] == retry.iloc[0]["source_revision_id"]
+    assert observation["source_id"] == "richbourse-shares"
+    assert observation["parser_version"] == "shares-parser-v1"
+    assert observation["basis"] == "actual"
+    assert observation["price_basis_ref"] == "raw-v1"
 
 
 def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> None:
@@ -169,7 +175,6 @@ def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch)
 def _row(**updates):
     row = {
         "symbol": "ABC",
-        "name": "Example",
         "open": "1 000,25",
         "high": "1 100,50",
         "low": "900,00",
@@ -179,7 +184,15 @@ def _row(**updates):
         "session_date_status": "verified",
         "trade_status": "traded",
         "collected_at": "2026-09-22T08:00:00Z",
+        "known_at": "2026-09-22T08:00:00Z",
         "observation_id": "observation-1",
+        "source_id": "richbourse-shares",
+        "source_revision_id": "source-revision-1",
+        "parser_version": "shares-parser-v1",
+        "basis": "actual",
+        "original_source_date": "2026-09-21",
+        "price_basis_ref": "raw-v1",
+        "suspension_status": "unknown",
     }
     row.update(updates)
     return row
@@ -213,12 +226,40 @@ def test_unique_verified_traded_observation_normalizes_exactly() -> None:
     normalized, evidence = loader.prepare_normalized_rows(pd.DataFrame([_row()]))
 
     assert evidence["loadable"] == 1
-    assert normalized.loc[0, "date"].isoformat() == "2026-09-21"
-    assert str(normalized.loc[0, "open"]) == "1000.25"
+    assert normalized.loc[0, "session_date"].isoformat() == "2026-09-21"
+    assert str(normalized.loc[0, "high"]) == "1100.50"
     assert normalized.loc[0, "volume"] == 12
     assert normalized.loc[0, "source_observation_id"] == "observation-1"
     assert normalized.loc[0, "collected_at"] == "2026-09-22 08:00:00"
     assert len(normalized.loc[0, "revision_id"]) == 64
+
+
+def test_normalized_rows_match_immutable_share_revision_contract() -> None:
+    normalized, _ = loader.prepare_normalized_rows(pd.DataFrame([_row()]))
+
+    assert loader.REVISION_TABLE == SHARE_PRICE_REVISIONS_V1.table_name
+    assert loader.REVISION_KEYS == SHARE_PRICE_REVISIONS_V1.immutable_key
+    assert tuple(normalized.columns) == tuple(
+        field.name for field in SHARE_PRICE_REVISIONS_V1.fields
+    )
+    assert normalized.loc[0, "session_date"].isoformat() == "2026-09-21"
+    assert normalized.loc[0, "original_source_date"].isoformat() == "2026-09-21"
+    assert normalized.loc[0, "basis"] == "actual"
+    assert normalized.loc[0, "price_basis_ref"] == "raw-v1"
+    assert normalized.loc[0, "source_id"] == "richbourse-shares"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["source_id", "source_revision_id", "known_at", "basis", "price_basis_ref"],
+)
+def test_missing_contract_evidence_withholds_normalized_row(field: str) -> None:
+    normalized, evidence = loader.prepare_normalized_rows(
+        pd.DataFrame([_row(**{field: ""}, original_source_date="")])
+    )
+
+    assert normalized.empty
+    assert evidence["missing_contract_evidence"] == 1
 
 
 def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> None:
@@ -235,7 +276,7 @@ def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> No
     assert evidence["loadable"] == 2
     assert evidence["exact_retry_duplicates"] == 1
     assert evidence["duplicate_or_revision_unknown"] == 0
-    assert normalized[["symbol", "date"]].drop_duplicates().shape[0] == 1
+    assert normalized[["symbol", "session_date"]].drop_duplicates().shape[0] == 1
     assert normalized["revision_id"].nunique() == 2
     assert set(normalized["source_revision_id"]) == {"source-a", "source-b"}
     assert {str(value) for value in normalized["close"]} == {"1050.75", "1051.00"}
@@ -305,7 +346,6 @@ def test_close_only_observation_keeps_permitted_missing_candle_fields() -> None:
     )
 
     assert evidence["loadable"] == 1
-    assert pd.isna(normalized.loc[0, "open"])
     assert pd.isna(normalized.loc[0, "high"])
     assert pd.isna(normalized.loc[0, "low"])
 
@@ -343,7 +383,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
         pd.DataFrame(),
         "project",
         "stocks",
-        "shares",
+        loader.REVISION_TABLE,
         list(loader.REVISION_KEYS),
         update_matched=False,
     )
@@ -397,12 +437,39 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
             1,
             "project",
             "stocks",
-            "shares",
+            loader.REVISION_TABLE,
             loader.REVISION_KEYS,
             False,
         ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
+
+
+def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) -> None:
+    calls = []
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "123"
+    helper.upsert_into_bigquery = lambda *_args, **_kwargs: calls.append("upsert")
+    helper.move_csv_file_gcp = lambda *args: calls.append(("archive", *args))
+    helper.move_csv_file = lambda *_args: None
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setenv("K_SERVICE", "share-loader")
+    monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
+
+    evidence = loader._archive_after_optional_load(
+        {}, SimpleNamespace(name="shares-incomplete.csv"),
+        pd.DataFrame([_row(original_source_date="")]), "shares",
+    )
+
+    assert evidence["loadable"] == 0
+    assert evidence["missing_contract_evidence"] == 1
+    assert calls == [("archive", "data-123", "archive-123", "shares-incomplete.csv")]
 
 
 def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
@@ -418,7 +485,7 @@ def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
         return sqlite3.connect(path, timeout=10)
 
     loader._insert_revisions_into_duckdb(
-        original, str(database), "shares", connect=connect
+        original, str(database), loader.REVISION_TABLE, connect=connect
     )
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
@@ -426,7 +493,7 @@ def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
                 loader._insert_revisions_into_duckdb,
                 changed,
                 str(database),
-                "shares",
+                loader.REVISION_TABLE,
                 connect=connect,
             )
             for _ in range(2)
@@ -436,7 +503,7 @@ def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
 
     with sqlite3.connect(database) as connection:
         stored = connection.execute(
-            "SELECT revision_id, close FROM shares ORDER BY close"
+            f"SELECT revision_id, close FROM {loader.REVISION_TABLE} ORDER BY close"
         ).fetchall()
 
     assert len(stored) == 2
