@@ -88,36 +88,3 @@ variable "manage_legacy_service_account_credentials" {
   type        = bool
   default     = false
 }
-
-variable "v1_api_image" {
-  description = "Immutable development-only API image reference"
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.v1_api_image == "" || can(regex("@sha256:[0-9a-f]{64}$", var.v1_api_image))
-    error_message = "The V1 API image must be pinned by sha256 digest."
-  }
-}
-
-variable "v1_job_image" {
-  description = "Immutable development-only bounded job image reference"
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.v1_job_image == "" || can(regex("@sha256:[0-9a-f]{64}$", var.v1_job_image))
-    error_message = "The V1 job image must be pinned by sha256 digest."
-  }
-}
-
-variable "v1_cursor_secret_id" {
-  description = "Existing development Secret Manager secret ID used to sign private cursors"
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.v1_cursor_secret_id == "" || can(regex("^[A-Za-z0-9_-]{1,255}$", var.v1_cursor_secret_id))
-    error_message = "The cursor secret must be an existing Secret Manager secret ID."
-  }
-}

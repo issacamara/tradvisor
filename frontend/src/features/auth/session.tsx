@@ -16,6 +16,13 @@ export type SessionActions = {
 };
 
 type FirebaseResponse = { idToken?: string; error?: { message?: string }; users?: Array<{ emailVerified?: boolean }> };
+type FirebaseRequestBody = {
+  email?: string;
+  password?: string;
+  returnSecureToken?: boolean;
+  idToken?: string;
+  requestType?: "VERIFY_EMAIL" | "PASSWORD_RESET";
+};
 const SessionContext = createContext<SessionActions | null>(null);
 const authEndpoint = "https://identitytoolkit.googleapis.com/v1/accounts";
 
@@ -27,7 +34,7 @@ function safeAuthMessage(code: string): string {
   return "Authentication could not be completed. Check your details and try again.";
 }
 
-async function firebaseRequest(action: string, body: Record<string, string>): Promise<FirebaseResponse> {
+async function firebaseRequest(action: string, body: FirebaseRequestBody): Promise<FirebaseResponse> {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) throw new Error("Sign-in is not configured for this workspace.");
   const response = await fetch(`${authEndpoint}:${action}?key=${encodeURIComponent(apiKey)}`, {
@@ -40,10 +47,20 @@ async function firebaseRequest(action: string, body: Record<string, string>): Pr
 }
 
 async function verifiedSession(email: string, password: string): Promise<string> {
-  const result = await firebaseRequest("signInWithPassword", { email, password, returnSecureToken: "true" });
+  const result = await firebaseRequest("signInWithPassword", { email, password, returnSecureToken: true });
   if (!result.idToken) throw new Error("Authentication could not be completed. Try again.");
   const lookup = await firebaseRequest("lookup", { idToken: result.idToken });
   if (lookup.users?.[0]?.emailVerified !== true) throw new Error("Verify your email before signing in.");
+  return result.idToken;
+}
+
+async function unverifiedVerificationToken(email: string, password: string): Promise<string> {
+  const result = await firebaseRequest("signInWithPassword", { email, password, returnSecureToken: true });
+  if (!result.idToken) throw new Error("Authentication could not be completed. Try again.");
+  const lookup = await firebaseRequest("lookup", { idToken: result.idToken });
+  if (lookup.users?.[0]?.emailVerified !== false) {
+    throw new Error("This account is already verified or could not be verified.");
+  }
   return result.idToken;
 }
 
@@ -118,7 +135,7 @@ function useSessionValue(): SessionActions {
     async register(email, password) {
       setMessage("");
       try {
-        const created = await firebaseRequest("signUp", { email, password, returnSecureToken: "true" });
+        const created = await firebaseRequest("signUp", { email, password, returnSecureToken: true });
         if (!created.idToken) throw new Error("Registration could not be completed.");
         await firebaseRequest("sendOobCode", { requestType: "VERIFY_EMAIL", idToken: created.idToken });
         setStatus("unverified");
@@ -135,7 +152,7 @@ function useSessionValue(): SessionActions {
     },
     async resendVerification(email, password) {
       try {
-        const nextToken = await verifiedSession(email, password);
+        const nextToken = await unverifiedVerificationToken(email, password);
         await firebaseRequest("sendOobCode", { requestType: "VERIFY_EMAIL", idToken: nextToken });
         setMessage("Verification email sent.");
       } catch (error) {
