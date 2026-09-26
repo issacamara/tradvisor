@@ -88,3 +88,106 @@ variable "manage_legacy_service_account_credentials" {
   type        = bool
   default     = false
 }
+
+variable "configure_v1_runtime" {
+  description = "Opt in to the development-only V1 Cloud Run API and bounded batch job definitions"
+  type        = bool
+  default     = false
+}
+
+variable "v1_runtime_service_account_id" {
+  description = "Dedicated service account ID for the opt-in V1 runtime"
+  type        = string
+  default     = "tradvisor-v1-api"
+}
+
+variable "v1_cursor_secret_id" {
+  description = "Metadata-only secret name referenced by the V1 runtime for cursor signing"
+  type        = string
+  default     = "tradvisor-v1-cursor-secret"
+}
+
+variable "v1_api_service_name" {
+  description = "Development-only Cloud Run API service name"
+  type        = string
+  default     = "tradvisor-v1-api"
+}
+
+variable "v1_api_image" {
+  description = "Approved development container image for the V1 API; required when runtime configuration is enabled"
+  type        = string
+  default     = ""
+}
+
+variable "v1_api_timeout_seconds" {
+  description = "Bounded request timeout for the V1 API"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.v1_api_timeout_seconds >= 1 && var.v1_api_timeout_seconds <= 300
+    error_message = "V1 API timeout must be between 1 and 300 seconds."
+  }
+}
+
+variable "v1_api_max_instance_count" {
+  description = "Bounded maximum API instance count"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.v1_api_max_instance_count >= 1 && var.v1_api_max_instance_count <= 10
+    error_message = "V1 API max instances must be between 1 and 10."
+  }
+}
+
+variable "v1_api_max_request_concurrency" {
+  description = "Bounded maximum concurrent requests per API instance"
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.v1_api_max_request_concurrency >= 1 && var.v1_api_max_request_concurrency <= 80
+    error_message = "V1 API request concurrency must be between 1 and 80."
+  }
+}
+
+variable "v1_batch_job_name" {
+  description = "Development-only Cloud Run Job name for bounded analysis work"
+  type        = string
+  default     = "tradvisor-v1-batch"
+}
+
+variable "v1_batch_image" {
+  description = "Approved development container image for bounded V1 jobs; required when runtime configuration is enabled"
+  type        = string
+  default     = ""
+}
+
+variable "v1_batch_command" {
+  description = "Explicit bounded job command; required when runtime configuration is enabled"
+  type        = list(string)
+  default     = []
+}
+
+variable "v1_batch_timeout_seconds" {
+  description = "Bounded timeout for each V1 batch task"
+  type        = number
+  default     = 900
+
+  validation {
+    condition     = var.v1_batch_timeout_seconds >= 1 && var.v1_batch_timeout_seconds <= 3600
+    error_message = "V1 batch timeout must be between 1 and 3600 seconds."
+  }
+}
+
+variable "v1_batch_max_retries" {
+  description = "Finite retry count for each V1 batch task"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.v1_batch_max_retries >= 0 && var.v1_batch_max_retries <= 5
+    error_message = "V1 batch retries must be between 0 and 5."
+  }
+}
