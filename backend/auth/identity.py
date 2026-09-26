@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import hmac
 from typing import Any, Protocol, cast
 
-from backend.recovery.register import StorageAdapter
+from backend.recovery.register import Intent, StorageAdapter
 
 class AuthenticationError(Exception):
     """A request cannot be authenticated or currently admitted."""
@@ -52,10 +52,25 @@ class RegisterAdmissionDenyFence:
 
     def is_denied(self, uid: str) -> bool:
         head = self._register.get_head(uid)
-        if head is None:
-            return False
-        intent = self._register.get_intent(head.operation_id)
-        return intent is not None and intent.subject == uid and intent.action == "deny"
+        head_sequence = head.sequence if head is not None else 0
+        if head is not None:
+            intent = self._register.get_intent(head.operation_id)
+            if intent is not None and intent.subject == uid and intent.action == "deny":
+                return True
+        cursor: str | None = None
+        while True:
+            page = self._register.list_intents(cursor, limit=100)
+            if any(
+                isinstance(intent, Intent)
+                and intent.subject == uid
+                and intent.action == "deny"
+                and intent.sequence > head_sequence
+                for intent in page.items
+            ):
+                return True
+            if page.next_cursor is None:
+                return False
+            cursor = page.next_cursor
 
 
 def normalize_email(value: str) -> str:

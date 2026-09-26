@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -15,6 +15,7 @@ from backend.auth.identity import (
     RegisterAdmissionDenyFence,
     authenticate_request,
 )
+from backend.recovery.register import Intent, StorageAdapter
 
 
 class AdmissionFixture:
@@ -252,3 +253,31 @@ def test_register_head_deny_fence_rejects_restored_allowlist() -> None:
         Client(), RegisterAdmissionDenyFence(Register())
     )
     assert not asyncio.run(repository.is_admitted("user-1", "A@example.com"))
+
+
+def test_pending_register_deny_fence_rejects_after_projection_interruption() -> None:
+    from backend.recovery.register import InventoryPage, SubjectHead, build_intent
+
+    pending = build_intent(
+        operation_id="deny-2",
+        subject="user-1",
+        action="deny",
+        generation="g1",
+        operator="operator-1",
+        predecessor="grant-1",
+        sequence=2,
+        created_at=datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc),
+    )
+
+    class Register:
+        def get_head(self, subject: str) -> SubjectHead:
+            return SubjectHead(subject, "grant-1", 1, 1)
+
+        def get_intent(self, operation_id: str) -> Intent | None:
+            return None
+
+        def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage:
+            return InventoryPage((pending,), None)
+
+    fence = RegisterAdmissionDenyFence(cast(StorageAdapter, Register()))
+    assert fence.is_denied("user-1")

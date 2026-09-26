@@ -142,8 +142,7 @@ class GcsStorageAdapter:
         sequence: int,
     ) -> SubjectHead | None:
         blob = self._bucket.blob(f"heads/{subject}.json")
-        generation = 1 if expected_generation is None else expected_generation + 1
-        value = SubjectHead(subject, operation_id, sequence, generation)
+        value = SubjectHead(subject, operation_id, sequence, 1)
         try:
             blob.upload_from_string(
                 _encode_record(value), content_type="application/json", if_generation_match=0 if expected_generation is None else expected_generation
@@ -152,7 +151,10 @@ class GcsStorageAdapter:
             if _is_precondition_failure(error):
                 return None
             raise
-        return value
+        actual_generation = int(blob.generation or 0)
+        if actual_generation < 1:
+            raise RegisterError("GCS did not return the committed head generation")
+        return SubjectHead(subject, operation_id, sequence, actual_generation)
 
     def list_intents(self, cursor: str | None, *, limit: int) -> InventoryPage:
         return _list_records(self._bucket, "intents/", cursor, limit, Intent)
@@ -181,6 +183,7 @@ def _load_record(blob: Any, record_type: type[Intent] | type[SubjectHead]) -> In
         payload["created_at"] = datetime.fromisoformat(payload["created_at"])
         return Intent(**payload)
     payload.pop("record_type", None)
+    payload["storage_generation"] = int(blob.generation or payload["storage_generation"])
     return SubjectHead(**payload)
 
 
