@@ -44,7 +44,6 @@ def reset_portfolio(
 
     fingerprint = fingerprint_request("POST", "/v1/paper/reset", request)
     selected_generation = generation or f"generation-{uuid4().hex}"
-    selected_recovery = recovery_id or f"recovery-{uuid4().hex}"
     store = repositories._store
     plan = None
 
@@ -55,6 +54,7 @@ def reset_portfolio(
         if control_doc is None or preferences_doc is None:
             raise ResetError("paper portfolio is not configured")
         control = cast(PortfolioControl, control_doc.record)
+        selected_recovery = recovery_id or control.recovery_id
         if control.active_generation != request.expected_generation:
             raise ResetError("expected portfolio generation is no longer active")
         if control.state_version != request.expected_state_version:
@@ -123,5 +123,17 @@ def reset_portfolio(
         apply_mutation=apply,
     )
     if plan is None:
-        raise ResetError("reset completed without a replacement plan")
+        replay_generation = receipt.receipt.generation
+        if replay_generation is None:
+            raise ResetError("reset replay did not identify its replacement generation")
+        summary_doc = repositories.get_summary(replay_generation)
+        control_doc = repositories.get_control()
+        if summary_doc is None or control_doc is None:
+            raise ResetError("reset replay could not load its committed replacement")
+        return ResetResult(
+            replay_generation,
+            control_doc.record.recovery_id,
+            summary_doc.record,
+            receipt,
+        )
     return ResetResult(plan.generation, plan.recovery_id, plan.summary, receipt)

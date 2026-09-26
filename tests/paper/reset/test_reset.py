@@ -1,11 +1,8 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from backend.contracts.routes import ResetPortfolioRequest
 from backend.contracts.scalars import StartingCash
 from backend.paper.reset import reset_portfolio
-from backend.commands.receipts import ReceiptError
 from backend.paper.setup import setup_portfolio
 from backend.store.repositories import OwnerContext, PaperRepositories
 from tests.store.test_repositories import FakeStore
@@ -44,10 +41,12 @@ def test_reset_switches_generation_and_replays_same_receipt() -> None:
     control = repositories.get_control()
     assert control is not None and control.record.active_generation is not None
     request = _request(str(control.record.active_generation), str(control.record.recovery_id), control.record.state_version)
-    first = reset_portfolio(repositories, request, now=NOW, generation="generation-new", recovery_id="recovery-new")
-    with pytest.raises(ReceiptError, match="recovery state"):
-        reset_portfolio(repositories, request, now=NOW, generation="generation-other", recovery_id="recovery-other")
+    first = reset_portfolio(repositories, request, now=NOW, generation="generation-new")
+    second = reset_portfolio(
+        repositories, request, now=NOW, generation="generation-other", recovery_id="recovery-other"
+    )
     assert first.generation == "generation-new"
+    assert second.receipt.replayed
     current = repositories.get_control()
     assert current is not None
     assert current.record.active_generation == "generation-new"
