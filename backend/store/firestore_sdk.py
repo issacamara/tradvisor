@@ -128,7 +128,7 @@ class FirestoreSdkStore(TransactionalStore):
                     reference_path = str(cursor_value).split("/documents/", 1)[-1]
                     cursor_value = self._client.document(reference_path)
                 cursor_values[field] = cursor_value
-            query = query.start_at(cursor_values, before=False)
+            query = query.start_after(cursor_values)
         documents = list(query.limit(limit + 1).stream())
         page_documents = documents[:limit]
         next_cursor = None
@@ -156,7 +156,11 @@ class FirestoreSdkStore(TransactionalStore):
             for decoded in [self._decode_snapshot(DocumentKey(collection, document.id), document)]
             if decoded is not None
         )
-        return Page(tuple(item.record for item in items), next_cursor)
+        return Page(
+            tuple(item.record for item in items),
+            next_cursor,
+            tuple(DocumentKey(collection, document.id) for document in page_documents),
+        )
 
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey

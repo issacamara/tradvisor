@@ -82,6 +82,7 @@ class _FakeQuery:
     def __init__(self, records: list[_Document]) -> None:
         self.records = records
         self.requested_limit: int | None = None
+        self.start_after_values: object | None = None
 
     def where(self, **kwargs: object) -> "_FakeQuery":
         return self
@@ -89,7 +90,8 @@ class _FakeQuery:
     def order_by(self, *args: object, **kwargs: object) -> "_FakeQuery":
         return self
 
-    def start_at(self, *args: object, **kwargs: object) -> "_FakeQuery":
+    def start_after(self, *args: object, **kwargs: object) -> "_FakeQuery":
+        self.start_after_values = args[0] if args else None
         return self
 
     def limit(self, value: int) -> "_FakeQuery":
@@ -199,4 +201,43 @@ def test_sdk_pager_fetches_one_extra_and_omits_cursor_on_final_exact_page(
 
     assert client.query.requested_limit == 3
     assert len(page.items) == 2
+    assert page.keys == (
+        DocumentKey("analysis_batches/b1/results", "a"),
+        DocumentKey("analysis_batches/b1/results", "b"),
+    )
     assert page.next_cursor is None
+
+
+def test_sdk_pager_uses_start_after_for_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient([_Document("a", 1), _Document("b", 2), _Document("c", 3)])
+    fake_firestore = SimpleNamespace(
+        FieldPath=SimpleNamespace(document_id=lambda: "__name__"),
+        Query=SimpleNamespace(ASCENDING="ASCENDING", DESCENDING="DESCENDING"),
+    )
+    monkeypatch.setattr(
+        "backend.store.firestore_sdk.importlib.import_module",
+        lambda name: fake_firestore,
+    )
+    store = FirestoreSdkStore(
+        project_id="local-project", cursor_secret="local-test-cursor-secret", client=client
+    )
+    first = store.page(
+        "analysis_batches/b1/results",
+        filters=(),
+        order_by=(("value", "asc"),),
+        limit=2,
+        cursor=None,
+    )
+    assert first.next_cursor is not None
+
+    store.page(
+        "analysis_batches/b1/results",
+        filters=(),
+        order_by=(("value", "asc"),),
+        limit=2,
+        cursor=first.next_cursor,
+    )
+
+    assert client.query.start_after_values is not None

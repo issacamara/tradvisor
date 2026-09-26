@@ -5,6 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "generation", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "accepted_at", "order": "DESCENDING"},
         {"fieldPath": "order_id", "order": "DESCENDING"}
       ]

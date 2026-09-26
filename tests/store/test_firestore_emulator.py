@@ -34,6 +34,7 @@ class Record(BaseModel):
 
 class HistoryRecord(BaseModel):
     generation: str
+    status: str
     accepted_at: datetime
     order_id: str
 
@@ -318,7 +319,10 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
                     schema_version=1,
                     state_version=0,
                     record=HistoryRecord(
-                        generation=generation, accepted_at=accepted_at, order_id=order_id
+                        generation=generation,
+                        status="pending",
+                        accepted_at=accepted_at,
+                        order_id=order_id,
                     ),
                 ),
             )
@@ -326,7 +330,7 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
     store.run(seed, max_attempts=1)
     page = store.page(
         collection,
-        filters=(("generation", "==", "g1"),),
+        filters=(("generation", "==", "g1"), ("status", "==", "pending")),
         order_by=(("accepted_at", "desc"), ("order_id", "desc")),
         limit=2,
         cursor=None,
@@ -337,9 +341,13 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
         "order-a",
     ]
     assert page.next_cursor is not None
+    assert page.keys == (
+        DocumentKey(collection, "order-b"),
+        DocumentKey(collection, "order-a"),
+    )
     continuation = store.page(
         collection,
-        filters=(("generation", "==", "g1"),),
+        filters=(("generation", "==", "g1"), ("status", "==", "pending")),
         order_by=(("accepted_at", "desc"), ("order_id", "desc")),
         limit=2,
         cursor=page.next_cursor,
@@ -358,6 +366,10 @@ def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
     assert structured["where"]["compositeFilter"]["filters"][0]["fieldFilter"]["field"] == {
         "fieldPath": "generation"
     }
+    assert structured["where"]["compositeFilter"]["filters"][1]["fieldFilter"]["field"] == {
+        "fieldPath": "status"
+    }
+    assert structured["limit"] == 3
     assert structured["orderBy"] == [
         {"field": {"fieldPath": "accepted_at"}, "direction": "DESCENDING"},
         {"field": {"fieldPath": "order_id"}, "direction": "DESCENDING"},
@@ -559,6 +571,7 @@ def test_history_composite_index_matches_repository_query() -> None:
             "queryScope": "COLLECTION",
             "fields": [
                 {"fieldPath": "generation", "order": "ASCENDING"},
+                {"fieldPath": "status", "order": "ASCENDING"},
                 {"fieldPath": "accepted_at", "order": "DESCENDING"},
                 {"fieldPath": "order_id", "order": "DESCENDING"},
             ],

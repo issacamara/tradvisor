@@ -93,6 +93,7 @@ def _segment(value: str) -> str:
 class Page(Generic[Record]):
     items: tuple[Record, ...]
     next_cursor: str | None
+    keys: tuple[DocumentKey, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,8 +256,15 @@ class PaperRepositories:
         return result
 
     def list_orders(
-        self, generation: OpaqueIdentifier, *, limit: int, cursor: str | None = None
+        self,
+        generation: OpaqueIdentifier,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        status: Literal["pending", "executed", "rejected", "expired"] | None = None,
     ) -> Page[PaperOrder]:
+        if status is not None and status not in {"pending", "executed", "rejected", "expired"}:
+            raise ValueError("status is not an allowed order status")
         return self._page(
             "orders",
             generation,
@@ -264,6 +272,7 @@ class PaperRepositories:
             limit=limit,
             cursor=cursor,
             order_by=(("accepted_at", "desc"), ("order_id", "desc")),
+            filters=() if status is None else (("status", "==", status),),
         )
 
     def list_executions(
@@ -490,7 +499,16 @@ class PaperRepositories:
             if not isinstance(record, ExecutionPrice) or str(record.price_revision_id) != document_id:
                 raise RepositoryError("execution price identity does not match its document key")
         elif key.collection.endswith("/command_receipts"):
-            if not isinstance(record, PaperCommandReceipt) or str(record.owner_uid) != owner_uid:
+            if not isinstance(record, PaperCommandReceipt):
+                record = PaperCommandReceipt.model_validate(record.model_dump(mode="python"))
+            expected_receipt_id = hashlib.sha256(
+                f"{owner_uid}\0{record.idempotency_key}".encode("utf-8")
+            ).hexdigest()
+            if (
+                not isinstance(record, PaperCommandReceipt)
+                or str(record.owner_uid) != owner_uid
+                or document_id != expected_receipt_id
+            ):
                 raise RepositoryError("receipt owner does not match its document key")
         elif "/generations/" in key.collection:
             generation = self._generation_for_key(key)
@@ -506,6 +524,7 @@ class PaperRepositories:
         limit: int,
         cursor: str | None,
         order_by: tuple[tuple[str, Literal["asc", "desc"]], ...],
+        filters: tuple[tuple[str, str, str], ...] = (),
     ) -> Page[Record]:
         if not 1 <= limit <= MAX_PAGE_SIZE:
             raise ValueError(f"limit must be between 1 and {MAX_PAGE_SIZE}")
@@ -513,7 +532,7 @@ class PaperRepositories:
         result = self._store.page(
             f"paper_portfolios/{_segment(str(self._owner.uid))}/generations/"
             f"{_segment(str(generation))}/{collection}",
-            filters=(("generation", "==", str(generation)),),
+            filters=(("generation", "==", str(generation)),) + filters,
             order_by=order_by,
             limit=limit,
             cursor=cursor,
@@ -522,29 +541,12 @@ class PaperRepositories:
         if context != self._active_generation_context(generation):
             raise GenerationConflict("portfolio changed during history read")
         records = tuple(self._record(item, record_type) for item in result.items)
-        for record in records:
+        if len(result.keys) != len(records):
+            raise RepositoryError("page adapter did not preserve document keys")
+        for key, record in zip(result.keys, records, strict=True):
             self._validate_payload_generation(record, str(generation))
-            self._validate_record_identity(
-                self._page_key(collection, generation, record), record, None
-            )
-        return Page(records, result.next_cursor)
-
-    def _page_key(
-        self, collection: str, generation: OpaqueIdentifier, record: Record
-    ) -> DocumentKey:
-        identity = {
-            "orders": "order_id",
-            "executions": "order_id",
-            "cash_movements": "movement_id",
-            "positions": "symbol",
-        }.get(collection)
-        if identity is None:
-            raise RepositoryError("unsupported paper history collection")
-        return DocumentKey(
-            f"paper_portfolios/{_segment(str(self._owner.uid))}/generations/"
-            f"{_segment(str(generation))}/{collection}",
-            _segment(str(getattr(record, identity, ""))),
-        )
+            self._validate_record_identity(key, record, None)
+        return Page(records, result.next_cursor, result.keys)
 
     def _active_generation_context(self, generation: OpaqueIdentifier) -> tuple[str, int]:
         control = self.get_control()

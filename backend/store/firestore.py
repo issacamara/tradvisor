@@ -339,7 +339,11 @@ class FirestoreRestStore(TransactionalStore):
                 self._clock(),
                 self._cursor_secret,
             )
-        return Page(tuple(item.record for item in items), next_cursor)
+        return Page(
+            tuple(item.record for item in items),
+            next_cursor,
+            tuple(item.key for item in items),
+        )
 
     def get_in_transaction(
         self, transaction: Transaction, key: DocumentKey

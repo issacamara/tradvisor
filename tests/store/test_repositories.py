@@ -9,7 +9,13 @@ import pytest
 from pydantic import BaseModel
 
 from backend.contracts.scalars import OpaqueIdentifier
-from backend.contracts.paper import CashMovement, PaperExecution, PaperOrder, PaperPosition
+from backend.contracts.paper import (
+    CashMovement,
+    PaperCommandReceipt,
+    PaperExecution,
+    PaperOrder,
+    PaperPosition,
+)
 from backend.store.repositories import (
     DocumentKey,
     GenerationConflict,
@@ -46,6 +52,7 @@ class FakeStore:
         self.retry_once_with: VersionedDocument[BaseModel] | None = None
         self.retry_once_with_control: VersionedDocument[BaseModel] | None = None
         self.page_items: tuple[BaseModel, ...] = ()
+        self.page_keys: tuple[DocumentKey, ...] = ()
         self.events: list[str] = []
 
     def get(self, key: DocumentKey) -> VersionedDocument[BaseModel] | None:
@@ -71,7 +78,7 @@ class FakeStore:
                 "cursor_context": cursor_context,
             }
         )
-        return Page(self.page_items, "next" if cursor is None else None)
+        return Page(self.page_items, "next" if cursor is None else None, self.page_keys)
 
     def run(
         self, callback: Callable[[Transaction], Any], *, max_attempts: int
@@ -439,6 +446,25 @@ def test_order_query_is_bounded_ordered_and_generation_scoped(
         repo.list_orders(generation, limit=101)
 
 
+def test_order_status_filter_is_allowlisted_and_queryable(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    generation = OpaqueIdentifier("g1")
+    store.documents[repo.control_key().path] = VersionedDocument(
+        key=repo.control_key(), schema_version=1, state_version=0, record=_control("g1")
+    )
+
+    repo.list_orders(generation, limit=25, status="pending")
+
+    assert store.queries[-1]["filters"] == (
+        ("generation", "==", "g1"),
+        ("status", "==", "pending"),
+    )
+    with pytest.raises(ValueError, match="allowed order status"):
+        repo.list_orders(generation, limit=25, status="unknown")  # type: ignore[arg-type]
+
+
 def test_all_generation_history_queries_have_stable_compound_order(
     repositories: tuple[FakeStore, PaperRepositories],
 ) -> None:
@@ -512,6 +538,7 @@ def test_generation_payload_must_match_point_and_history_paths(
         repo.get_order(generation, OpaqueIdentifier("order-1"))
 
     store.page_items = (PaperOrder.model_construct(generation="g2", order_id="order-2"),)
+    store.page_keys = (repo.order_key(generation, OpaqueIdentifier("order-2")),)
     with pytest.raises(RepositoryError, match="record generation"):
         repo.list_orders(generation, limit=10)
 
@@ -578,6 +605,31 @@ def test_payload_identity_must_match_document_keys(
             schema_version=1,
             expected_state_version=None,
         )
+
+
+def test_receipt_idempotency_key_must_hash_to_document_id(
+    repositories: tuple[FakeStore, PaperRepositories],
+) -> None:
+    store, repo = repositories
+    receipt_key = repo.receipt_key("request-1")
+    wrong_receipt = PaperCommandReceipt.model_construct(
+        owner_uid="verified-user", idempotency_key="request-2"
+    )
+
+    with pytest.raises(RepositoryError, match="receipt owner"):
+        repo.write_in_transaction(
+            FakeTransaction(),
+            key=receipt_key,
+            record=wrong_receipt,
+            schema_version=1,
+            expected_state_version=None,
+        )
+
+    store.documents[receipt_key.path] = VersionedDocument(
+        key=receipt_key, schema_version=1, state_version=0, record=wrong_receipt
+    )
+    with pytest.raises(RepositoryError, match="receipt owner"):
+        repo.get_receipt("request-1")
 
 
 def test_publication_results_are_immutable_and_bounded_by_batch(
