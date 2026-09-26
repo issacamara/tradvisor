@@ -1,0 +1,33 @@
+{
+  "version": "swing-v1",
+  "strategy_id": "trend_confirmation",
+  "score": {
+    "alignment_points": 20,
+    "direction_points": 20,
+    "rsi_points": 30,
+    "extension_points": 30,
+    "buy_minimum": 70,
+    "display_decimal_places": 1,
+    "alignment_saturation_atr": 1,
+    "direction_saturation_atr": 0.5,
+    "rsi_curve": [[40, 0], [50, 15], [55, 30], [65, 30], [70, 15], [80, 0]],
+    "extension_full_credit_atr": 1,
+    "extension_zero_credit_atr": 3
+  },
+  "liquidity": {
+    "window_sessions": 20,
+    "minimum_median_xof": 5000000,
+    "minimum_traded_sessions": 18
+  },
+  "structural_guards": [
+    "ema20_above_ema50",
+    "close_at_or_above_ema20",
+    "ema20_rising_over_five_sessions",
+    "extension_below_three_atr"
+  ],
+  "current_trade_guard": [
+    "confirmed_current_session_trade",
+    "genuine_current_session_close",
+    "not_suspended"
+  ]
+}

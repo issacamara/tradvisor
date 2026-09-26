@@ -2,13 +2,12 @@ from curl_cffi import requests
 import yaml
 import pandas as pd
 from helper import (
-    get_financial_report_revision,
     get_symbols_from_richbourse,
     save_dataframe_as_csv,
     table_exists,
     upsert_financial_report_current_and_revision,
 )
-from datetime import datetime
+from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 import functions_framework
 import os
@@ -16,6 +15,8 @@ import re
 import json
 import io
 import hashlib
+import importlib.util
+import sys
 from google.auth import default
 
 
@@ -156,7 +157,10 @@ def is_data_incomplete(data):
     if data is None:
         return True
     
-    financial_fields = ['revenue', 'net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    financial_fields = ['net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    category = data.get("financial_category")
+    if not (isinstance(category, str) and category in {"bank", "insurer"}):
+        financial_fields.insert(0, "revenue")
     
     # Return True if any field is missing
     return any(data.get(field) is None for field in financial_fields)
@@ -265,7 +269,7 @@ def extract_text_from_pdf(pdf_content):
     return None
 
 
-def extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
+def _legacy_extract_financials_from_pdf(pdf_content, openrouter_api_key, max_retries=2):
     """Extract financial data from PDF using OpenRouter API with retry on better models.
     
     First extracts text from PDF to avoid hitting image limits (50 max).
@@ -295,7 +299,7 @@ For each document, extract the following fields:
 
 fiscal_year: The fiscal year of the report (e.g., 2024). Use the most recent year covered by the statement, not the publication date.
 
-revenue: Total revenue or "chiffre d'affaires" (produits d'exploitation / chiffre d'affaires net). For banks, use "produit net bancaire" (PNB) if chiffre d'affaires is not presented. In local currency (XOF/FCFA), expressed in full units.
+revenue: Generic operating revenue or "chiffre d'affaires" only. Never put bank net banking income ("produit net bancaire" / PNB), insurer premiums, interest income, or any category-specific activity measure in this field. Extract PNB separately as pnb. In local currency (XOF/FCFA), expressed in full units.
 
 net_income: Net income or "résultat net" (résultat net de l'exercice). Use the net result attributable to the company (résultat net part du groupe if consolidated accounts are shown alongside company-only accounts, otherwise résultat net). In local currency, expressed in full units.
 
@@ -445,6 +449,34 @@ Output format:
     return best_result
 
 
+def extract_financials_from_pdf(pdf_content, openrouter_api_key=None, **kwargs):
+    """Compatibility entry point backed by the shared stored-response adapter."""
+    shared_module = _load_shared_extraction_module()
+    shared_adapter = shared_module.extract_financials_from_pdf
+
+    return shared_adapter(pdf_content, openrouter_api_key, **kwargs)
+
+
+def _load_shared_extraction_module():
+    try:
+        import insert_financials
+
+        return insert_financials
+    except ModuleNotFoundError as error:
+        if error.name != "insert_financials":
+            raise
+    module_name = "tradvisor_shared_financial_extraction"
+    if module_name not in sys.modules:
+        module_path = os.path.join(os.path.dirname(__file__), "insert_financials.py")
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("could not load the shared financial extraction adapter")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[module_name]
+
+
 def scrape_financials(url, openrouter_api_key=None):
     """Scrape annual financial statements - MONTHLY RUN.
     
@@ -468,13 +500,8 @@ def scrape_financials(url, openrouter_api_key=None):
     # If table doesn't exist or is empty, auto-initialize with all historical data
     if not table_exists_flag or not existing_data:
         print("No existing data found. Auto-initializing with all available historical data...")
-        # Lazy import to avoid circular import issues
+        # Lazy import keeps initialization and provider work out of module import.
         from scrape_financials_init import scrape_financials_init
-        # Get URL from config (need to load it here since we're outside entry_point)
-        import yaml
-        with open('config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        url = config['url'].get('financials', 'https://www.richbourse.com/common/actualite-categorie/index/etats-financiers')
         return scrape_financials_init(url, openrouter_api_key)
     
     print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs in database.")
@@ -545,26 +572,26 @@ def scrape_financials(url, openrouter_api_key=None):
                 if pdf_response.status_code != 200:
                     raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
                 
-                # Check if API key is available
-                if not openrouter_api_key:
-                    raise Exception("OPENROUTER_API_KEY environment variable not set")
-                
-                # Extract financial data from PDF
                 pdf_content = pdf_response.content
                 document_revision = hashlib.sha256(pdf_content).hexdigest()
-                financial_data = get_financial_report_revision(
-                    symbol,
-                    fiscal_year,
-                    ann['url'],
-                    document_revision,
-                    project_id,
-                )
-                if current_matches_announcement and financial_data is not None:
-                    print(f"  FY {fiscal_year} - already up to date, skipping")
-                    del pdf_content
-                    session.close()
-                    continue
-                if financial_data is None:
+                shared_adapter = _load_shared_extraction_module()
+                try:
+                    artifact_bucket = shared_adapter.get_extraction_artifact_bucket(project_id)
+                    artifact = shared_adapter.load_extraction_artifact(
+                        artifact_bucket, document_revision
+                    )
+                except (ImportError, AttributeError):
+                    artifact_bucket = None
+                    artifact = None
+                evidence = []
+                if artifact_bucket is not None:
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content,
+                        openrouter_api_key,
+                        recorded_response=artifact,
+                        evidence_callback=evidence.append,
+                    )
+                else:
                     financial_data = extract_financials_from_pdf(
                         pdf_content, openrouter_api_key
                     )
@@ -572,8 +599,52 @@ def scrape_financials(url, openrouter_api_key=None):
                 # CRITICAL: Delete PDF content from memory immediately after processing
                 del pdf_content
                 
-                if not financial_data:
+                if is_data_incomplete(financial_data):
                     raise Exception("Failed to extract financial data from PDF - all AI models failed")
+
+                normalized_collected_at = (
+                    artifact.get("collected_at")
+                    if isinstance(artifact, dict)
+                    and isinstance(artifact.get("collected_at"), str)
+                    else datetime.now(timezone.utc).isoformat(timespec="seconds")
+                )
+                if (
+                    evidence
+                    and artifact_bucket is not None
+                    and (
+                        not isinstance(artifact, dict)
+                        or not isinstance(artifact.get("collected_at"), str)
+                    )
+                ):
+                    shared_adapter.save_extraction_artifact(
+                        artifact_bucket,
+                        document_revision,
+                        dict(evidence[-1], collected_at=normalized_collected_at),
+                    )
+                annual_revision = shared_adapter.annual_financial_revision_row(
+                    financial_data,
+                    company_id=symbol,
+                    source_ref=ann['url'],
+                    source_revision_id=document_revision,
+                    collected_at=normalized_collected_at,
+                )
+
+                # Keep the canonical immutable revision ahead of legacy writes
+                # and the legacy already-current fast path. A failed canonical
+                # write must remain retryable from the same recorded report.
+                if annual_revision is not None:
+                    shared_adapter.persist_annual_financial_revision(
+                        annual_revision, project_id
+                    )
+
+                if (
+                    current_matches_announcement
+                    and financial_data is not None
+                    and annual_revision is not None
+                ):
+                    print(f"  FY {fiscal_year} - already up to date, skipping")
+                    session.close()
+                    continue
                 
                 # New or updated data - upsert
                 # Smart download ensures we only get here if announcement_date is different
@@ -583,7 +654,7 @@ def scrape_financials(url, openrouter_api_key=None):
                 symbol_data.append({
                     'symbol': symbol,
                     'fiscal_year': fiscal_year,
-                    'revenue': financial_data.get('revenue'),
+                    'revenue': shared_adapter.legacy_revenue_value(financial_data),
                     'net_income': financial_data.get('net_income'),
                     'total_debt': financial_data.get('total_debt'),
                     'cash_and_cash_equivalents': financial_data.get('cash_and_cash_equivalents'),
@@ -591,7 +662,7 @@ def scrape_financials(url, openrouter_api_key=None):
                     'announcement_date': ann['announcement_date'],  # String format "YYYY-MM-DD"
                     'document_link': ann['url'],
                     'document_revision': document_revision,
-                    'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 })
                 print(f"    Extracted: revenue={financial_data.get('revenue')}, net_income={financial_data.get('net_income')}")
                 

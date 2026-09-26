@@ -145,6 +145,9 @@ class NormalizedPrice(ImmutableContractModel):
     symbol: OpaqueIdentifier
     session_date: date
     close: NonNegativeMoney | None
+    close_basis: Literal["raw", "adjusted", "unknown"] = Field(
+        default="unknown", exclude=True
+    )
     high: NonNegativeMoney | None = None
     low: NonNegativeMoney | None = None
     volume: NonNegativeShares | None = None

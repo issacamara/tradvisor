@@ -12,10 +12,11 @@ dependencies = ["pydantic==2.10.6"]
 [project.optional-dependencies]
 test = ["pytest==8.3.5"]
 type = ["mypy==1.15.0"]
+firestore = ["google-cloud-firestore>=2.16,<3"]
 
 [tool.setuptools]
 package-dir = { backend = "." }
-packages = ["backend", "backend.analysis", "backend.contracts", "backend.paper"]
+packages = ["backend", "backend.analysis", "backend.contracts", "backend.paper", "backend.publication", "backend.store"]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]

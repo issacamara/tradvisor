@@ -4,14 +4,20 @@ import io
 import json
 import re
 import gc
+import importlib.util
+import sys
 import functions_framework
 import yaml
 import pandas as pd
 from google.auth import default
-from google.cloud import storage
 from google.cloud import bigquery
-from datetime import datetime
-from helper import get_financial_report_revision, upsert_financial_report_and_archive
+from datetime import datetime, timezone
+from helper import (
+    get_financial_report_revision,
+    upsert_financial_report_and_archive,
+)
+
+MAX_PROVIDER_ATTEMPTS_PER_PDF = 4
 
 
 def is_data_incomplete(data):
@@ -19,8 +25,172 @@ def is_data_incomplete(data):
     if data is None:
         return True
     
-    financial_fields = ['revenue', 'net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    financial_fields = ['net_income', 'total_debt', 'cash_and_cash_equivalents', 'total_equity']
+    category = data.get("financial_category")
+    if not (isinstance(category, str) and category in {"bank", "insurer"}):
+        financial_fields.insert(0, "revenue")
     return any(data.get(field) is None for field in financial_fields)
+
+
+def _financial_normalization_module():
+    try:
+        import financial_normalization
+
+        return financial_normalization
+    except ModuleNotFoundError as error:
+        if error.name != "financial_normalization":
+            raise
+    name = "tradvisor_financial_normalization"
+    if name not in sys.modules:
+        path = os.path.join(os.path.dirname(__file__), "financial_normalization.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError("could not load annual financial normalizer")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def legacy_revenue_value(extraction):
+    """Keep bank/insurer activity out of the legacy generic revenue column."""
+    annual_report = extraction.get("annual_report")
+    category = extraction.get("financial_category")
+    if isinstance(annual_report, dict):
+        category = annual_report.get("financial_category", category)
+    if isinstance(category, str) and category in {"bank", "insurer"}:
+        return None
+    return extraction.get("revenue")
+
+
+def annual_financial_revision_row(
+    extraction,
+    *,
+    company_id,
+    source_ref,
+    source_revision_id,
+    collected_at,
+):
+    """Normalize one recorded extraction and shape it to the #14 logical contract."""
+    module = _financial_normalization_module()
+    record = module.normalize_extracted_annual_report(
+        extraction,
+        company_id=company_id,
+        source_ref=source_ref,
+        collected_at=collected_at,
+    )
+    if record.period_start is None or record.period_end is None or record.currency is None:
+        return None
+
+    parser_version = "annual-financial-normalization-v1"
+    revision_id = hashlib.sha256(
+        f"{source_revision_id}:{parser_version}".encode("utf-8")
+    ).hexdigest()
+    amounts = {
+        name: getattr(record, name)
+        for name in (
+            "revenue",
+            "ordinary_owner_earnings",
+            "equity",
+            "opening_equity",
+            "interest_bearing_debt",
+            "unrestricted_cash",
+            "current_assets",
+            "current_liabilities",
+        )
+    }
+    original_scale = {
+        name: {"unit": amount.source_unit, "scale_to_xof": str(amount.scale_to_xof)}
+        for name, amount in amounts.items()
+        if amount is not None
+    }
+
+    def timestamp(value):
+        if value is None:
+            return None
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "company_id": record.company_id,
+        "fiscal_period_start": record.period_start.isoformat(),
+        "fiscal_period_end": record.period_end.isoformat(),
+        "report_scope": record.report_scope,
+        "revision_id": revision_id,
+        "source_id": "richbourse",
+        "source_observation_id": record.source_ref,
+        "source_revision_id": source_revision_id,
+        "currency": record.currency,
+        "accounting_basis": record.accounting_basis,
+        "original_scale": json.dumps(original_scale, sort_keys=True),
+        "revenue": amounts["revenue"].value if amounts["revenue"] else None,
+        "ordinary_owner_earnings": (
+            amounts["ordinary_owner_earnings"].value
+            if amounts["ordinary_owner_earnings"]
+            else None
+        ),
+        "equity": amounts["equity"].value if amounts["equity"] else None,
+        "opening_equity": (
+            amounts["opening_equity"].value if amounts["opening_equity"] else None
+        ),
+        "opening_equity_date": (
+            record.opening_equity_date.isoformat()
+            if record.opening_equity_date is not None
+            else None
+        ),
+        "interest_bearing_debt": (
+            amounts["interest_bearing_debt"].value
+            if amounts["interest_bearing_debt"]
+            else None
+        ),
+        "unrestricted_cash": (
+            amounts["unrestricted_cash"].value
+            if amounts["unrestricted_cash"]
+            else None
+        ),
+        "current_assets": (
+            amounts["current_assets"].value if amounts["current_assets"] else None
+        ),
+        "current_liabilities": (
+            amounts["current_liabilities"].value
+            if amounts["current_liabilities"]
+            else None
+        ),
+        "publication_status": record.publication_status,
+        "reason_codes": list(record.unavailable_reasons),
+        "source_published_at": timestamp(record.published_at),
+        "collected_at": timestamp(record.collected_at),
+        "known_at": timestamp(record.collected_at),
+        "snapshot_uri": record.source_ref,
+        "snapshot_sha256": source_revision_id,
+        "parser_version": parser_version,
+    }
+
+
+def persist_annual_financial_revision(row, project_id, dataset="stocks"):
+    if row is None:
+        return None
+    rows = [row] if isinstance(row, dict) else list(row)
+    if not rows:
+        return None
+    keys = [
+        "company_id",
+        "fiscal_period_start",
+        "fiscal_period_end",
+        "report_scope",
+        "source_id",
+        "source_observation_id",
+        "revision_id",
+    ]
+    from helper import upsert_into_bigquery as upsert_canonical_into_bigquery
+
+    return upsert_canonical_into_bigquery(
+        pd.DataFrame(rows),
+        project_id,
+        dataset,
+        "annual_financial_revisions_v1",
+        keys,
+        update_matched=False,
+    )
 
 
 def extract_text_from_pdf(pdf_content):
@@ -91,7 +261,14 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         return pdf_content
 
 
-def send_openrouter_payload(content, openrouter_api_key, max_retries=2):
+def send_openrouter_payload(
+    content,
+    openrouter_api_key,
+    max_retries=2,
+    evidence_callback=None,
+    attempt_budget=None,
+    max_provider_attempts=MAX_PROVIDER_ATTEMPTS_PER_PDF,
+):
     """Helper to call OpenRouter models with structured fallback strategy."""
     from curl_cffi import requests as curl_requests
     
@@ -101,7 +278,7 @@ For each document, extract the following fields:
 
 fiscal_year: The fiscal year of the report (e.g., 2024). Use the most recent year covered by the statement, not the publication date.
 
-revenue: Total revenue or "chiffre d'affaires" (produits d'exploitation / chiffre d'affaires net). For banks, use "produit net bancaire" (PNB) if chiffre d'affaires is not presented. In local currency (XOF/FCFA), expressed in full units.
+revenue: Generic operating revenue or "chiffre d'affaires" only. Never put bank net banking income ("produit net bancaire" / PNB), insurer premiums, interest income, or any category-specific activity measure in this field. Extract PNB separately as pnb. In local currency (XOF/FCFA), expressed in full units.
 
 net_income: Net income or "résultat net" (résultat net de l'exercice). Use the net result attributable to the company (résultat net part du groupe if consolidated accounts are shown alongside company-only accounts, otherwise résultat net). In local currency, expressed in full units.
 
@@ -138,12 +315,36 @@ Instructions for each document:
 Output format: 
 {
   "fiscal_year": <integer or null>,
+  "financial_category": "bank" | "insurer" | "non_financial" | "unsupported",
   "revenue": <number or null>,
+  "pnb": <number or null>,
   "net_income": <number or null>,
   "total_debt": <number or null>,
   "cash_and_cash_equivalents": <number or null>,
-  "total_equity": <number or null>
+  "total_equity": <number or null>,
+  "annual_report": {
+    "period": {"fiscal_year": <integer or null>, "start": "YYYY-MM-DD" | null, "end": "YYYY-MM-DD" | null, "full_year": <boolean>},
+    "publication": {"published_at": <ISO-8601 timestamp with offset or null>, "evidenced": <boolean>},
+    "currency": "XOF" | null,
+    "report_scope": "standalone" | "consolidated" | "unknown",
+    "accounting_basis": <reported accounting basis or null>,
+    "financial_category": "bank" | "insurer" | "non_financial" | "unsupported",
+    "revenue": <evidenced amount object or null>,
+    "ordinary_owner_earnings": <evidenced amount object or null>,
+    "earnings_basis": "ordinary_owner" | null,
+    "earnings_scope": "standalone" | "consolidated" | null,
+    "equity": <evidenced amount object or null>,
+    "equity_basis": "ordinary_owner" | null,
+    "equity_scope": "standalone" | "consolidated" | null,
+    "opening_equity": <evidenced amount object with date, basis, and scope or null>,
+    "interest_bearing_debt": <evidenced amount object with scope or null>,
+    "unrestricted_cash": <evidenced amount object with scope and restricted boolean or null>,
+    "current_assets": <evidenced amount object with scope or null>,
+    "current_liabilities": <evidenced amount object with scope or null>
+  }
 }
+
+Each evidenced amount object has source-reported numeric "value", "currency", exact "unit" (XOF, thousand XOF, million XOF, or billion XOF), matching numeric "scale_to_xof", and "evidenced": true. Never invent a scope, period boundary, publication timestamp, accounting basis, owner attribution, opening date, or amount. Set unsupported evidence to null; the normalizer preserves partial fields.
 """
 
     model_tiers = [
@@ -163,6 +364,8 @@ Output format:
     for tier_idx, (models, is_free, model_name) in enumerate(model_tiers):
         if tier_idx > max_retries and not is_free:
             break
+        if attempt_budget is not None and attempt_budget[0] >= max_provider_attempts:
+            break
         
         payload = {
             "models": models,
@@ -176,6 +379,8 @@ Output format:
         }
         
         try:
+            if attempt_budget is not None:
+                attempt_budget[0] += 1
             response = curl_requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
@@ -193,6 +398,14 @@ Output format:
                 if json_start >= 0 and json_end > json_start:
                     data = json.loads(text[json_start:json_end])
                     best_result = data
+                    evidence = {
+                        "model": result.get("model", model_name),
+                        "prompt": prompt,
+                        "response": result,
+                        "result": data,
+                    }
+                    if evidence_callback:
+                        evidence_callback(evidence)
                     
                     if not is_data_incomplete(data):
                         print(f"    ✓ Successfully extracted with {model_name}")
@@ -208,8 +421,30 @@ Output format:
     return best_result
 
 
-def extract_financials_from_pdf(pdf_content, openrouter_api_key):
+def extract_financials_from_pdf(
+    pdf_content,
+    openrouter_api_key=None,
+    *,
+    recorded_response=None,
+    evidence_callback=None,
+    max_provider_attempts=MAX_PROVIDER_ATTEMPTS_PER_PDF,
+):
     """Extract financial data handling full-text extraction, smart slicing, and image chunking."""
+    if recorded_response is not None:
+        if recorded_response.get("pdf_sha256") != hashlib.sha256(pdf_content).hexdigest():
+            raise ValueError("recorded extraction does not match the PDF hash")
+        recorded_result = recorded_response.get("result")
+        if not isinstance(recorded_result, dict):
+            raise ValueError("recorded extraction has no parsed result")
+        if not is_data_incomplete(recorded_result):
+            if evidence_callback:
+                evidence_callback(recorded_response)
+            return recorded_result
+    if not openrouter_api_key:
+        raise ValueError("OPENROUTER_API_KEY is required when no recorded response exists")
+    if max_provider_attempts < 1:
+        raise ValueError("max_provider_attempts must be positive")
+    attempt_budget = [0]
     import base64
 
     print("    Extracting text from PDF...")
@@ -219,7 +454,13 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
     if pdf_text and len(pdf_text) > 100:
         print(f"    Using full document text extraction ({len(pdf_text)} chars)")
         text_content = [{"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}]
-        result = send_openrouter_payload(text_content, openrouter_api_key)
+        result = send_openrouter_payload(
+            text_content,
+            openrouter_api_key,
+            evidence_callback=evidence_callback,
+            attempt_budget=attempt_budget,
+            max_provider_attempts=max_provider_attempts,
+        )
         if result and not is_data_incomplete(result):
             return result
 
@@ -236,7 +477,13 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
         }
     }]
     
-    result = send_openrouter_payload(file_content, openrouter_api_key)
+    result = send_openrouter_payload(
+        file_content,
+        openrouter_api_key,
+        evidence_callback=evidence_callback,
+        attempt_budget=attempt_budget,
+        max_provider_attempts=max_provider_attempts,
+    )
     if result and not is_data_incomplete(result):
         return result
 
@@ -249,6 +496,8 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
         if total_pages > 40:
             print(f"    Attempting sequential chunk processing across {total_pages} pages...")
             for start in range(0, total_pages, 40):
+                if attempt_budget[0] >= max_provider_attempts:
+                    break
                 end = min(start + 40, total_pages)
                 print(f"    Scanning page chunk {start + 1} to {end}...")
 
@@ -268,13 +517,58 @@ def extract_financials_from_pdf(pdf_content, openrouter_api_key):
                     }
                 }]
                 
-                chunk_result = send_openrouter_payload(chunk_content, openrouter_api_key)
+                chunk_result = send_openrouter_payload(
+                    chunk_content,
+                    openrouter_api_key,
+                    evidence_callback=evidence_callback,
+                    attempt_budget=attempt_budget,
+                    max_provider_attempts=max_provider_attempts,
+                )
                 if chunk_result and not is_data_incomplete(chunk_result):
                     return chunk_result
     except Exception as e:
         print(f"    Sequential chunking error: {e}")
 
-    return result
+    return result if result and not is_data_incomplete(result) else None
+
+
+def extraction_artifact_name(pdf_sha256):
+    return f"financial_extraction_artifacts/{pdf_sha256}.json"
+
+
+def load_extraction_artifact(bucket, pdf_sha256):
+    """Load accepted provider evidence for an exact PDF revision."""
+    blob = bucket.blob(extraction_artifact_name(pdf_sha256))
+    if not blob.exists():
+        return None
+    artifact = json.loads(blob.download_as_text())
+    if artifact.get("pdf_sha256") != pdf_sha256:
+        raise ValueError("stored extraction artifact has a mismatched PDF hash")
+    if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
+        raise ValueError("stored extraction artifact is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        return None
+    return artifact
+
+
+def save_extraction_artifact(bucket, pdf_sha256, evidence):
+    artifact = dict(evidence, pdf_sha256=pdf_sha256)
+    if not artifact.get("model") or not artifact.get("prompt") or "response" not in artifact:
+        raise ValueError("provider response is missing replay evidence")
+    if not isinstance(artifact.get("result"), dict) or is_data_incomplete(artifact["result"]):
+        raise ValueError("provider response is not a complete accepted extraction")
+    blob = bucket.blob(extraction_artifact_name(pdf_sha256))
+    blob.upload_from_string(json.dumps(artifact, sort_keys=True), content_type="application/json")
+    return artifact
+
+
+def get_extraction_artifact_bucket(project_id):
+    from helper import get_project_number
+    from google.cloud import storage
+
+    credentials, _ = default()
+    client = storage.Client(credentials=credentials, project=project_id)
+    return client.bucket(f"data-{get_project_number(project_id)}")
 
 
 def get_existing_data_in_bigquery(project_id):
@@ -363,6 +657,8 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
 
 def process_financial_pdfs(openrouter_api_key):
     """Process PDF files from GCS and extract financial data to BigQuery."""
+    from google.cloud import storage
+
     credentials, project_id = default()
     
     # Get storage bucket
@@ -424,32 +720,101 @@ def process_financial_pdfs(openrouter_api_key):
             )
             document_link = f"gs://archive-{project_number}/{archive_name}"
 
-            # Reuse committed extraction evidence on archive retries. This avoids
-            # repeating a paid parse and keeps current state aligned with history.
-            financial_data = get_financial_report_revision(
-                symbol,
-                fiscal_year,
-                document_link,
-                document_revision,
-                project_id,
+            artifact = (
+                load_extraction_artifact(bucket, document_revision)
+                if callable(getattr(bucket, "blob", None))
+                else None
             )
-            if financial_data is None:
+            financial_data = None
+            cached_extraction = artifact is not None
+            if artifact is not None:
                 financial_data = extract_financials_from_pdf(
-                    pdf_content, openrouter_api_key
+                    pdf_content, recorded_response=artifact
                 )
+            if financial_data is None:
+                financial_data = get_financial_report_revision(
+                    symbol,
+                    fiscal_year,
+                    document_link,
+                    document_revision,
+                    project_id,
+                )
+                if is_data_incomplete(financial_data):
+                    financial_data = None
+                else:
+                    cached_extraction = True
+            if financial_data is None:
+                evidence = []
+                if callable(getattr(bucket, "blob", None)):
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content,
+                        openrouter_api_key,
+                        evidence_callback=evidence.append,
+                    )
+                else:
+                    financial_data = extract_financials_from_pdf(
+                        pdf_content, openrouter_api_key
+                    )
+                if financial_data and evidence and callable(getattr(bucket, "blob", None)):
+                    save_extraction_artifact(bucket, document_revision, evidence[-1])
 
-            del pdf_content
-
-            if not financial_data:
+            if is_data_incomplete(financial_data):
                 print(f"    ERROR: Failed to extract data from PDF")
                 total_failed += 1
                 continue
+
+            normalized_collected_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            annual_revision = annual_financial_revision_row(
+                financial_data,
+                company_id=symbol,
+                source_ref=document_link,
+                source_revision_id=document_revision,
+                collected_at=normalized_collected_at,
+            )
+
+            if annual_revision is None and cached_extraction:
+                evidence = []
+                financial_data = extract_financials_from_pdf(
+                    pdf_content,
+                    openrouter_api_key,
+                    evidence_callback=(
+                        evidence.append
+                        if callable(getattr(bucket, "blob", None))
+                        else None
+                    ),
+                )
+                if is_data_incomplete(financial_data):
+                    raise RuntimeError(
+                        "cached legacy extraction lacks canonical annual fields "
+                        "and source re-extraction was incomplete"
+                    )
+                if evidence and callable(getattr(bucket, "blob", None)):
+                    save_extraction_artifact(
+                        bucket,
+                        document_revision,
+                        dict(evidence[-1], collected_at=normalized_collected_at),
+                    )
+                annual_revision = annual_financial_revision_row(
+                    financial_data,
+                    company_id=symbol,
+                    source_ref=document_link,
+                    source_revision_id=document_revision,
+                    collected_at=normalized_collected_at,
+                )
+
+            if annual_revision is None:
+                raise RuntimeError(
+                    "extraction lacks canonical annual period or currency; "
+                    "refusing legacy-only persistence"
+                )
+
+            del pdf_content
             
             # Create DataFrame for BigQuery
             df = pd.DataFrame([{
                 'symbol': symbol,
                 'fiscal_year': fiscal_year,
-                'revenue': financial_data.get('revenue'),
+                'revenue': legacy_revenue_value(financial_data),
                 'net_income': financial_data.get('net_income'),
                 'total_debt': financial_data.get('total_debt'),
                 'cash_and_cash_equivalents': financial_data.get('cash_and_cash_equivalents'),
@@ -458,6 +823,8 @@ def process_financial_pdfs(openrouter_api_key):
                 'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }])
             revision_df = df.assign(document_revision=document_revision)
+
+            persist_annual_financial_revision(annual_revision, project_id)
             
             def archive_pdf():
                 if not move_pdf_to_archive(

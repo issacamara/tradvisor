@@ -8,6 +8,9 @@ Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
 ## Scope
 Calculate 20-session median traded value and trade count using a complete actual basis or a complete estimated basis.
 
+### Owner-approved additive clarification for #24
+`NormalizedPrice.close_basis` distinguishes `raw`, `adjusted`, and `unknown` close observations; legacy records without the field resolve to `unknown`. Estimated liquidity requires raw same-session close and compatible unadjusted share volume. Adjusted or unknown close basis makes the estimated result unavailable. The separate current-session gate requires the expected session date, a genuine traded row, raw actual close evidence, actual source provenance, and validated availability evidence. The positive-actual-turnover/confirmed-no-trade contradiction keeps the full liquidity result unavailable without estimated fallback.
+
 Owned files/modules (new paths are proposed boundaries, not claims that code exists):
 - `backend/analysis/liquidity.py`
 - `tests/analysis/liquidity/`
