@@ -24,6 +24,7 @@ resource "google_bigquery_dataset" "stocks" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 

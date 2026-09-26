@@ -6,6 +6,7 @@ resource "google_service_account" "tradvisor_sa" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
@@ -33,6 +34,7 @@ resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = all
   }
 }
 
