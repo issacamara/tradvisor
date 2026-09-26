@@ -159,17 +159,23 @@ class ExecutionPricePublisher:
                 if current_doc is None
                 else self._validate(current_doc, CalendarControl, "calendar control")
             )
+            if (
+                existing is not None
+                and current is not None
+                and current.active_version == session.calendar_version
+            ):
+                return current
+            if existing is None:
+                self._store.put_in_transaction(
+                    transaction,
+                    VersionedDocument(key, EXECUTION_PRICE_SCHEMA_VERSION, 0, record),
+                )
             if current is not None and current.active_version == session.calendar_version:
                 return current
             next_control = CalendarControl(
                 active_version=session.calendar_version,
                 publication_version=1 if current is None else current.publication_version + 1,
             )
-            if existing is None:
-                self._store.put_in_transaction(
-                    transaction,
-                    VersionedDocument(key, EXECUTION_PRICE_SCHEMA_VERSION, 0, record),
-                )
             self._store.put_in_transaction(
                 transaction,
                 VersionedDocument(

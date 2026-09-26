@@ -122,10 +122,12 @@ def _session(
     )
 
 
-def _price(close: str = "1050.250000") -> NormalizedPrice:
+def _price(
+    close: str = "1050.250000", session_date: date = date(2026, 9, 25)
+) -> NormalizedPrice:
     return NormalizedPrice(
         symbol="SNTS",
-        session_date=date(2026, 9, 25),
+        session_date=session_date,
         close=NonNegativeMoney(amount=close, currency="XOF"),
         close_basis="raw",
         high=NonNegativeMoney(amount="1060", currency="XOF"),
@@ -133,7 +135,7 @@ def _price(close: str = "1050.250000") -> NormalizedPrice:
         volume=125,
         trade_status="traded",
         basis="actual",
-        original_source_date=date(2026, 9, 25),
+        original_source_date=session_date,
         price_basis_ref="raw-v1",
         validated_available_at=NOW - timedelta(minutes=30),
         suspension_status="not_suspended",
@@ -242,6 +244,25 @@ def test_price_publication_requires_active_verified_trading_session() -> None:
     publisher.publish_calendar_session(_session(status="holiday"))
     with pytest.raises(CalendarUnavailable):
         publisher.publish(_price(), source_revision_id="source-rev-1")
+
+
+def test_new_session_in_active_calendar_is_persisted_without_control_update() -> None:
+    store, publisher = _ready_publisher()
+    second_session = _session(session_date=date(2026, 9, 26))
+
+    first_calendar_control = publisher.publish_calendar_session(_session())
+    second_calendar_control = publisher.publish_calendar_session(second_session)
+    second_price = publisher.publish(
+        _price(session_date=date(2026, 9, 26)), source_revision_id="source-rev-2"
+    )
+    execution_document = store.get(
+        DocumentKey("execution_prices", second_price.price_revision_id)
+    )
+
+    assert second_calendar_control == first_calendar_control
+    assert second_calendar_control.publication_version == 1
+    assert execution_document is not None
+    assert execution_document.record.model_dump()["session_date"] == date(2026, 9, 26)
 
 
 def test_same_source_revision_id_cannot_be_reused_for_different_evidence() -> None:
