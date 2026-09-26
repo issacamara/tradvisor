@@ -1,0 +1,1 @@
+"""Idempotency receipt contract tests."""
