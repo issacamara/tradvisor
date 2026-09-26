@@ -43,10 +43,9 @@ def read_analysis_page(
         store_cursor = claims.last_key
     page = publisher.read_batch(batch_id, limit=limit, cursor=store_cursor)
     next_cursor = None
-    if page.next_cursor is not None and page.keys:
-        key = page.keys[-1].path
+    if page.next_cursor is not None:
         next_cursor = encode_cursor(
-            CursorClaims("analysis", None, None, None, batch_id, key, now), cursor_secret
+            CursorClaims("analysis", None, None, None, batch_id, page.next_cursor, now), cursor_secret
         )
     return page, next_cursor
 
