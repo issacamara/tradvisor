@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
 from backend.recovery.register import (
+    Action,
     RegisterError,
     StorageAdapter,
     build_intent,
@@ -46,7 +48,7 @@ def apply_decision(
         if not reconciliation.can_reopen or not reconciliation.subject_is_clear(subject):
             raise AdmissionError("admission inventory is incomplete or subject is blocked")
     intent = build_intent(
-        operation_id=operation_id, subject=subject, action=action, generation=None,
+        operation_id=operation_id, subject=subject, action=cast(Action, action), generation=None,
         operator=operator, predecessor=predecessor, sequence=sequence, created_at=created_at,
     )
     stored = persist_intent(adapter, intent)

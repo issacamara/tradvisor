@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 from uuid import uuid4
 
-from backend.contracts.paper import PaperPreferences, PortfolioControl, PortfolioSummary
+from backend.contracts.paper import PREFERENCE_OBJECTIVE, PaperPreferences, PortfolioControl, PortfolioSummary
 from backend.contracts.scalars import FeeRatePct, OpaqueIdentifier, StartingCash
 
 
@@ -47,7 +48,7 @@ def create_setup_plan(
     generation = generation or f"generation-{uuid4().hex}"
     recovery_id = recovery_id or f"recovery-{uuid4().hex}"
     preferences = PaperPreferences(
-        objective=objective,
+        objective=cast(PREFERENCE_OBJECTIVE, objective),
         fee_rate_pct=fee_rate_pct,
         preference_version=0,
         updated_at=now,

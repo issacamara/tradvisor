@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
-from backend.contracts.paper import PaperPreferences
+from backend.contracts.paper import PREFERENCE_OBJECTIVE, PaperPreferences
 from backend.store.repositories import VersionConflict
 
 
@@ -25,7 +26,7 @@ def update_preferences(
     if fee_rate_pct == "0" and not fee_zero_confirmed:
         raise ValueError("zero fee requires explicit confirmation")
     return PaperPreferences(
-        objective=objective,
+        objective=cast(PREFERENCE_OBJECTIVE, objective),
         fee_rate_pct=fee_rate_pct,
         preference_version=expected_version + 1,
         updated_at=now,
