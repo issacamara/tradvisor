@@ -5,7 +5,7 @@ import io
 import json
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -43,6 +43,15 @@ NORMALIZED_COLUMNS = (
 )
 REVISION_TABLE = "share_price_revisions_v1"
 REVISION_KEYS = ("symbol", "session_date", "revision_id")
+REVISION_HASH_EXCLUDED_COLUMNS = frozenset(
+    {
+        "revision_id",
+        "source_observation_id",
+        "collected_at",
+        "known_at",
+        "validated_available_at",
+    }
+)
 
 
 def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
@@ -174,7 +183,7 @@ def prepare_normalized_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str
     candidates["price_basis_ref"] = price_basis_ref.loc[candidates.index]
     candidates["session_date_status"] = "trading"
     candidates["trade_status"] = "traded"
-    candidates["validated_available_at"] = candidates["known_at"]
+    candidates["validated_available_at"] = None
     candidates["actual_xof_turnover"] = candidates.get(
         "actual_xof_turnover", pd.Series(None, index=candidates.index)
     ).map(_parse_optional_decimal)
@@ -245,12 +254,33 @@ def _normalize_collected_at(value: object) -> str:
     return instant.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _commit_timestamp(commit_clock: Callable[[], object] | None = None) -> str:
+    value = commit_clock() if commit_clock is not None else datetime.now(timezone.utc)
+    if isinstance(value, datetime):
+        value = value.isoformat()
+    timestamp = _normalize_collected_at(value)
+    if not timestamp:
+        raise ValueError("commit clock must return a timezone-aware timestamp")
+    return timestamp
+
+
+def _assign_validated_available_at(
+    frame: pd.DataFrame, commit_clock: Callable[[], object] | None = None
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    committed = frame.copy()
+    timestamp = _commit_timestamp(commit_clock)
+    committed["validated_available_at"] = committed["validated_available_at"].fillna(timestamp)
+    return committed
+
+
 def _revision_id(row: pd.Series) -> str:
-    """Bind a revision to every persisted value so matched writes are immutable."""
+    """Bind a revision to stable business and source evidence, not collection time."""
     payload = {
         column: _revision_value(row[column])
         for column in NORMALIZED_COLUMNS
-        if column != "revision_id"
+        if column not in REVISION_HASH_EXCLUDED_COLUMNS
     }
     encoded = json.dumps(
         payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True
@@ -272,7 +302,14 @@ def _revision_value(value: object) -> object:
     return value
 
 
-def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: str) -> dict[str, int]:
+def _archive_after_optional_load(
+    config,
+    file,
+    raw_frame: pd.DataFrame,
+    asset: str,
+    *,
+    commit_clock: Callable[[], object] | None = None,
+) -> dict[str, int]:
     from helper import (
         get_project_number,
         move_csv_file,
@@ -281,6 +318,7 @@ def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: s
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
+    normalized = _assign_validated_available_at(normalized, commit_clock)
 
     if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
         from google.auth import default
@@ -307,7 +345,12 @@ def _archive_after_optional_load(config, file, raw_frame: pd.DataFrame, asset: s
 
 
 def _insert_revisions_into_duckdb(
-    frame: pd.DataFrame, db_path: str, table: str, *, connect=None
+    frame: pd.DataFrame,
+    db_path: str,
+    table: str,
+    *,
+    connect=None,
+    commit_clock: Callable[[], object] | None = None,
 ) -> None:
     """Insert revision rows behind a storage-enforced uniqueness boundary."""
     if connect is None:
@@ -353,9 +396,10 @@ def _insert_revisions_into_duckdb(
     unique_index = _quoted_identifier(f"{table}_symbol_session_revision_uidx")
     columns = ", ".join(_quoted_identifier(column) for column in NORMALIZED_COLUMNS)
     placeholders = ", ".join("?" for _ in NORMALIZED_COLUMNS)
+    committed_frame = _assign_validated_available_at(frame, commit_clock)
     records = [
         tuple(_database_value(row[column]) for column in NORMALIZED_COLUMNS)
-        for _, row in frame.iterrows()
+        for _, row in committed_frame.iterrows()
     ]
 
     with connect(database_path) as connection:

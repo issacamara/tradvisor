@@ -231,6 +231,7 @@ def test_unique_verified_traded_observation_normalizes_exactly() -> None:
     assert normalized.loc[0, "volume"] == 12
     assert normalized.loc[0, "source_observation_id"] == "observation-1"
     assert normalized.loc[0, "collected_at"] == "2026-09-22 08:00:00"
+    assert pd.isna(normalized.loc[0, "validated_available_at"])
     assert len(normalized.loc[0, "revision_id"]) == 64
 
 
@@ -280,6 +281,39 @@ def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> No
     assert normalized["revision_id"].nunique() == 2
     assert set(normalized["source_revision_id"]) == {"source-a", "source-b"}
     assert {str(value) for value in normalized["close"]} == {"1050.75", "1051.00"}
+
+
+def test_revision_identity_ignores_recollection_metadata_but_tracks_business_changes() -> None:
+    rows = pd.DataFrame(
+        [
+            _row(
+                observation_id="observation-first",
+                collected_at="2026-09-22T08:00:00Z",
+                known_at="2026-09-22T08:01:00Z",
+            ),
+            _row(
+                observation_id="observation-retry",
+                collected_at="2026-09-23T08:00:00Z",
+                known_at="2026-09-23T08:01:00Z",
+            ),
+            _row(
+                observation_id="observation-correction",
+                collected_at="2026-09-23T08:00:00Z",
+                known_at="2026-09-23T08:01:00Z",
+                close="1 051,00",
+            ),
+        ]
+    )
+
+    normalized, evidence = loader.prepare_normalized_rows(rows)
+
+    assert evidence["loadable"] == 2
+    assert evidence["exact_retry_duplicates"] == 1
+    assert normalized["revision_id"].nunique() == 2
+    assert set(normalized["source_observation_id"]) == {
+        "observation-first",
+        "observation-correction",
+    }
 
 
 def test_untraceable_revision_is_withheld_without_inventing_evidence() -> None:
@@ -412,6 +446,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
                 table,
                 tuple(primary_keys),
                 update_matched,
+                frame.loc[0, "validated_available_at"],
             )
         )
 
@@ -427,7 +462,11 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
     monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
     evidence = loader._archive_after_optional_load(
-        {}, SimpleNamespace(name="shares.csv"), pd.DataFrame([_row()]), "shares"
+        {},
+        SimpleNamespace(name="shares.csv"),
+        pd.DataFrame([_row()]),
+        "shares",
+        commit_clock=lambda: datetime(2026, 9, 24, 12, tzinfo=timezone.utc),
     )
 
     assert evidence["loadable"] == 1
@@ -440,6 +479,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
             loader.REVISION_TABLE,
             loader.REVISION_KEYS,
             False,
+            "2026-09-24 12:00:00",
         ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
@@ -509,6 +549,54 @@ def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
     assert len(stored) == 2
     assert len({revision_id for revision_id, _ in stored}) == 2
     assert {str(close) for _, close in stored} == {"1050.75", "1060"}
+
+
+def test_write_boundary_preserves_first_commit_timestamp_on_identical_retry(tmp_path) -> None:
+    first, _ = loader.prepare_normalized_rows(
+        pd.DataFrame(
+            [
+                _row(
+                    observation_id="observation-first",
+                    collected_at="2026-09-22T08:00:00Z",
+                    known_at="2026-09-22T08:01:00Z",
+                )
+            ]
+        )
+    )
+    retry, _ = loader.prepare_normalized_rows(
+        pd.DataFrame(
+            [
+                _row(
+                    observation_id="observation-retry",
+                    collected_at="2026-09-23T08:00:00Z",
+                    known_at="2026-09-23T08:01:00Z",
+                )
+            ]
+        )
+    )
+    database = tmp_path / "share-revisions.db"
+
+    loader._insert_revisions_into_duckdb(
+        first,
+        str(database),
+        loader.REVISION_TABLE,
+        connect=sqlite3.connect,
+        commit_clock=lambda: datetime(2026, 9, 24, 12, tzinfo=timezone.utc),
+    )
+    loader._insert_revisions_into_duckdb(
+        retry,
+        str(database),
+        loader.REVISION_TABLE,
+        connect=sqlite3.connect,
+        commit_clock=lambda: datetime(2026, 9, 25, 12, tzinfo=timezone.utc),
+    )
+
+    with sqlite3.connect(database) as connection:
+        stored = connection.execute(
+            f"SELECT revision_id, validated_available_at FROM {loader.REVISION_TABLE}"
+        ).fetchall()
+
+    assert stored == [(first.loc[0, "revision_id"], "2026-09-24 12:00:00")]
 
 
 def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatch) -> None:
