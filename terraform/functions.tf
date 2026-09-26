@@ -40,6 +40,7 @@ locals {
     { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"], writer_key = "stocks.ratings" },
   ]
   workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
+  workflow_by_source   = { for stage in local.workflow_stages : stage.source => stage }
   paused_schedule_keys = toset(["job5", "job6"])
 }
 
@@ -71,9 +72,30 @@ EOF
   }
 }
 
+resource "google_cloud_tasks_queue" "workflow_writers" {
+  for_each = var.manage_legacy_schedules ? local.workflow_writer_keys : {}
+
+  name     = "${each.value}-writer"
+  location = var.region
+  project  = var.project_id
+
+  rate_limits {
+    max_concurrent_dispatches = 1
+    max_dispatches_per_second = 1
+  }
+
+  retry_config {
+    max_attempts = 1
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 
 resource "google_cloud_scheduler_job" "jobs" {
-  depends_on = [google_workflows_workflow.workflows, google_project_service.apis]
+  depends_on = [google_cloud_tasks_queue.workflow_writers, google_workflows_workflow.workflows, google_project_service.apis]
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
   for_each    = var.manage_legacy_schedules ? var.jobs : {}
   name        = "${each.value.name}-job"
@@ -83,8 +105,17 @@ resource "google_cloud_scheduler_job" "jobs" {
   project     = var.project_id
   http_target {
     http_method = "POST"
-    #     uri = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${google_workflows_workflow.share-workflow.name}/executions"
-    uri = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
+    uri         = "https://cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks"
+    headers     = { "Content-Type" = "application/json" }
+    body = base64encode(jsonencode({
+      task = {
+        http_request = {
+          http_method = "POST"
+          uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
+          oauth_token = { service_account_email = google_service_account.tradvisor_sa.email }
+        }
+      }
+    }))
 
     oauth_token {
       service_account_email = google_service_account.tradvisor_sa.email

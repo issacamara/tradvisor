@@ -39,6 +39,10 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     writer_keys = [writer_key for *_, writer_key in workflows]
     assert writer_keys == target_owners
     assert 'workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }' in FUNCTIONS
+    assert 'resource "google_cloud_tasks_queue" "workflow_writers"' in FUNCTIONS
+    assert 'max_concurrent_dispatches = 1' in FUNCTIONS
+    assert 'max_dispatches_per_second = 1' in FUNCTIONS
+    assert 'cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks' in FUNCTIONS
 
 
 def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -> None:
@@ -48,9 +52,10 @@ def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -
         FUNCTIONS,
         re.S,
     )
-    assert "for_each" not in FUNCTIONS.split(
+    workflow_block = FUNCTIONS.split(
         'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_scheduler_job"', 1)[0]
+    )[1].split('resource "google_cloud_tasks_queue"', 1)[0]
+    assert "for_each" not in workflow_block
     assert "try:" not in FUNCTIONS
     assert "except:" not in FUNCTIONS
 

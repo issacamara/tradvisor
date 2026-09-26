@@ -138,6 +138,14 @@ resource "google_project_iam_binding" "workflow_executor" {
   }
 }
 
+resource "google_project_iam_member" "workflow_queue_enqueuer" {
+  count      = var.manage_legacy_schedules ? 1 : 0
+  project    = var.project_id
+  role       = "roles/cloudtasks.enqueuer"
+  member     = "serviceAccount:${google_service_account.tradvisor_sa.email}"
+  depends_on = [google_service_account.tradvisor_sa]
+}
+
 
 resource "google_project_iam_binding" "sa_user" {
   project    = var.project_id
