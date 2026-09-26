@@ -64,7 +64,7 @@ class RegisterAdmissionDenyFence:
                 isinstance(intent, Intent)
                 and intent.subject == uid
                 and intent.action == "deny"
-                and intent.sequence > head_sequence
+                and intent.sequence >= head_sequence
                 for intent in page.items
             ):
                 return True

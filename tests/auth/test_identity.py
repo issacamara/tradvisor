@@ -265,7 +265,7 @@ def test_pending_register_deny_fence_rejects_after_projection_interruption() -> 
         generation="g1",
         operator="operator-1",
         predecessor="grant-1",
-        sequence=2,
+        sequence=1,
         created_at=datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc),
     )
 

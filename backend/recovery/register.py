@@ -193,7 +193,9 @@ def _list_records(bucket: Any, prefix: str, cursor: str | None, limit: int, reco
     selected = names[start : start + limit]
     items = tuple(item for name in selected if (item := _load_record(bucket.blob(name), record_type)) is not None)
     next_cursor = selected[-1] if len(selected) == limit else None
-    return InventoryPage(items=items, next_cursor=next_cursor, complete=next_cursor is None)
+    # A cursor means more complete data is available, not that this page is
+    # incomplete. The caller follows the cursor before trusting the inventory.
+    return InventoryPage(items=items, next_cursor=next_cursor, complete=True)
 
 
 def _is_not_found(error: Exception) -> bool:
