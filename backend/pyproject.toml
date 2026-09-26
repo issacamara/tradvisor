@@ -16,7 +16,7 @@ firestore = ["google-cloud-firestore>=2.16,<3"]
 
 [tool.setuptools]
 package-dir = { backend = "." }
-packages = ["backend", "backend.analysis", "backend.contracts", "backend.paper", "backend.publication", "backend.store"]
+packages = ["backend", "backend.analysis", "backend.commands", "backend.contracts", "backend.paper", "backend.publication", "backend.store"]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
