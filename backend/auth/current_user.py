@@ -16,7 +16,7 @@ class CurrentUserUnavailable(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class CurrentUserState:
-    preferences: PaperPreferences
+    preferences: PaperPreferences | None
     portfolio_setup_state: Literal["setup_required", "configured"]
     recovery_id: str | None
 
@@ -42,7 +42,14 @@ class FirestoreCurrentUserRepository:
         owner_segment = quote(owner_uid, safe="")
         preferences_record = self._read_record(f"users/{owner_segment}")
         if preferences_record is None:
-            raise CurrentUserUnavailable("current preferences are unavailable")
+            control_record = self._read_record(f"paper_portfolios/{owner_segment}")
+            if control_record is not None:
+                raise CurrentUserUnavailable("portfolio exists without preferences")
+            return CurrentUserState(
+                preferences=None,
+                portfolio_setup_state="setup_required",
+                recovery_id=None,
+            )
 
         try:
             preferences = PaperPreferences.model_validate(preferences_record)

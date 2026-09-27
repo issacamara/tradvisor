@@ -213,6 +213,29 @@ def test_me_uses_token_identity_and_returns_the_frozen_response_envelope() -> No
     assert current_users.calls == ["verified-user"]
 
 
+def test_me_returns_setup_required_without_preferences_or_portfolio() -> None:
+    client, _, _, current_users = api_client()
+    current_users.state = CurrentUserState(
+        preferences=None,
+        portfolio_setup_state="setup_required",
+        recovery_id=None,
+    )
+
+    response = client.get("/v1/me", headers={"Authorization": "Bearer fixture-token"})
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "uid": "verified-user",
+        "email": "investor@example.com",
+        "preferences": None,
+        "portfolio_setup_state": "setup_required",
+        "starting_cash_min_xof": 100_000,
+        "starting_cash_default_xof": 1_000_000,
+        "starting_cash_max_xof": 100_000_000,
+    }
+    assert response.json()["meta"]["recovery_id"] is None
+
+
 def test_me_ignores_caller_selected_ownership_and_uses_verified_uid() -> None:
     client, _, _, current_users = api_client()
 

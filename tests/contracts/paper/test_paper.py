@@ -258,7 +258,7 @@ def test_route_error_outcomes_match_api_contract() -> None:
     }
     expected = {
         ("GET", "/v1/me"): common_read,
-        ("PATCH", "/v1/me/preferences"): common_mutation | {(409, "preference_version_mismatch")},
+        ("PATCH", "/v1/me/preferences"): common_mutation | {(409, "preference_version_mismatch"), (409, "setup_required")},
         ("GET", "/v1/paper/portfolio"): common_read | {(503, "analysis_not_ready")},
         ("POST", "/v1/paper/portfolio"): common_mutation | {(409, "already_initialized")},
         ("POST", "/v1/paper/orders"): common_mutation | {

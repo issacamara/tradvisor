@@ -54,6 +54,7 @@ RouteErrorCode: TypeAlias = Literal[
     "admission_unavailable",
     "calendar_unavailable",
     "analysis_not_ready",
+    "setup_required",
 ]
 
 
@@ -187,7 +188,7 @@ def canonical_command_fingerprint(method: HttpMethod, path: str, request: PaperM
 class MeResource(ContractModel):
     uid: OpaqueIdentifier
     email: Annotated[str, StringConstraints(min_length=3, max_length=320, strict=True)]
-    preferences: PaperPreferences
+    preferences: PaperPreferences | None
     portfolio_setup_state: PortfolioSetupState
     starting_cash_min_xof: int
     starting_cash_default_xof: int
@@ -290,7 +291,7 @@ PAGINATION_ERRORS = READ_ERRORS + _errors(
 
 PAPER_ROUTES: tuple[RouteContract, ...] = (
     RouteContract(method="GET", path="/v1/me", success_status=200, mutation=False, error_outcomes=READ_ERRORS),
-    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True, error_outcomes=MUTATION_ERRORS + _errors((409, "preference_version_mismatch"))),
+    RouteContract(method="PATCH", path="/v1/me/preferences", success_status=200, mutation=True, error_outcomes=MUTATION_ERRORS + _errors((409, "preference_version_mismatch"), (409, "setup_required"))),
     RouteContract(method="GET", path="/v1/paper/portfolio", success_status=200, mutation=False, error_outcomes=READ_ERRORS + _errors((503, "analysis_not_ready"))),
     RouteContract(method="POST", path="/v1/paper/portfolio", success_status=201, mutation=True, error_outcomes=MUTATION_ERRORS + _errors((409, "already_initialized"))),
     RouteContract(method="POST", path="/v1/paper/orders", success_status=201, mutation=True, error_outcomes=MUTATION_ERRORS + _errors(

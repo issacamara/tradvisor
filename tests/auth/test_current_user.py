@@ -82,6 +82,7 @@ def test_firestore_current_user_read_is_owner_scoped_and_configured() -> None:
 
     state = asyncio.run(repository.get_current_user("user-1"))
 
+    assert state.preferences is not None
     assert state.preferences.preference_version == 2
     assert state.portfolio_setup_state == "configured"
     assert state.recovery_id == "recovery-1"
@@ -97,10 +98,19 @@ def test_firestore_current_user_reports_setup_required_without_control() -> None
     assert state.recovery_id is None
 
 
+def test_firestore_current_user_reports_setup_required_without_profile_or_portfolio() -> None:
+    repository = FirestoreCurrentUserRepository(Client({}))
+
+    state = asyncio.run(repository.get_current_user("user-1"))
+
+    assert state.preferences is None
+    assert state.portfolio_setup_state == "setup_required"
+    assert state.recovery_id is None
+
+
 @pytest.mark.parametrize(
     "documents",
     [
-        {},
         {"users/user-1": preferences(), "paper_portfolios/user-1": control(version=3)},
         {
             "users/user-1": preferences(),
@@ -109,6 +119,7 @@ def test_firestore_current_user_reports_setup_required_without_control() -> None
                 "owner_uid": "other-user",
             },
         },
+        {"paper_portfolios/user-1": control()},
     ],
 )
 def test_firestore_current_user_fails_closed_on_missing_or_inconsistent_state(

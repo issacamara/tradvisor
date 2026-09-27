@@ -625,7 +625,7 @@ export interface components {
              * @enum {string}
              */
             portfolio_setup_state: "setup_required" | "configured";
-            preferences: components["schemas"]["PaperPreferences"];
+            preferences: components["schemas"]["PaperPreferences"] | null;
             /** Starting Cash Default Xof */
             starting_cash_default_xof: number;
             /** Starting Cash Max Xof */
