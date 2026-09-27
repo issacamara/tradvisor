@@ -1,0 +1,105 @@
+name: Development delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Reviewed action; apply remains environment-gated"
+        required: true
+        type: choice
+        options: [import, plan, apply]
+      api_image:
+        description: "Immutable development API image URI"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  delivery:
+    if: github.ref_name == 'V1'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.action == 'apply' && 'development-apply' || 'development-plan' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Authenticate to Google Cloud with workload identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build static frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Build development API image
+        if: inputs.action == 'apply'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+<<<<<<< HEAD
+        run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
+=======
+        run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
+>>>>>>> 2ec5b66 (fix: suppress cloud build log streaming)
+      - name: Validate delivery inputs
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          test -n "$API_IMAGE" || { echo "api_image is required for delivery" >&2; exit 1; }
+          case "$API_IMAGE" in
+            europe-central2-docker.pkg.dev/dev-tradvisor/*) ;;
+            *) echo "api_image must target dev-tradvisor Artifact Registry in europe-central2" >&2; exit 1;;
+          esac
+      - name: Validate delivery context
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          TF_VAR_project_id: dev-tradvisor
+          TF_STATE_BUCKET: dev-tradvisor-tfstate
+          TF_STATE_PREFIX: state/dev
+          DEPLOY_ACTION: ${{ inputs.action }}
+          API_IMAGE: ${{ inputs.api_image }}
+        run: bash scripts/deployment/guard.sh
+      - name: Initialize Terraform backend
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=dev-tradvisor-tfstate" -backend-config="prefix=state/dev"
+      - name: Plan development changes
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+        run: terraform plan -out=tfplan
+      - name: Import existing financials and ratings functions
+        if: inputs.action == 'import'
+        working-directory: terraform
+        run: |
+          terraform import 'google_cloudfunctions2_function.functions["insert_financials"]' projects/dev-tradvisor/locations/europe-central2/functions/insert_financials_function
+          terraform import 'google_cloudfunctions2_function.functions["insert_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/insert_ratings_function
+          terraform import 'google_cloudfunctions2_function.functions["scrape_financials"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_financials_function
+          terraform import 'google_cloudfunctions2_function.functions["scrape_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_ratings_function
+      - name: Apply reviewed development plan
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        env:
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+        run: terraform apply -auto-approve
+      - name: Deploy static frontend
+        if: inputs.action == 'apply'
+        run: npx -y firebase-tools@latest deploy --only hosting --project dev-tradvisor --non-interactive
