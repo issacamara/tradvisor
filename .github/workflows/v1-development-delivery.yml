@@ -46,11 +46,8 @@ jobs:
         if: inputs.action == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
-<<<<<<< HEAD
         run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
-=======
         run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
->>>>>>> 2ec5b66 (fix: suppress cloud build log streaming)
       - name: Validate delivery inputs
         env:
           API_IMAGE: ${{ inputs.api_image }}
