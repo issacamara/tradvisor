@@ -39,6 +39,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Build static frontend
         working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_TRADVISOR_API_URL: https://tradvisor-v1-api-evatyq2akq-lm.a.run.app
         run: |
           npm ci
           npm run build
