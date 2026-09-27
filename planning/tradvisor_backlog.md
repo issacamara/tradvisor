@@ -533,3 +533,24 @@ None. Dispatch is disabled. First-wave work is technically independent local fou
 
 ## Release Gates
 Verify source/company-sector coverage, point-in-time financial evaluation, contract/concurrency tests, complete-workflow accessibility, pilot load/batch targets, measured whole-stack cost, isolated restore drill, legal/privacy/disclaimer review and named operator/support. Final launch requires product-owner acceptance. New development schedules remain paused until activation is explicitly approved. Missing data stays unavailable; never relax scoring or recovery safeguards to make a gate pass.
+
+## Runtime Data Availability Amendment (2026-09-27)
+
+The deployed static application exposed a runtime data-path gap. The approved Option 1 correction preserves the approved architecture and adds four strictly ordered waves:
+
+| Wave | Backlog ID | Responsibility | Estimate | Dependency |
+|---|---|---|---|---|
+| 18 | [#169](https://github.com/issacamara/tradvisor/issues/169) / `V1-078` | Durable Firebase session lifecycle and first-user `setup_required` state | M | Wave 17 / #79 |
+| 19 | [#170](https://github.com/issacamara/tradvisor/issues/170) / `V1-079` | FastAPI composition and active analytical serving reads | L | #169 |
+| 20 | [#171](https://github.com/issacamara/tradvisor/issues/171) / `V1-080` | Bounded BigQuery-to-Firestore publication with atomic promotion | L | #170 |
+| 21 | [#172](https://github.com/issacamara/tradvisor/issues/172) / `V1-081` | Static workspace live data, chart loading and explicit error states | M | #170, #171 |
+
+```mermaid
+flowchart LR
+  V1078["V1-078 Auth and setup"] --> V1079["V1-079 API serving reads"]
+  V1079 --> V1080["V1-080 BigQuery publication"]
+  V1079 --> V1081["V1-081 Frontend live data"]
+  V1080 --> V1081
+```
+
+No deployment, paid query, data seed, production write, migration, or schedule activation is included. After the code waves merge, development data publication remains a separate approval-gated operational action.

@@ -5,7 +5,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 BACKLOG = json.loads((HERE / "backlog.json").read_text())
-SOL, TERRA = "gpt-5.6-sol", "gpt-5.6-terra"
+TERRA, LUNA = "gpt-6-terra", "gpt-6-luna"
 LEDGER = HERE.parent / ".agent-runs" / "ticket-failures.json"
 
 def ticket(ticket_id):
@@ -34,10 +34,10 @@ def for_ticket(item, failures=None):
     count = len((failures or read_failures()).get(item["id"], []))
     upgraded = count >= 2
     return {"issue": item["id"], "failed_implementation_attempts": count,
-            "implementation_model": SOL if upgraded else TERRA,
+            "implementation_model": TERRA if upgraded else LUNA,
             "implementation_effort": "high" if upgraded else "medium",
-            "review_model": TERRA, "review_effort": "high",
-            "reason": "two or more confirmed implementation failures" if upgraded else "Terra default"}
+            "review_model": LUNA, "review_effort": "high",
+            "reason": "two or more confirmed implementation failures" if upgraded else "Luna default"}
 
 if __name__ == "__main__":
     if sys.argv[1:2] == ["record-failure"]:

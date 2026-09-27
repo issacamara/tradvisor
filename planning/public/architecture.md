@@ -4,11 +4,11 @@
 
 **Status:** FINAL
 
-**Version:** 1.0
+**Version:** 1.1
 
 **Date:** 2026-09-20
 
-**Input reference:** Tradvisor BRVM - V1 Business Requirements Document, version 1.23 (`tradvisor_brd.md`), supplemented by the architecture discussion
+**Input reference:** Tradvisor BRVM - V1 Business Requirements Document, version 1.24 (`tradvisor_brd.md`), supplemented by the approved runtime-data amendment
 
 **Author:** Software Architect Agent
 
@@ -549,6 +549,31 @@ No unresolved architecture choice blocks task decomposition. The nine active ass
 
 ## 13. Notes for the Orchestrator
 
+### Approved Runtime Data Availability Amendment (2026-09-27)
+
+The user approved Option 1 after testing the static application and observing that no runtime data was loaded. The diagnosis is a delivery-path gap, not a change to V1 scope:
+
+- The browser must use Firebase-managed session persistence and refreshed ID tokens. Static route navigation must not discard the identity required by protected API calls.
+- First-time verified users must receive `setup_required` when their preference document or paper generation is absent. No preference, fee, balance, or recommendation may be fabricated as a bootstrap shortcut.
+- The API application factory must be wired to the existing Firestore repositories and analytical read service. Analysis routes must read a complete active batch instead of returning permanent placeholder `503 analysis_not_ready` handlers.
+- A bounded batch worker must read a named BigQuery snapshot, run the existing analysis contracts once, persist immutable analytical evidence, write a complete Firestore serving copy, and advance the active pointer only after completion. BigQuery views and derived tables remain interchangeable physical choices; the contract is the named snapshot and batch identity.
+- The frontend must request the chart route, expose `analysis_not_ready` and transport/auth errors distinctly, and never suppress paper refresh failures.
+
+No new cloud component is introduced. The amendment composes the existing Analytical Data, Analysis Engine, Pipeline Orchestration, Application Store, Investor Application and Firebase Authentication responsibilities. It requires code and contract tests first; a later, separately approved development data publication is required before live rows can appear in `dev-tradvisor`.
+
+### Amendment Traceability
+
+| Requirement | Architecture decision | Delivery wave |
+|---|---|---|
+| FR-DATA-01 | BigQuery snapshot to bounded batch worker to immutable Firestore serving copy | Wave 20 |
+| FR-DATA-02 | Complete-batch gate and atomic active pointer; previous batch remains active on failure | Wave 20 |
+| FR-DATA-03 | API read service and typed unavailable state replace placeholder handlers | Wave 19 |
+| FR-DATA-04 | First-user bootstrap returns `setup_required` without invented preferences or paper state | Wave 18 |
+| NFR-DATA-01 | Firebase session persistence, token refresh, and static navigation-safe auth state | Wave 18 |
+| NFR-DATA-02 | Batch-pinned bounded reads; no BigQuery work in interactive requests | Waves 19-20 |
+
+The four waves are strictly ordered because their contracts are consumed in sequence. Each wave has one isolated branch and one PR; implementation remains subject to current-head CI and documented review.
+
 **Approved Growth coverage policy (2026-09-20):** Implement source verification and acquisition of obtainable inputs across sectors, including banks and insurers. Complete required inputs/history are necessary for full Growth scores; retain supported partial metrics for all other catalog companies without comparing partial totals with complete scores. Before launch, provide company/sector coverage and blocking-input evidence to the product owner for review of Long-Term usefulness. Insufficient coverage requires an explicit scope discussion, not silent score changes or removal of the Long-Term workflow. No numerical minimum has been agreed; this approval is not evidence of adequate production coverage.
 
 **Ready for orchestration, not deployment.** The user approved the architecture and the finalization step. Infrastructure preservation is backlog work, not a prerequisite to creating the backlog. No Terraform edit, plan, apply, state operation, API enablement, paid extraction, data seed or schedule activation is authorized by this document.
@@ -602,7 +627,7 @@ components:
 new_components: [Analysis Engine, Investor Application, Paper Trading, Application Store]
 reused_components: [Ingestion, Analytical Data, Pipeline Orchestration]
 blocking_risks: []
-readiness_scope: Task decomposition only; deployment and release gates remain mandatory
+readiness_scope: Task decomposition plus approved runtime-data recovery amendment; deployment, data publication and release gates remain mandatory
 implementation_and_release_checks:
   - Generate typed schemas and validate exact-money, boundary, concurrency, correction and recovery contracts
   - Verify historical calendar coverage, source date and volume semantics, issuer/category mapping, share basis and required financial inputs
