@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { components } from "@/api/generated/schema";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { PaperWorkspace } from "@/features/paper/views/workspace";
 import { PaperCommands } from "@/features/paper/commands/paper-commands";
+import { apiState, safeApiMessage, type RuntimeDataState } from "@/features/auth/api-error";
+import { createApiTransport } from "@/api/transport";
 
 export default function PaperPage() {
   return <ProtectedWorkspace><PaperCommandController /></ProtectedWorkspace>;
@@ -19,6 +21,7 @@ type MutationResult = "confirmed" | "uncertain" | "error";
 
 function PaperCommandController() {
   const session = useAuthSession();
+  const api = useMemo(() => createApiTransport(session.request), [session.request]);
   const [setupRequired, setSetupRequired] = useState(true);
   const [recoveryId, setRecoveryId] = useState<string>();
   const [generation, setGeneration] = useState<string>();
@@ -27,36 +30,36 @@ function PaperCommandController() {
   const [orders, setOrders] = useState<components["schemas"]["PaperOrder"][]>([]);
   const [executions, setExecutions] = useState<components["schemas"]["PaperExecution"][]>([]);
   const [movements, setMovements] = useState<components["schemas"]["CashMovement"][]>([]);
+  const [refreshState, setRefreshState] = useState<RuntimeDataState>("ready");
+  const [refreshMessage, setRefreshMessage] = useState("");
 
   const refresh = useCallback(async () => {
-    const me = await session.request("/v1/me");
-    if (!me.ok) throw new Error("Current paper state could not be loaded.");
-    const profile = await me.json() as MeResponse;
+    const profile = await api.request({ method: "get", path: "/v1/me" }) as MeResponse;
     setSetupRequired(profile.data.portfolio_setup_state === "setup_required");
     setRecoveryId(profile.meta.recovery_id ?? undefined);
     if (profile.data.portfolio_setup_state === "configured") {
-      const portfolio = await session.request("/v1/paper/portfolio");
-      if (!portfolio.ok) throw new Error("Current paper state could not be loaded.");
-      const state = await portfolio.json() as PortfolioEnvelope;
+      const state = await api.request({ method: "get", path: "/v1/paper/portfolio" }) as PortfolioEnvelope;
       setGeneration(state.data.summary?.generation);
       setStateVersion(state.data.summary?.state_version ?? 0);
       setPortfolio(state.data);
       const [orderResponse, executionResponse, movementResponse] = await Promise.all([
-        session.request("/v1/paper/orders?limit=50"),
-        session.request("/v1/paper/executions?limit=50"),
-        session.request("/v1/paper/cash-movements?limit=50"),
+        api.request({ method: "get", path: "/v1/paper/orders", parameters: { query: { limit: 50 } } }),
+        api.request({ method: "get", path: "/v1/paper/executions", parameters: { query: { limit: 50 } } }),
+        api.request({ method: "get", path: "/v1/paper/cash-movements", parameters: { query: { limit: 50 } } }),
       ]);
-      if (orderResponse.ok) setOrders((await orderResponse.json() as PageEnvelope<components["schemas"]["PaperOrder"]>).data.items);
-      if (executionResponse.ok) setExecutions((await executionResponse.json() as PageEnvelope<components["schemas"]["PaperExecution"]>).data.items);
-      if (movementResponse.ok) setMovements((await movementResponse.json() as PageEnvelope<components["schemas"]["CashMovement"]>).data.items);
+      setOrders((orderResponse as PageEnvelope<components["schemas"]["PaperOrder"]>).data.items);
+      setExecutions((executionResponse as PageEnvelope<components["schemas"]["PaperExecution"]>).data.items);
+      setMovements((movementResponse as PageEnvelope<components["schemas"]["CashMovement"]>).data.items);
     } else {
       setGeneration(undefined);
       setStateVersion(0);
       setPortfolio(undefined); setOrders([]); setExecutions([]); setMovements([]);
     }
-  }, [session]);
+    setRefreshState("ready");
+    setRefreshMessage("");
+  }, [api]);
 
-  useEffect(() => { void refresh().catch(() => undefined); }, [refresh]);
+  useEffect(() => { void refresh().catch((error) => { setRefreshState(apiState(error)); setRefreshMessage(safeApiMessage(error)); }); }, [refresh]);
 
   const mutate = useCallback(async (path: string, body: object, idempotencyKey: string): Promise<MutationResult> => {
     try {
@@ -75,7 +78,7 @@ function PaperCommandController() {
     }
   }, [refresh, session]);
 
-  return <><WorkspaceNav /><PaperCommands
+  return <><WorkspaceNav />{refreshMessage && <p role="alert" data-state={refreshState} className="border-b border-warning px-5 py-3 text-sm">{refreshMessage}</p>}<PaperCommands
     setupRequired={setupRequired}
     recoveryId={recoveryId ?? "setup-required"}
     generation={generation}
