@@ -207,7 +207,7 @@ resource "google_cloud_run_v2_job" "v1_batch" {
 
       containers {
         image   = var.v1_batch_image
-        command = var.v1_batch_command
+        command = length(var.v1_batch_command) > 0 ? var.v1_batch_command : ["python", "-m", "backend.commands.daily_publication"]
 
         env {
           name  = "ANALYTICAL_SNAPSHOT_TABLE"

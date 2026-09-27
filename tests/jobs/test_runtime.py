@@ -47,6 +47,14 @@ def test_bigquery_output_calculator_requires_complete_symbol_output() -> None:
         BigQueryOutputCalculator().calculate(snapshot(), symbol="ORGT")
 
 
+def test_bigquery_output_calculator_rejects_unknown_status() -> None:
+    invalid = snapshot()
+    invalid.payload["calculations"]["NTLC"]["ema"]["status"] = "partial"  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="status must be available or unavailable"):
+        BigQueryOutputCalculator().calculate(invalid, symbol="NTLC")
+
+
 def test_snapshot_reader_rejects_identifier_injection() -> None:
     with pytest.raises(ValueError, match="plain project.dataset.table"):
         BigQuerySnapshotReader(object(), "dev.dataset.table; DROP TABLE x")

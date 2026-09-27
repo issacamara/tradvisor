@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Protocol, cast
 
@@ -91,7 +90,7 @@ class BigQueryOutputCalculator(VersionedCalculator):
         result = tuple(
             CalculationOutput(
                 name=name,
-                status=cast(Literal["available", "unavailable"], str(item["status"])),
+                status=_status(item.get("status")),
                 value=item.get("value"),
                 reason_codes=tuple(str(reason) for reason in item.get("reason_codes", ())),
             )
@@ -125,3 +124,9 @@ def _required(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def _status(value: object) -> Literal["available", "unavailable"]:
+    if value not in {"available", "unavailable"}:
+        raise ValueError("calculation status must be available or unavailable")
+    return cast(Literal["available", "unavailable"], value)
