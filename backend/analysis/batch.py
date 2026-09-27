@@ -82,6 +82,8 @@ class AnalyticalBatch:
     supersedes_batch_id: str | None
     stocks: tuple[StockCalculation, ...]
     manifest: BatchManifest
+    published_at: datetime | None = None
+    strategy_id: str | None = None
 
 
 def _canonical(value: Any) -> Any:
@@ -170,6 +172,8 @@ def build_analytical_batch(
     pending_inputs: tuple[str, ...] = (),
     revision: int = 1,
     supersedes_batch_id: str | None = None,
+    published_at: datetime | None = None,
+    strategy_id: str | None = None,
 ) -> AnalyticalBatch:
     """Validate and canonically assemble outputs without invoking calculators.
 
@@ -265,4 +269,6 @@ def build_analytical_batch(
         supersedes_batch_id=supersedes_batch_id,
         stocks=tuple(canonical_stocks),
         manifest=manifest,
+        published_at=published_at,
+        strategy_id=strategy_id,
     )

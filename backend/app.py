@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import lru_cache
 import os
 from typing import Any, Final, cast
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +33,23 @@ from backend.contracts.scalars import STARTING_CASH_MAX_XOF, STARTING_CASH_MIN_X
 from backend.paper.accept import AcceptanceEvidenceReader, OrderAcceptanceError, accept_order
 from backend.paper.reset import ResetError, reset_portfolio
 from backend.paper.service import handle_preferences, handle_setup
-from backend.store.repositories import GenerationConflict, PaperRepositories, VersionConflict, VersionedDocument
+from backend.openapi import (
+    ChartQuery,
+    LongTermRankingsData,
+    RecommendationQuery,
+    RankingQuery,
+    StockChartData,
+    StockDetailData,
+    StockQuery,
+    SwingRecommendationsData,
+)
+from backend.publication.analysis import AnalyticalPublisher, PublicationError
+from backend.read_api.analysis import InvalidAnalysisSymbol, read_chart, read_long_term, read_stock, read_swing
+from backend.read_api.cursors import CursorError
+from backend.read_api.readers import AnalysisPublisher
+from backend.store.firestore_sdk import FirestoreSdkStore
+from backend.store.repositories import GenerationConflict, Page, PaperRepositories, VersionConflict, VersionedDocument
+from backend.publication.analysis import ServingStock
 from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 
 PRIVATE_NO_STORE: Final = "private, no-store"
@@ -82,12 +98,51 @@ class _LazyAdmissionRepository:
         return await _production_admissions().is_admitted(uid, email)
 
 
+@lru_cache(maxsize=1)
+def _production_analysis_publisher() -> AnalyticalPublisher:
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    cursor_secret = os.environ.get("FIRESTORE_CURSOR_SECRET", "")
+    if not project or not cursor_secret:
+        raise RuntimeError("analysis serving configuration is unavailable")
+    return AnalyticalPublisher(
+        FirestoreSdkStore(project_id=project, cursor_secret=cursor_secret)
+    )
+
+
+class _LazyAnalysisPublisher:
+    def _publisher(self) -> AnalyticalPublisher:
+        try:
+            return _production_analysis_publisher()
+        except Exception as error:
+            raise PublicationError("analysis serving configuration is unavailable") from error
+
+    def active_publication(self) -> Any:
+        return self._publisher().active_publication()
+
+    def read_batch(self, batch_id: str, *, limit: int, cursor: str | None = None) -> Page[ServingStock]:
+        return self._publisher().read_batch(batch_id, limit=limit, cursor=cursor)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def _request_id() -> str:
     return uuid4().hex
+
+
+def _chart_query(
+    from_date: date = Query(alias="from"),
+    to_date: date = Query(alias="to"),
+    batch_id: str | None = Query(default=None),
+    series: tuple[str, ...] | None = Query(default=None),
+) -> ChartQuery:
+    return ChartQuery.model_validate({
+        "from": from_date,
+        "to": to_date,
+        "batch_id": batch_id,
+        "series": series,
+    })
 
 
 def _meta(request: Request, clock: Callable[[], datetime], recovery_id: str | None = None) -> ResponseMeta:
@@ -114,6 +169,8 @@ def create_app(
     acceptance_evidence: AcceptanceEvidenceReader | None = None,
     workload_verifier: WorkloadTokenVerifier | None = None,
     workload_audience: str | None = None,
+    analysis_publisher: AnalyticalPublisher | None = None,
+    analysis_cursor_secret: bytes | str | None = None,
     clock: Callable[[], datetime] = _utc_now,
     request_id_factory: Callable[[], str] = _request_id,
 ) -> FastAPI:
@@ -121,6 +178,10 @@ def create_app(
     selected_users = current_users if current_users is not None else _LazyCurrentUserRepository()
     require_identity = verified_identity_dependency(selected_verifier)
     require_workload = workload_identity_dependency(workload_verifier or GoogleWorkloadTokenVerifier(), audience=workload_audience)
+    selected_analysis: AnalysisPublisher = analysis_publisher or _LazyAnalysisPublisher()
+    selected_analysis_secret: bytes | str = analysis_cursor_secret if analysis_cursor_secret is not None else os.environ.get("FIRESTORE_CURSOR_SECRET", "")
+    if isinstance(selected_analysis_secret, str):
+        selected_analysis_secret = selected_analysis_secret.encode("utf-8")
     application = FastAPI(title="Tradvisor API", version="0.13.0")
     allowed_origins = [origin.strip() for origin in os.environ.get("TRADVISOR_CORS_ORIGINS", "").split(",") if origin.strip()]
     application.add_middleware(
@@ -266,8 +327,46 @@ def create_app(
         data = CreatePaperOrderResource(operation=result.receipt.operation, generation=result.order.generation, state_version=body.expected_state_version + 1, preference_version=control.record.preference_version, replayed=result.receipt.replayed, order=result.order)
         return ResponseEnvelope(data=data, meta=_meta(request, clock, str(control.record.recovery_id)))
 
-    for path in ("/v1/swing/recommendations", "/v1/long-term/rankings", "/v1/stocks/{symbol}", "/v1/stocks/{symbol}/chart"):
-        application.add_api_route(path, lambda request, _identity=Depends(require_identity): (_ for _ in ()).throw(HTTPException(status_code=503, detail="analysis_not_ready")), methods=["GET"], include_in_schema=False)
+    def _analysis_failure(error: Exception) -> HTTPException:
+        if isinstance(error, InvalidAnalysisSymbol):
+            return HTTPException(status_code=422, detail="validation_failed")
+        if isinstance(error, KeyError):
+            return HTTPException(status_code=404, detail="not_found")
+        if isinstance(error, CursorError):
+            return HTTPException(status_code=409, detail="cursor_stale")
+        return HTTPException(status_code=503, detail="analysis_not_ready")
+
+    @application.get("/v1/swing/recommendations", response_model=ResponseEnvelope[SwingRecommendationsData])
+    async def get_swing_recommendations(request: Request, query: RecommendationQuery = Depends(), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[SwingRecommendationsData]:
+        try:
+            data = read_swing(selected_analysis, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
+        except Exception as error:
+            raise _analysis_failure(error) from error
+        return ResponseEnvelope(data=data, meta=_meta(request, clock))
+
+    @application.get("/v1/long-term/rankings", response_model=ResponseEnvelope[LongTermRankingsData])
+    async def get_long_term_rankings(request: Request, query: RankingQuery = Depends(), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[LongTermRankingsData]:
+        try:
+            data = read_long_term(selected_analysis, objective=query.objective, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
+        except Exception as error:
+            raise _analysis_failure(error) from error
+        return ResponseEnvelope(data=data, meta=_meta(request, clock))
+
+    @application.get("/v1/stocks/{symbol}", response_model=ResponseEnvelope[StockDetailData])
+    async def get_stock(request: Request, symbol: str, _query: StockQuery = Depends(), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[StockDetailData]:
+        try:
+            data = read_stock(selected_analysis, symbol=symbol, cursor_secret=selected_analysis_secret, now=clock)
+        except Exception as error:
+            raise _analysis_failure(error) from error
+        return ResponseEnvelope(data=data, meta=_meta(request, clock))
+
+    @application.get("/v1/stocks/{symbol}/chart", response_model=ResponseEnvelope[StockChartData])
+    async def get_stock_chart(request: Request, symbol: str, query: ChartQuery = Depends(_chart_query), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[StockChartData]:
+        try:
+            data = read_chart(selected_analysis, symbol=symbol, from_date=query.from_date, to_date=query.to_date, series=query.series, cursor_secret=selected_analysis_secret, now=clock)
+        except Exception as error:
+            raise _analysis_failure(error) from error
+        return ResponseEnvelope(data=data, meta=_meta(request, clock))
 
     return application
 

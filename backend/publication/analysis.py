@@ -100,6 +100,8 @@ class ActivePublication(BaseModel):
     rule_version: str
     revision: int
     content_sha256: str
+    published_at: str | None = None
+    strategy_id: str | None = None
 
 
 class PublicationReady(BaseModel):
@@ -331,6 +333,8 @@ class AnalyticalPublisher:
             rule_version=batch.rule_version,
             revision=batch.revision,
             content_sha256=batch.manifest.content_sha256,
+            published_at=None if batch.published_at is None else batch.published_at.isoformat(),
+            strategy_id=batch.strategy_id,
         )
 
         def promote(transaction: Transaction) -> ActivePublication:
