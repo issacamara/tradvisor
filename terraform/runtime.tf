@@ -1,9 +1,11 @@
 locals {
   v1_runtime_enabled = var.configure_v1_runtime
+  v1_api_enabled     = var.configure_v1_api || var.configure_v1_runtime
+  v1_runtime_identity_enabled = local.v1_api_enabled || local.v1_runtime_enabled
 }
 
 resource "google_service_account" "v1_runtime" {
-  count        = local.v1_runtime_enabled ? 1 : 0
+  count        = local.v1_runtime_identity_enabled ? 1 : 0
   account_id   = var.v1_runtime_service_account_id
   display_name = "Tradvisor V1 runtime"
   project      = var.project_id
@@ -16,7 +18,7 @@ resource "google_service_account" "v1_runtime" {
 }
 
 resource "google_secret_manager_secret" "v1_cursor" {
-  count     = local.v1_runtime_enabled ? 1 : 0
+  count     = local.v1_runtime_identity_enabled ? 1 : 0
   project   = var.project_id
   secret_id = var.v1_cursor_secret_id
 
@@ -30,14 +32,14 @@ resource "google_secret_manager_secret" "v1_cursor" {
 }
 
 resource "google_project_iam_member" "v1_runtime_firestore" {
-  count   = local.v1_runtime_enabled ? 1 : 0
+  count   = local.v1_runtime_identity_enabled ? 1 : 0
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "v1_runtime_cursor" {
-  count     = local.v1_runtime_enabled ? 1 : 0
+  count     = local.v1_runtime_identity_enabled ? 1 : 0
   project   = var.project_id
   secret_id = google_secret_manager_secret.v1_cursor[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
@@ -45,7 +47,7 @@ resource "google_secret_manager_secret_iam_member" "v1_runtime_cursor" {
 }
 
 resource "google_cloud_run_v2_service" "v1_api" {
-  count               = local.v1_runtime_enabled ? 1 : 0
+  count               = local.v1_api_enabled ? 1 : 0
   name                = var.v1_api_service_name
   location            = var.region
   project             = var.project_id
@@ -116,7 +118,7 @@ resource "google_cloud_run_v2_service" "v1_api" {
 # Firebase Hosting reaches the API over HTTPS; FastAPI remains the
 # authentication and invitation-admission boundary for the development app.
 resource "google_cloud_run_v2_service_iam_member" "v1_api_public_invoker" {
-  count    = local.v1_runtime_enabled ? 1 : 0
+  count    = local.v1_api_enabled ? 1 : 0
   project  = var.project_id
   location = google_cloud_run_v2_service.v1_api[0].location
   name     = google_cloud_run_v2_service.v1_api[0].name

@@ -125,6 +125,12 @@ variable "configure_v1_runtime" {
   default     = false
 }
 
+variable "configure_v1_api" {
+  description = "Opt in to the development-only V1 Cloud Run API without creating the batch job"
+  type        = bool
+  default     = false
+}
+
 variable "configure_v1_monitoring" {
   description = "Opt in to development-only bounded V1 log retention and alert policies"
   type        = bool
