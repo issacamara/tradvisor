@@ -81,7 +81,7 @@ resource "google_cloud_run_v2_service" "v1_api" {
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.v1_cursor[0].secret_id
-            version = "latest"
+            version = "1"
           }
         }
       }
