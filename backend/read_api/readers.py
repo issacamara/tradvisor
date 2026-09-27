@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from backend.contracts.paper import PaperPosition, PortfolioSummary
 from backend.publication.analysis import AnalyticalPublisher, ServingStock
 from backend.read_api.cursors import CursorClaims, CursorError, decode_cursor, encode_cursor
 from backend.store.repositories import MAX_PAGE_SIZE, Page, PaperRepositories
+
+
+class AnalysisPublisher(Protocol):
+    def active_publication(self) -> Any:
+        ...
+
+    def read_batch(self, batch_id: str, *, limit: int, cursor: str | None = None) -> Page[ServingStock]:
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +35,7 @@ class PortfolioRead:
 
 
 def read_analysis_page(
-    publisher: AnalyticalPublisher,
+    publisher: AnalysisPublisher,
     *,
     batch_id: str,
     limit: int,

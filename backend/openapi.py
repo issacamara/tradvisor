@@ -279,6 +279,8 @@ class ChartQuery(StockQuery):
     def validate_range(self) -> "ChartQuery":
         if self.to_date < self.from_date:
             raise ValueError("chart end date cannot precede its start date")
+        if (self.to_date - self.from_date).days + 1 > MAX_CHART_SESSIONS:
+            raise ValueError("chart range exceeds the maximum exchange-session window")
         if self.series is not None and len(self.series) != len(set(self.series)):
             raise ValueError("chart series selection cannot contain duplicates")
         return self
