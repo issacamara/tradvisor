@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/features/auth/session";
 import { AuthScreen } from "@/features/auth/sign-in";
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { sessionStorage.clear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("email and password access", () => {
   it("requires email verification after registration", async () => {

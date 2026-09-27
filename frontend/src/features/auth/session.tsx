@@ -26,6 +26,21 @@ type FirebaseRequestBody = {
 };
 const SessionContext = createContext<SessionActions | null>(null);
 const authEndpoint = "https://identitytoolkit.googleapis.com/v1/accounts";
+const sessionTokenKey = "tradvisor.firebase.id-token";
+
+function readStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try { return window.sessionStorage.getItem(sessionTokenKey); }
+  catch { return null; }
+}
+
+function storeToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) window.sessionStorage.setItem(sessionTokenKey, token);
+    else window.sessionStorage.removeItem(sessionTokenKey);
+  } catch { /* Storage can be unavailable in restricted browser contexts. */ }
+}
 
 function safeAuthMessage(code: string): string {
   if (/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS/.test(code)) return "Email or password is incorrect.";
@@ -66,8 +81,8 @@ async function unverifiedVerificationToken(email: string, password: string): Pro
 }
 
 function useSessionValue(): SessionActions {
-  const [status, setStatus] = useState<SessionStatus>("signed_out");
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(readStoredToken);
+  const [status, setStatus] = useState<SessionStatus>(() => readStoredToken() ? "admitted" : "signed_out");
   const [message, setMessage] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -97,6 +112,7 @@ function useSessionValue(): SessionActions {
       setMessage("");
       try {
         const nextToken = await verifiedSession(email, password);
+        storeToken(nextToken);
         setToken(nextToken);
         setStatus("admitted");
       } catch (error) {
@@ -132,7 +148,7 @@ function useSessionValue(): SessionActions {
         setMessage(error instanceof Error ? error.message : "Verification email could not be sent.");
       }
     },
-    signOut() { setToken(null); setStatus("signed_out"); setMessage(""); },
+    signOut() { storeToken(null); setToken(null); setStatus("signed_out"); setMessage(""); },
   }), [message, refreshAdmission, request, status]);
 }
 
