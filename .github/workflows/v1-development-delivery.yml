@@ -46,7 +46,29 @@ jobs:
         if: inputs.action == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
-        run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
+        run: |
+          BUILD_ID="$(gcloud builds submit backend \
+            --project=dev-tradvisor \
+            --region=europe-central2 \
+            --tag="$API_IMAGE" \
+            --async \
+            --format='value(id)' \
+            --quiet)"
+          test -n "$BUILD_ID"
+          while :; do
+            STATUS="$(gcloud builds describe "$BUILD_ID" \
+              --project=dev-tradvisor \
+              --region=europe-central2 \
+              --format='value(status)')"
+            case "$STATUS" in
+              SUCCESS) break ;;
+              FAILURE|CANCELLED|EXPIRED|TIMEOUT)
+                echo "Cloud Build $BUILD_ID ended with status $STATUS" >&2
+                exit 1
+                ;;
+              *) sleep 10 ;;
+            esac
+          done
         run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --suppress-logs --quiet
       - name: Validate delivery inputs
         env:
