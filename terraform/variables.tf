@@ -28,8 +28,7 @@ variable "functions" {
   description = "List of function names"
   type        = list(string)
   default = ["scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-    "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations",
-  "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+    "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
 }
 
 variable "function_runtimes" {
