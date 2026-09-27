@@ -46,7 +46,7 @@ jobs:
         if: inputs.action == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
-        run: gcloud builds submit . --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --quiet
+        run: gcloud builds submit backend --project=dev-tradvisor --region=europe-central2 --tag="$API_IMAGE" --quiet
       - name: Validate delivery inputs
         env:
           API_IMAGE: ${{ inputs.api_image }}
