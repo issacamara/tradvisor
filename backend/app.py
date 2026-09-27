@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 
 from backend.auth.current_user import CurrentUserRepository, CurrentUserState, CurrentUserUnavailable, FirestoreCurrentUserRepository
-from backend.auth.fastapi import admitted_identity_dependency
+from backend.auth.fastapi import verified_identity_dependency
 from backend.auth.identity import AdmissionRepository, AdmittedIdentity, FirebaseIdTokenVerifier, TokenVerifier, FirestoreAdmissionRepository, RegisterAdmissionDenyFence
 from backend.auth.workload import GoogleWorkloadTokenVerifier, WorkloadTokenVerifier, workload_identity_dependency
 from backend.commands.receipts import ReceiptError
@@ -41,6 +41,7 @@ MAX_BODY_BYTES: Final = 16 * 1024
 STARTING_CASH_DEFAULT_XOF: Final = 1_000_000
 ERROR_MESSAGES: Final = {
     "unauthenticated": "Authentication is required.", "admission_denied": "Current invitation access is required.",
+    "email_unverified": "Verify your email before accessing the workspace.",
     "admission_unavailable": "Admission could not be verified.", "service_unavailable": "The service is temporarily unavailable.",
     "analysis_not_ready": "Analysis is not ready for this request.", "validation_failed": "The request is invalid.",
     "body_too_large": "The request body is too large.", "not_found": "The requested resource was not found.",
@@ -117,9 +118,8 @@ def create_app(
     request_id_factory: Callable[[], str] = _request_id,
 ) -> FastAPI:
     selected_verifier = verifier if verifier is not None else FirebaseIdTokenVerifier()
-    selected_admissions = admissions if admissions is not None else _LazyAdmissionRepository()
     selected_users = current_users if current_users is not None else _LazyCurrentUserRepository()
-    require_identity = admitted_identity_dependency(selected_verifier, selected_admissions)
+    require_identity = verified_identity_dependency(selected_verifier)
     require_workload = workload_identity_dependency(workload_verifier or GoogleWorkloadTokenVerifier(), audience=workload_audience)
     application = FastAPI(title="Tradvisor API", version="0.13.0")
     allowed_origins = [origin.strip() for origin in os.environ.get("TRADVISOR_CORS_ORIGINS", "").split(",") if origin.strip()]

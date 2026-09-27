@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-export type SessionStatus = "signed_out" | "checking" | "unverified" | "not_admitted" | "admitted" | "removed";
+export type SessionStatus = "signed_out" | "checking" | "unverified" | "admitted";
 export type SessionActions = {
   status: SessionStatus;
   message: string;
@@ -69,7 +69,6 @@ function useSessionValue(): SessionActions {
   const [status, setStatus] = useState<SessionStatus>("signed_out");
   const [token, setToken] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const wasAdmitted = useRef(false);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const apiUrl = process.env.NEXT_PUBLIC_TRADVISOR_API_URL;
@@ -81,42 +80,7 @@ function useSessionValue(): SessionActions {
   }, [token]);
 
   const refreshAdmission = useCallback(async () => {
-    if (!token) return;
-    const apiUrl = process.env.NEXT_PUBLIC_TRADVISOR_API_URL;
-    if (!apiUrl) {
-      wasAdmitted.current = false;
-      setStatus("not_admitted");
-      setMessage("Protected workspace access is not configured.");
-      setToken(null);
-      return;
-    }
-    setStatus("checking");
-    try {
-      const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/me`, {
-        headers: { Authorization: `Bearer ${token}` }, cache: "no-store", credentials: "omit",
-      });
-      if (response.ok) {
-        wasAdmitted.current = true;
-        setStatus("admitted");
-        setMessage("");
-        return;
-      }
-      const body = await response.json().catch(() => null) as { error?: { code?: string } } | null;
-      const removed = response.status === 403 && wasAdmitted.current;
-      wasAdmitted.current = false;
-      setStatus(removed ? "removed" : "not_admitted");
-      setMessage(body?.error?.code === "admission_unavailable"
-        ? "Access could not be verified. Protected information has been cleared."
-        : removed
-          ? "Your invitation is no longer active. Protected information has been cleared."
-          : "This verified email does not have an active invitation.");
-      setToken(null);
-    } catch {
-      wasAdmitted.current = false;
-      setStatus("not_admitted");
-      setMessage("Access could not be verified. Protected information has been cleared.");
-      setToken(null);
-    }
+    if (token) setStatus("admitted");
   }, [token]);
 
   useEffect(() => { if (token) void refreshAdmission(); }, [refreshAdmission, token]);
@@ -133,9 +97,8 @@ function useSessionValue(): SessionActions {
       setMessage("");
       try {
         const nextToken = await verifiedSession(email, password);
-        wasAdmitted.current = false;
         setToken(nextToken);
-        setStatus("checking");
+        setStatus("admitted");
       } catch (error) {
         const text = error instanceof Error ? error.message : "Authentication could not be completed.";
         setStatus(text.startsWith("Verify your email") ? "unverified" : "signed_out");
@@ -149,7 +112,7 @@ function useSessionValue(): SessionActions {
         if (!created.idToken) throw new Error("Registration could not be completed.");
         await firebaseRequest("sendOobCode", { requestType: "VERIFY_EMAIL", idToken: created.idToken });
         setStatus("unverified");
-        setMessage("Account created. Verify your email before requesting workspace access.");
+        setMessage("Account created. Verify your email before signing in.");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Registration could not be completed.");
       }
@@ -169,7 +132,7 @@ function useSessionValue(): SessionActions {
         setMessage(error instanceof Error ? error.message : "Verification email could not be sent.");
       }
     },
-    signOut() { wasAdmitted.current = false; setToken(null); setStatus("signed_out"); setMessage(""); },
+    signOut() { setToken(null); setStatus("signed_out"); setMessage(""); },
   }), [message, refreshAdmission, request, status]);
 }
 
@@ -188,8 +151,8 @@ export function ProtectedWorkspace({ children }: { children: ReactNode }) {
   const session = useAuthSession();
   if (session.status === "admitted") return <>{children}</>;
   return <section className="mx-auto max-w-3xl px-5 py-10" aria-live="polite">
-    <h1 className="text-2xl font-bold">{session.status === "checking" ? "Checking invitation" : "Workspace access required"}</h1>
-    <p className="mt-2 text-sm text-muted">{session.message || "Sign in with a verified email and current invitation."}</p>
+    <h1 className="text-2xl font-bold">Sign-in required</h1>
+    <p className="mt-2 text-sm text-muted">{session.message || "Sign in with a verified email."}</p>
     {session.status !== "checking" && <a className="mt-4 inline-block underline underline-offset-4" href="/">Sign in</a>}
   </section>;
 }

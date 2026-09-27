@@ -51,7 +51,7 @@ export function AuthScreen() {
         {mode === "reset" && <button type="button" onClick={() => setMode("sign_in")} className="underline underline-offset-4">Back to sign in</button>}
         {session.status === "unverified" && <button type="button" onClick={() => void session.resendVerification(email, password)} className="underline underline-offset-4">Resend verification email</button>}
       </div>
-      <p className="mt-5 text-xs leading-5 text-muted">Creating an account does not grant an invitation. Protected data remains unavailable until your verified email is admitted.</p>
+      <p className="mt-5 text-xs leading-5 text-muted">A verified email is required to access the workspace.</p>
     </section>
   </main>;
 }
