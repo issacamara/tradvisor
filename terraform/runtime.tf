@@ -207,7 +207,32 @@ resource "google_cloud_run_v2_job" "v1_batch" {
 
       containers {
         image   = var.v1_batch_image
-        command = var.v1_batch_command
+        command = length(var.v1_batch_command) > 0 ? var.v1_batch_command : ["python", "-m", "backend.commands.daily_publication"]
+
+        env {
+          name  = "ANALYTICAL_SNAPSHOT_TABLE"
+          value = var.v1_analytical_snapshot_table
+        }
+
+        env {
+          name  = "ANALYTICAL_SNAPSHOT_NAME"
+          value = var.v1_analytical_snapshot_name
+        }
+
+        env {
+          name  = "GOOGLE_CLOUD_PROJECT"
+          value = var.project_id
+        }
+
+        env {
+          name = "FIRESTORE_CURSOR_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.v1_cursor[0].secret_id
+              version = "1"
+            }
+          }
+        }
       }
     }
   }
@@ -223,6 +248,11 @@ resource "google_cloud_run_v2_job" "v1_batch" {
     precondition {
       condition     = length(trimspace(var.v1_batch_image)) > 0 && length(var.v1_batch_command) > 0
       error_message = "Set an approved development batch image and command before enabling V1 jobs."
+    }
+
+    precondition {
+      condition     = length(trimspace(var.v1_analytical_snapshot_table)) > 0 && length(trimspace(var.v1_analytical_snapshot_name)) > 0
+      error_message = "Set the approved development analytical snapshot table and name before enabling V1 jobs."
     }
   }
 

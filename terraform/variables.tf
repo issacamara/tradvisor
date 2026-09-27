@@ -233,6 +233,23 @@ variable "v1_batch_command" {
   default     = []
 }
 
+variable "v1_analytical_snapshot_table" {
+  description = "Development-only BigQuery table containing published analytical snapshot envelopes"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.v1_analytical_snapshot_table == "" || can(regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", var.v1_analytical_snapshot_table))
+    error_message = "The analytical snapshot table must be project.dataset.table."
+  }
+}
+
+variable "v1_analytical_snapshot_name" {
+  description = "Development-only named analytical snapshot selected by the manual Cloud Run Job"
+  type        = string
+  default     = ""
+}
+
 variable "v1_batch_timeout_seconds" {
   description = "Bounded timeout for each V1 batch task"
   type        = number
