@@ -22,7 +22,12 @@ class RuntimeConfigurationTests(unittest.TestCase):
             self.variables,
             r'variable "configure_v1_runtime"\s*\{[^}]*default\s*=\s*false',
         )
-        self.assertIn("count        = local.v1_runtime_enabled ? 1 : 0", self.runtime)
+        self.assertRegex(
+            self.variables,
+            r'variable "configure_v1_api"\s*\{[^}]*default\s*=\s*false',
+        )
+        self.assertIn("count               = local.v1_api_enabled ? 1 : 0", self.runtime)
+        self.assertIn("count               = local.v1_runtime_enabled ? 1 : 0", self.runtime)
         self.assertIn('condition     = var.project_id == "dev-tradvisor"', self.runtime)
         self.assertNotIn("prod-tradvisor", self.runtime)
 
@@ -43,7 +48,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
         )
         self.assertIn('role     = "roles/run.invoker"', self.runtime)
         self.assertIn('member   = "allUsers"', self.runtime)
-        self.assertIn("count    = local.v1_runtime_enabled ? 1 : 0", self.runtime)
+        self.assertIn("count    = local.v1_api_enabled ? 1 : 0", self.runtime)
 
     def test_batch_job_has_finite_timeout_and_retries(self) -> None:
         self.assertIn('resource "google_cloud_run_v2_job" "v1_batch"', self.runtime)
