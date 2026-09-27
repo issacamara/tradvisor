@@ -77,6 +77,11 @@ resource "google_cloud_run_v2_service" "v1_api" {
       }
 
       env {
+        name  = "TRADVISOR_CORS_ORIGINS"
+        value = var.project_id == "dev-tradvisor" ? "https://dev-tradvisor.web.app" : ""
+      }
+
+      env {
         name = "FIRESTORE_CURSOR_SECRET"
         value_source {
           secret_key_ref {
