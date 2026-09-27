@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import lru_cache
+import os
 from typing import Any, Final, cast
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 
@@ -120,6 +122,14 @@ def create_app(
     require_identity = admitted_identity_dependency(selected_verifier, selected_admissions)
     require_workload = workload_identity_dependency(workload_verifier or GoogleWorkloadTokenVerifier(), audience=workload_audience)
     application = FastAPI(title="Tradvisor API", version="0.13.0")
+    allowed_origins = [origin.strip() for origin in os.environ.get("TRADVISOR_CORS_ORIGINS", "").split(",") if origin.strip()]
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "PATCH", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
     from backend.openapi import build_openapi
     application.openapi = build_openapi  # type: ignore[method-assign]
 
