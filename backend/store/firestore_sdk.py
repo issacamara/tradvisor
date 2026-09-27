@@ -184,6 +184,10 @@ class FirestoreSdkStore(TransactionalStore):
             self._client.document(document.key.path), self._encode_document(document)
         )
 
+    def create_immutable(self, document: VersionedDocument[BaseModel]) -> None:
+        """Create an immutable document without contending on a read transaction."""
+        self._client.document(document.key.path).create(self._encode_document(document))
+
     def put_with_server_timestamps_in_transaction(
         self,
         transaction: Transaction,

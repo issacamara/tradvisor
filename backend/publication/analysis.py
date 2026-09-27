@@ -126,6 +126,15 @@ class AnalyticalPublisher:
         self._write_manifest(batch.batch_id, manifest)
         for stock in batch.stocks:
             result = self._serving_stock(batch, stock)
+            result_document = VersionedDocument(
+                self._results.result_key(batch.batch_id, result.symbol),
+                PUBLICATION_SCHEMA_VERSION,
+                0,
+                result,
+            )
+
+            if self._create_immutable(result_document):
+                continue
 
             def write_result(transaction: Transaction) -> None:
                 self._results.write_result(
@@ -214,6 +223,10 @@ class AnalyticalPublisher:
 
     def _write_manifest(self, batch_id: str, manifest: ServingManifest) -> None:
         key = self._manifest_key(batch_id)
+        document = VersionedDocument(key, PUBLICATION_SCHEMA_VERSION, 0, manifest)
+
+        if self._create_immutable(document):
+            return
 
         def write(transaction: Transaction) -> None:
             current = self._store.get_in_transaction(transaction, key)
@@ -302,6 +315,10 @@ class AnalyticalPublisher:
             content_sha256=manifest.content_sha256,
             result_count=manifest.result_count,
         )
+        if self._create_immutable(
+            VersionedDocument(key, PUBLICATION_SCHEMA_VERSION, 0, marker)
+        ):
+            return
 
         def write(transaction: Transaction) -> None:
             current = self._store.get_in_transaction(transaction, key)
@@ -371,6 +388,25 @@ class AnalyticalPublisher:
         return run_transaction(
             self._store, promote, max_attempts=PUBLICATION_TRANSACTION_ATTEMPTS
         )
+
+    def _create_immutable(self, document: VersionedDocument[Any]) -> bool:
+        creator = getattr(self._store, "create_immutable", None)
+        if creator is None:
+            return False
+        try:
+            creator(document)
+        except Exception as error:
+            if error.__class__.__name__ != "AlreadyExists":
+                raise
+            current = self._store.get(document.key)
+            if (
+                current is None
+                or current.schema_version != document.schema_version
+                or current.record.model_dump(mode="json")
+                != document.record.model_dump(mode="json")
+            ):
+                raise PublicationError("immutable document conflicts with its retry") from error
+        return True
 
     @staticmethod
     def _manifest_key(batch_id: str) -> DocumentKey:
