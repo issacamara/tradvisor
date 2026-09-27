@@ -2343,6 +2343,7 @@
     {
       "key": "runtime_auth_setup",
       "id": "V1-078",
+      "github_issue": 169,
       "title": "Make static authentication and first-user runtime state durable",
       "domain": "backend",
       "refs": [
@@ -2373,6 +2374,7 @@
     {
       "key": "runtime_api_reads",
       "id": "V1-079",
+      "github_issue": 170,
       "title": "Wire the API to the active analytical serving batch",
       "domain": "backend",
       "refs": [
@@ -2408,6 +2410,7 @@
     {
       "key": "bigquery_publication",
       "id": "V1-080",
+      "github_issue": 171,
       "title": "Publish daily analytical results from BigQuery to Firestore atomically",
       "domain": "analysis",
       "refs": [
@@ -2441,6 +2444,7 @@
     {
       "key": "frontend_runtime",
       "id": "V1-081",
+      "github_issue": 172,
       "title": "Connect static workspaces to live analysis data and error states",
       "domain": "frontend",
       "refs": [

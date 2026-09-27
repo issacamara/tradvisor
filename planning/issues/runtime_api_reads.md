@@ -27,5 +27,6 @@ Consume immutable analytical batches and active publication state. Expose existi
 
 **Estimate:** L
 **Wave:** 19
-**Blocked by:** `V1-078` and the merged repository/serving contracts
+**GitHub issue:** #170
+**Blocked by:** #169 and the merged repository/serving contracts
 **Blocks:** `V1-080`, `V1-081`

@@ -27,5 +27,6 @@ Consume Firebase Authentication and the existing protected API contract. Expose 
 
 **Estimate:** M
 **Wave:** 18
+**GitHub issue:** #169
 **Blocked by:** #79 / `V1-074`
 **Blocks:** `V1-079`

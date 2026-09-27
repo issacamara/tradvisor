@@ -27,5 +27,6 @@ Consume protected API envelopes and the generated TypeScript client. Expose live
 
 **Estimate:** M
 **Wave:** 21
-**Blocked by:** `V1-079`, `V1-080`
+**GitHub issue:** #172
+**Blocked by:** #170, #171
 **Blocks:** release acceptance update

@@ -28,5 +28,6 @@ Consume normalized BigQuery snapshots and rule configuration. Expose a batch pub
 
 **Estimate:** L
 **Wave:** 20
-**Blocked by:** `V1-079`
+**GitHub issue:** #171
+**Blocked by:** #170
 **Blocks:** `V1-081`

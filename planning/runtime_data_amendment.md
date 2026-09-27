@@ -31,6 +31,7 @@ Option 1 resolves these gaps with the least change to the approved architecture.
 ### Wave 18: auth and runtime state foundation
 
 **Backlog ID:** `V1-078`
+**GitHub issue:** [#169](https://github.com/issacamara/tradvisor/issues/169)
 **Title:** Make static authentication and first-user runtime state durable
 **Estimate:** M
 **Files:** `frontend/src/features/auth/`, `backend/app.py`, `backend/contracts/routes.py`, focused auth/runtime tests.
@@ -49,13 +50,14 @@ Implement Firebase-managed browser session persistence, `onIdTokenChanged` state
 ### Wave 19: API composition and analytical reads
 
 **Backlog ID:** `V1-079`
+**GitHub issue:** [#170](https://github.com/issacamara/tradvisor/issues/170)
 **Title:** Wire the API to the active analytical serving batch
 **Estimate:** L
 **Files:** `backend/main.py`, `backend/app.py`, `backend/read_api/`, `backend/publication/`, `backend/openapi.py`, backend tests.
 
 Compose the existing repositories, publication state, and analytical read service in the FastAPI factory. Replace placeholder analysis routes with bounded batch-pinned reads for Swing, Long-Term, stock detail, and chart responses. Keep `analysis_not_ready` as a typed no-publication outcome and preserve the previous active batch on read failures.
 
-**Blocked by:** `V1-078` and the merged serving/repository contracts already delivered by the prior backlog.
+**Blocked by:** [#169](https://github.com/issacamara/tradvisor/issues/169) and the merged serving/repository contracts already delivered by the prior backlog.
 **Blocks:** `V1-080` and `V1-081`.
 **Acceptance:**
 
@@ -67,13 +69,14 @@ Compose the existing repositories, publication state, and analytical read servic
 ### Wave 20: bounded BigQuery publication
 
 **Backlog ID:** `V1-080`
+**GitHub issue:** [#171](https://github.com/issacamara/tradvisor/issues/171)
 **Title:** Publish daily analytical results from BigQuery to Firestore atomically
 **Estimate:** L
 **Files:** `backend/jobs/`, `backend/publication/`, `backend/read_api/`, BigQuery adapters and fixtures, focused worker tests.
 
 Implement the concrete daily worker behind the existing job protocol. Read the named BigQuery input snapshot, invoke the existing versioned analysis calculators once for the shared stock universe, persist immutable analytical evidence and a complete Firestore serving copy, then promote the active pointer. Keep partial batches invisible and make retries idempotent by batch/input/rule identity.
 
-**Blocked by:** `V1-079`.
+**Blocked by:** [#170](https://github.com/issacamara/tradvisor/issues/170).
 **Blocks:** `V1-081`.
 **Acceptance:**
 
@@ -86,13 +89,14 @@ Implement the concrete daily worker behind the existing job protocol. Read the n
 ### Wave 21: frontend runtime integration
 
 **Backlog ID:** `V1-081`
+**GitHub issue:** [#172](https://github.com/issacamara/tradvisor/issues/172)
 **Title:** Connect static workspaces to live analysis data and error states
 **Estimate:** M
 **Files:** `frontend/src/app/`, `frontend/src/api/`, frontend tests and browser validation fixtures.
 
 Use the generated API client for Swing recommendations, chart data, Long-Term rankings, and paper reads. Render `setup_required`, `analysis_not_ready`, authentication failures, and transport failures as distinct states. Stop suppressing paper refresh failures and keep the existing equal-workflow navigation and accessibility contracts.
 
-**Blocked by:** `V1-079` and `V1-080`.
+**Blocked by:** [#170](https://github.com/issacamara/tradvisor/issues/170), [#171](https://github.com/issacamara/tradvisor/issues/171).
 **Blocks:** the next release acceptance update.
 **Acceptance:**
 

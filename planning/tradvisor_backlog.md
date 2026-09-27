@@ -540,10 +540,10 @@ The deployed static application exposed a runtime data-path gap. The approved Op
 
 | Wave | Backlog ID | Responsibility | Estimate | Dependency |
 |---|---|---|---|---|
-| 18 | `V1-078` | Durable Firebase session lifecycle and first-user `setup_required` state | M | Wave 17 / #79 |
-| 19 | `V1-079` | FastAPI composition and active analytical serving reads | L | `V1-078` |
-| 20 | `V1-080` | Bounded BigQuery-to-Firestore publication with atomic promotion | L | `V1-079` |
-| 21 | `V1-081` | Static workspace live data, chart loading and explicit error states | M | `V1-079`, `V1-080` |
+| 18 | [#169](https://github.com/issacamara/tradvisor/issues/169) / `V1-078` | Durable Firebase session lifecycle and first-user `setup_required` state | M | Wave 17 / #79 |
+| 19 | [#170](https://github.com/issacamara/tradvisor/issues/170) / `V1-079` | FastAPI composition and active analytical serving reads | L | #169 |
+| 20 | [#171](https://github.com/issacamara/tradvisor/issues/171) / `V1-080` | Bounded BigQuery-to-Firestore publication with atomic promotion | L | #170 |
+| 21 | [#172](https://github.com/issacamara/tradvisor/issues/172) / `V1-081` | Static workspace live data, chart loading and explicit error states | M | #170, #171 |
 
 ```mermaid
 flowchart LR
