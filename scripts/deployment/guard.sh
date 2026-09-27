@@ -10,6 +10,6 @@ set -euo pipefail
 [[ "${TF_VAR_project_id}" == "dev-tradvisor" ]] || { echo "deployment is allowed only for dev-tradvisor" >&2; exit 1; }
 [[ "${TF_STATE_BUCKET}" == "dev-tradvisor-tfstate" ]] || { echo "unexpected Terraform state bucket" >&2; exit 1; }
 [[ "${TF_STATE_PREFIX}" == state/dev ]] || { echo "unexpected Terraform state prefix" >&2; exit 1; }
-[[ "${DEPLOY_ACTION:-plan}" == "plan" || "${DEPLOY_ACTION:-plan}" == "apply" ]] || { echo "invalid deployment action" >&2; exit 1; }
+[[ "${DEPLOY_ACTION:-plan}" == "plan" || "${DEPLOY_ACTION:-plan}" == "import" || "${DEPLOY_ACTION:-plan}" == "apply" ]] || { echo "invalid deployment action" >&2; exit 1; }
 
 echo "validated development delivery context for ${DEPLOY_ACTION:-plan}"
