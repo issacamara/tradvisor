@@ -108,6 +108,10 @@ jobs:
           terraform import 'google_cloudfunctions2_function.functions["insert_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/insert_ratings_function
           terraform import 'google_cloudfunctions2_function.functions["scrape_financials"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_financials_function
           terraform import 'google_cloudfunctions2_function.functions["scrape_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_ratings_function
+      - name: Clear failed Cloud Run taint
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        run: terraform untaint 'google_cloud_run_v2_service.v1_api[0]' || true
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
         working-directory: terraform
