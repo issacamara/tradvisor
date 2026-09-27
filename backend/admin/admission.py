@@ -137,48 +137,48 @@ class FirestoreAdmissionProjection:
         expected_decision_sequence: int | None,
         record: AdmissionRecord,
     ) -> AdmissionRecord | None:
+        from google.cloud import firestore
+
         transaction = self._client.transaction()
         reference = self._client.collection("application_admissions").document(subject)
         fence_reference = self._client.collection("application_admission_denials").document(subject)
-        snapshot = transaction.get(reference)
-        if not hasattr(snapshot, "exists"):
-            snapshot = next(snapshot, None)
-        if snapshot is None:
-            return None
-        current = None
-        if snapshot.exists:
-            fields = snapshot.to_dict() or {}
-            try:
-                current = int(fields["decision_sequence"])
-            except (KeyError, TypeError, ValueError):
-                return None
-        fence_snapshot = transaction.get(fence_reference)
-        if not hasattr(fence_snapshot, "exists"):
-            fence_snapshot = next(fence_snapshot, None)
-        fence_sequence = 0
-        if fence_snapshot is not None and fence_snapshot.exists:
-            fence_fields = fence_snapshot.to_dict() or {}
-            try:
-                fence_sequence = int(fence_fields["decision_sequence"])
-            except (KeyError, TypeError, ValueError):
-                return None
-        if current != expected_decision_sequence:
-            return None
-        transaction.set(reference, {
-            "active": record.active,
-            "email": record.email,
-            "decision_operation_id": record.decision_operation_id,
-            "decision_sequence": record.decision_sequence,
-            "updated_at": record.updated_at,
-        })
-        if not record.active and record.decision_sequence > fence_sequence:
-            transaction.set(fence_reference, {
+
+        @firestore.transactional
+        def publish(tx: Any) -> bool:
+            snapshots = list(tx.get_all([reference, fence_reference]))
+            snapshot, fence_snapshot = snapshots
+            current = None
+            if snapshot.exists:
+                fields = snapshot.to_dict() or {}
+                try:
+                    current = int(fields["decision_sequence"])
+                except (KeyError, TypeError, ValueError):
+                    return False
+            fence_sequence = 0
+            if fence_snapshot.exists:
+                fence_fields = fence_snapshot.to_dict() or {}
+                try:
+                    fence_sequence = int(fence_fields["decision_sequence"])
+                except (KeyError, TypeError, ValueError):
+                    return False
+            if current != expected_decision_sequence:
+                return False
+            tx.set(reference, {
+                "active": record.active,
+                "email": record.email,
                 "decision_operation_id": record.decision_operation_id,
                 "decision_sequence": record.decision_sequence,
                 "updated_at": record.updated_at,
             })
-        transaction.commit()
-        return record
+            if not record.active and record.decision_sequence > fence_sequence:
+                tx.set(fence_reference, {
+                    "decision_operation_id": record.decision_operation_id,
+                    "decision_sequence": record.decision_sequence,
+                    "updated_at": record.updated_at,
+                })
+            return True
+
+        return record if publish(transaction) else None
 
 
 class FirestoreAdmissionStore:
