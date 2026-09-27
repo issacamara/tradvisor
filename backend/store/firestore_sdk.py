@@ -101,13 +101,16 @@ class FirestoreSdkStore(TransactionalStore):
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         firestore = importlib.import_module("google.cloud.firestore")
+        field_path_module = importlib.import_module("google.cloud.firestore_v1.field_path")
 
         query = self._client.collection(collection)
         for field, operator, value in filters:
             query = query.where(field_path=field, op_string=operator, value=value)
         for field, direction in order_by:
             field_path: Any = (
-                firestore.FieldPath.document_id() if field == "__name__" else field
+                getattr(firestore, "FieldPath", field_path_module.FieldPath).document_id()
+                if field == "__name__"
+                else field
             )
             query = query.order_by(
                 field_path,
