@@ -16,7 +16,13 @@ export type SessionActions = {
   request(path: string, init?: RequestInit): Promise<Response>;
 };
 
-type FirebaseResponse = { idToken?: string; error?: { message?: string }; users?: Array<{ emailVerified?: boolean }> };
+type FirebaseResponse = {
+  idToken?: string;
+  refreshToken?: string;
+  expiresIn?: string;
+  error?: { message?: string };
+  users?: Array<{ emailVerified?: boolean }>;
+};
 type FirebaseRequestBody = {
   email?: string;
   password?: string;
@@ -26,20 +32,48 @@ type FirebaseRequestBody = {
 };
 const SessionContext = createContext<SessionActions | null>(null);
 const authEndpoint = "https://identitytoolkit.googleapis.com/v1/accounts";
-const sessionTokenKey = "tradvisor.firebase.id-token";
+const refreshEndpoint = "https://securetoken.googleapis.com/v1/token";
+const sessionKey = "tradvisor.firebase.session";
+const legacySessionTokenKey = "tradvisor.firebase.id-token";
 
-function readStoredToken(): string | null {
+type StoredSession = { idToken: string; refreshToken: string | null; expiresAt: number };
+
+function readStoredSession(): StoredSession | null {
   if (typeof window === "undefined") return null;
-  try { return window.sessionStorage.getItem(sessionTokenKey); }
-  catch { return null; }
+  try {
+    const stored = window.localStorage.getItem(sessionKey);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<StoredSession>;
+      if (typeof parsed.idToken === "string") {
+        return {
+          idToken: parsed.idToken,
+          refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : null,
+          expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : 0,
+        };
+      }
+    }
+    const legacy = window.sessionStorage.getItem(legacySessionTokenKey);
+    return legacy ? { idToken: legacy, refreshToken: null, expiresAt: 0 } : null;
+  } catch { return null; }
 }
 
-function storeToken(token: string | null): void {
+function storeSession(session: StoredSession | null): void {
   if (typeof window === "undefined") return;
   try {
-    if (token) window.sessionStorage.setItem(sessionTokenKey, token);
-    else window.sessionStorage.removeItem(sessionTokenKey);
+    if (session) window.localStorage.setItem(sessionKey, JSON.stringify(session));
+    else window.localStorage.removeItem(sessionKey);
+    window.sessionStorage.removeItem(legacySessionTokenKey);
   } catch { /* Storage can be unavailable in restricted browser contexts. */ }
+}
+
+function sessionFromFirebase(result: FirebaseResponse): StoredSession {
+  if (!result.idToken) throw new Error("Authentication could not be completed. Try again.");
+  const expiresIn = Number(result.expiresIn ?? "3600");
+  return {
+    idToken: result.idToken,
+    refreshToken: result.refreshToken ?? null,
+    expiresAt: Date.now() + (Number.isFinite(expiresIn) ? expiresIn * 1000 : 3600000),
+  };
 }
 
 function safeAuthMessage(code: string): string {
@@ -62,58 +96,110 @@ async function firebaseRequest(action: string, body: FirebaseRequestBody): Promi
   return payload;
 }
 
-async function verifiedSession(email: string, password: string): Promise<string> {
+async function verifiedSession(email: string, password: string): Promise<StoredSession> {
   const result = await firebaseRequest("signInWithPassword", { email, password, returnSecureToken: true });
-  if (!result.idToken) throw new Error("Authentication could not be completed. Try again.");
-  const lookup = await firebaseRequest("lookup", { idToken: result.idToken });
+  const session = sessionFromFirebase(result);
+  const lookup = await firebaseRequest("lookup", { idToken: session.idToken });
   if (lookup.users?.[0]?.emailVerified !== true) throw new Error("Verify your email before signing in.");
-  return result.idToken;
+  return session;
 }
 
 async function unverifiedVerificationToken(email: string, password: string): Promise<string> {
   const result = await firebaseRequest("signInWithPassword", { email, password, returnSecureToken: true });
-  if (!result.idToken) throw new Error("Authentication could not be completed. Try again.");
-  const lookup = await firebaseRequest("lookup", { idToken: result.idToken });
+  const session = sessionFromFirebase(result);
+  const lookup = await firebaseRequest("lookup", { idToken: session.idToken });
   if (lookup.users?.[0]?.emailVerified !== false) {
     throw new Error("This account is already verified or could not be verified.");
   }
-  return result.idToken;
+  return session.idToken;
+}
+
+async function refreshStoredSession(session: StoredSession): Promise<StoredSession> {
+  if (!session.refreshToken) return session;
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  if (!apiKey) throw new Error("Sign-in is not configured for this workspace.");
+  const response = await fetch(`${refreshEndpoint}?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST", cache: "no-store", credentials: "omit",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: session.refreshToken }).toString(),
+  });
+  const payload = await response.json() as { id_token?: string; refresh_token?: string; expires_in?: string; error?: { message?: string } };
+  if (!response.ok || !payload.id_token) throw new Error(safeAuthMessage(payload.error?.message ?? ""));
+  return sessionFromFirebase({ idToken: payload.id_token, refreshToken: payload.refresh_token ?? session.refreshToken, expiresIn: payload.expires_in });
 }
 
 function useSessionValue(): SessionActions {
-  const [token, setToken] = useState<string | null>(readStoredToken);
-  const [status, setStatus] = useState<SessionStatus>(() => readStoredToken() ? "admitted" : "signed_out");
+  const [session, setSession] = useState<StoredSession | null>(readStoredSession);
+  const [status, setStatus] = useState<SessionStatus>(() => readStoredSession() ? "checking" : "signed_out");
   const [message, setMessage] = useState("");
+
+  const currentSession = useCallback(async (force = false): Promise<StoredSession> => {
+    if (!session) throw new Error("Protected API access is not available.");
+    if (!force && ((session.expiresAt === 0 && !session.refreshToken) || session.expiresAt - Date.now() > 60_000)) return session;
+    const refreshed = await refreshStoredSession(session);
+    storeSession(refreshed);
+    setSession(refreshed);
+    return refreshed;
+  }, [session]);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const apiUrl = process.env.NEXT_PUBLIC_TRADVISOR_API_URL;
-    if (!apiUrl || !token) throw new Error("Protected API access is not available.");
-    const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${token}`);
-    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    return fetch(`${apiUrl.replace(/\/$/, "")}${path}`, { ...init, headers, cache: "no-store", credentials: "omit" });
-  }, [token]);
+    if (!apiUrl) throw new Error("Protected API access is not available.");
+    let active = await currentSession();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const headers = new Headers(init.headers);
+      headers.set("Authorization", `Bearer ${active.idToken}`);
+      if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+      const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, { ...init, headers, cache: "no-store", credentials: "omit" });
+      if (response.status !== 401 || attempt === 1 || !active.refreshToken) {
+        if (response.status === 401) {
+          storeSession(null);
+          setSession(null);
+          setStatus("signed_out");
+        }
+        return response;
+      }
+      try {
+        active = await currentSession(true);
+      } catch (error) {
+        storeSession(null);
+        setSession(null);
+        setStatus("signed_out");
+        throw error;
+      }
+    }
+    throw new Error("Protected API access is not available.");
+  }, [currentSession]);
 
   const refreshAdmission = useCallback(async () => {
-    if (token) setStatus("admitted");
-  }, [token]);
+    if (!session) { setStatus("signed_out"); return; }
+    try {
+      await currentSession();
+      setStatus("admitted");
+    } catch (error) {
+      storeSession(null);
+      setSession(null);
+      setStatus("signed_out");
+      setMessage(error instanceof Error ? error.message : "Authentication could not be completed.");
+    }
+  }, [currentSession, session]);
 
-  useEffect(() => { if (token) void refreshAdmission(); }, [refreshAdmission, token]);
+  useEffect(() => { if (session) void refreshAdmission(); }, [refreshAdmission, session]);
   useEffect(() => {
-    if (!token) return;
+    if (!session) return;
     const onFocus = () => { void refreshAdmission(); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refreshAdmission, token]);
+  }, [refreshAdmission, session]);
 
   return useMemo(() => ({
     status, message, refreshAdmission, request,
     async signIn(email, password) {
       setMessage("");
       try {
-        const nextToken = await verifiedSession(email, password);
-        storeToken(nextToken);
-        setToken(nextToken);
+        const nextSession = await verifiedSession(email, password);
+        storeSession(nextSession);
+        setSession(nextSession);
         setStatus("admitted");
       } catch (error) {
         const text = error instanceof Error ? error.message : "Authentication could not be completed.";
@@ -148,7 +234,7 @@ function useSessionValue(): SessionActions {
         setMessage(error instanceof Error ? error.message : "Verification email could not be sent.");
       }
     },
-    signOut() { storeToken(null); setToken(null); setStatus("signed_out"); setMessage(""); },
+    signOut() { storeSession(null); setSession(null); setStatus("signed_out"); setMessage(""); },
   }), [message, refreshAdmission, request, status]);
 }
 

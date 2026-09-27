@@ -1388,7 +1388,14 @@
             "type": "string"
           },
           "preferences": {
-            "$ref": "#/components/schemas/PaperPreferences"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperPreferences"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "starting_cash_default_xof": {
             "title": "Starting Cash Default Xof",
@@ -4662,7 +4669,8 @@
               "generation_superseded",
               "idempotency_conflict",
               "preference_version_mismatch",
-              "recovery_mismatch"
+              "recovery_mismatch",
+              "setup_required"
             ]
           },
           "413": {

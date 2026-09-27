@@ -43,7 +43,7 @@ ERROR_MESSAGES: Final = {
     "unauthenticated": "Authentication is required.", "admission_denied": "Current invitation access is required.",
     "email_unverified": "Verify your email before accessing the workspace.",
     "admission_unavailable": "Admission could not be verified.", "service_unavailable": "The service is temporarily unavailable.",
-    "analysis_not_ready": "Analysis is not ready for this request.", "validation_failed": "The request is invalid.",
+    "analysis_not_ready": "Analysis is not ready for this request.", "setup_required": "Complete paper portfolio setup before changing preferences.", "validation_failed": "The request is invalid.",
     "body_too_large": "The request body is too large.", "not_found": "The requested resource was not found.",
     "already_initialized": "The paper portfolio is already configured.", "generation_mismatch": "The portfolio generation is no longer current.",
     "state_version_mismatch": "The portfolio state changed; refresh and retry.", "preference_version_mismatch": "Preferences changed; refresh and retry.",
@@ -188,7 +188,7 @@ def create_app(
         repos = _repositories(repositories_factory, identity.uid)
         current = repos.get_preferences()
         if current is None:
-            raise HTTPException(status_code=503, detail="service_unavailable")
+            raise HTTPException(status_code=409, detail="setup_required")
         updated = handle_preferences(repos, objective=body.objective or current.record.objective, fee_rate_pct=body.fee_rate_pct or current.record.fee_rate_pct, expected_version=body.expected_preference_version, fee_zero_confirmed=body.fee_rate_pct != "0", now=clock())
         control = repos.get_control()
         return ResponseEnvelope(data=CommandAcknowledgement(operation="preferences-updated", generation=str(control.record.active_generation) if control and control.record.active_generation else "unconfigured", state_version=control.record.state_version if control else 0, preference_version=updated.preference_version, replayed=False), meta=_meta(request, clock, str(control.record.recovery_id) if control else None))
