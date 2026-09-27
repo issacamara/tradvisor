@@ -72,7 +72,7 @@ jobs:
         if: inputs.action == 'plan'
         working-directory: terraform
         env:
-          TF_VAR_configure_v1_api: "false"
+          TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "false"
           TF_VAR_manage_legacy_schedules: "false"
           TF_VAR_manage_legacy_workflows: "false"
