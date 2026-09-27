@@ -144,26 +144,25 @@ def test_me_denies_unverified_identity_with_the_frozen_public_code() -> None:
 
     response = client.get("/v1/me", headers={"Authorization": "Bearer fixture-token"})
 
-    assert_contract_error(response, 403, "admission_denied")
+    assert_contract_error(response, 403, "email_unverified")
     assert admissions.calls == []
     assert current_users.calls == []
 
 
-def test_me_rechecks_live_admission_and_denies_removed_identity() -> None:
+def test_me_does_not_require_live_admission() -> None:
     client, _, admissions, current_users = api_client()
     headers = {"Authorization": "Bearer fixture-token"}
 
     admitted = client.get("/v1/me", headers=headers)
-    admissions.admitted = False
-    removed = client.get("/v1/me", headers=headers)
-
     assert admitted.status_code == 200
-    assert_contract_error(removed, 403, "admission_denied")
-    assert len(admissions.calls) == 2
-    assert current_users.calls == ["verified-user"]
+    admissions.admitted = False
+    still_admitted = client.get("/v1/me", headers=headers)
+    assert still_admitted.status_code == 200
+    assert admissions.calls == []
+    assert current_users.calls == ["verified-user", "verified-user"]
 
 
-def test_me_fails_closed_when_admission_is_unavailable() -> None:
+def test_me_ignores_admission_repository_failures() -> None:
     client, _, admissions, current_users = api_client()
     admissions.failure = True
 
@@ -172,8 +171,8 @@ def test_me_fails_closed_when_admission_is_unavailable() -> None:
         headers={"Authorization": "Bearer fixture-token"},
     )
 
-    assert_contract_error(response, 503, "admission_unavailable")
-    assert current_users.calls == []
+    assert response.status_code == 200
+    assert current_users.calls == ["verified-user"]
     assert "private admission failure" not in response.text
 
 
@@ -210,7 +209,7 @@ def test_me_uses_token_identity_and_returns_the_frozen_response_envelope() -> No
             "recovery_id": "recovery-1",
         },
     }
-    assert admissions.calls == [("verified-user", "investor@example.com")]
+    assert admissions.calls == []
     assert current_users.calls == ["verified-user"]
 
 

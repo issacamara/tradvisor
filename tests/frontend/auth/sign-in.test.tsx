@@ -6,7 +6,7 @@ import { AuthScreen } from "@/features/auth/sign-in";
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("email and password access", () => {
-  it("does not grant workspace admission after registration", async () => {
+  it("requires email verification after registration", async () => {
     vi.stubEnv("NEXT_PUBLIC_FIREBASE_API_KEY", "fixture-key");
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -20,7 +20,7 @@ describe("email and password access", () => {
     fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "reader@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "correct-horse" } });
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Verify your email before requesting workspace access");
+    expect(await screen.findByRole("status")).toHaveTextContent("Account created. Verify your email before signing in");
     expect(fetch).toHaveBeenCalledTimes(2);
     const signUpBody = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
     expect(signUpBody).toMatchObject({ email: "reader@example.com", password: "correct-horse", returnSecureToken: true });
@@ -28,7 +28,7 @@ describe("email and password access", () => {
     expect(fetch.mock.calls.some(([input]) => String(input).endsWith("/v1/me"))).toBe(false);
   });
 
-  it("checks verified email and current admission before showing workspaces", async () => {
+  it("shows workspaces after verified email sign-in", async () => {
     vi.stubEnv("NEXT_PUBLIC_FIREBASE_API_KEY", "fixture-key");
     vi.stubEnv("NEXT_PUBLIC_TRADVISOR_API_URL", "https://api.example.test");
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
