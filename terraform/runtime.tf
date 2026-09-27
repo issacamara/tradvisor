@@ -1,6 +1,6 @@
 locals {
-  v1_runtime_enabled = var.configure_v1_runtime
-  v1_api_enabled     = var.configure_v1_api || var.configure_v1_runtime
+  v1_runtime_enabled          = var.configure_v1_runtime
+  v1_api_enabled              = var.configure_v1_api || var.configure_v1_runtime
   v1_runtime_identity_enabled = local.v1_api_enabled || local.v1_runtime_enabled
 }
 
