@@ -2,7 +2,7 @@
 
 **Status:** Draft for Review
 
-**Version:** 1.23
+**Version:** 1.24
 
 **Date:** September 20, 2026
 
@@ -12,6 +12,8 @@
 **Confirmed amendment:** The stakeholder approved the missing-close grace period, fee policy, weighted-average cost method, and position-level exit references in section 6.3. This amendment does not constitute approval of the remaining open scoring or operating decisions.
 
 **Indicator-scope amendment:** V1 focuses on EMA, RSI, ATR, and traded value. Scored trend confirmation and the revised scoring baseline in section 6.4 are approved for paper-trading evaluation, not validated investment effectiveness. Initialization, session handling and factual evidence-status semantics are adopted in section 6.6 and the financial calculation contract. Later app versions may replace the strategy; other technical indicator families are deferred.
+
+**Runtime-data availability amendment, approved 2026-09-27:** Option 1 is adopted for the missing-data path. BigQuery remains the analytical source of truth; a bounded daily publication process writes an immutable, batch-pinned serving copy to Firestore; the authenticated FastAPI API reads that active copy; and the static Next.js client consumes only the API. This amendment addresses data delivery and runtime availability. It does not add portfolio tracking, change financial rules, copy production data, seed development data, or activate schedules.
 
 ## 1. Executive Summary and Business Need
 
@@ -262,6 +264,21 @@ On 2026-09-19 the stakeholder authorized applying financial-analysis-expert reco
 The contract also defines loss/recovery cases, denominator boundaries, comparison inclusivity, missing-data behavior, corporate-action compatibility, point-in-time evidence, advisory explanations and acceptance fixtures. Financial report freshness is 18 calendar months from period-end; current Long-Term price advice requires an actual traded close at most five exchange sessions old. These are product settings, not legal or financial guarantees.
 
 Several required inputs are not established by the reused five-field extractor. Extend existing adapters and verify coverage; show unavailable dependent scores until supported. This is tested calculation logic, not a separate data-quality feature. Source integration, market-calendar integration and historical effectiveness evaluation remain implementation/validation work.
+
+### 6.7 Runtime Data Availability Contract
+
+The runtime must distinguish four states: unauthenticated, authenticated-but-not-configured, authenticated-with-no-active-analysis-publication, and authenticated-with-an-active-publication. A first verified user must be able to reach setup without a pre-seeded preference document; the API must never invent an investment objective, fee, portfolio, or analysis result to make the screen look populated.
+
+| ID | Requirement |
+|---|---|
+| FR-DATA-01 | The daily publication process shall read one named BigQuery input snapshot and rule version, calculate shared Swing and Long-Term outputs once, and write immutable analytical evidence plus a complete Firestore serving copy under one batch ID. |
+| FR-DATA-02 | The API shall serve only the last complete active serving batch; failed or partial publication shall leave the previous active batch and its effective date unchanged. |
+| FR-DATA-03 | Protected analysis routes shall return the published result or a typed `analysis_not_ready` response with the active-batch status; they shall not contain permanent placeholder handlers. |
+| FR-DATA-04 | A verified first-time user shall receive a deterministic `setup_required` state when no user preference or paper generation exists; no default objective, fee, or cash balance is silently selected. |
+| NFR-DATA-01 | Browser authentication shall persist across static route navigation and refresh, refresh Firebase ID tokens before protected requests, and clear protected state on sign-out or invalid identity. |
+| NFR-DATA-02 | Normal authenticated analysis reads shall be batch-pinned, bounded, and served without launching BigQuery work in the request path. |
+
+These requirements are implementation contracts, not evidence that a development publication has already run. The product remains unavailable rather than misleading when the serving batch is absent or incomplete.
 
 ## 7. Functional Requirements
 

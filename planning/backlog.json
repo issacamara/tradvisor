@@ -2339,6 +2339,136 @@
       "blocks": [
 
       ]
+    },
+    {
+      "key": "runtime_auth_setup",
+      "id": "V1-078",
+      "title": "Make static authentication and first-user runtime state durable",
+      "domain": "backend",
+      "refs": [
+        "architecture:5.5,8,9,13; BRD-A-01,FR-DATA-04,NFR-DATA-01"
+      ],
+      "deps": [
+        "release"
+      ],
+      "files": [
+        "frontend/src/features/auth/",
+        "backend/app.py",
+        "backend/contracts/routes.py",
+        "tests/auth/",
+        "tests/backend/runtime/"
+      ],
+      "scope": "Persist Firebase browser sessions across static navigation and refresh, refresh ID tokens before protected calls, and return a typed setup_required state for a verified first user without inventing preferences, fees, cash or analysis.",
+      "contracts": "Consume Firebase Authentication and the existing protected API contract; expose navigation-safe session state and setup_required without changing admission or paper ownership semantics.",
+      "checks": [
+        "Reload and static route navigation preserve a signed-in session and protected requests use a current token.",
+        "A first verified user receives setup_required without a seeded preference document; auth transitions, missing profile and admission failures are tested."
+      ],
+      "estimate": "M",
+      "wave": 18,
+      "blocks": [
+        "runtime_api_reads"
+      ]
+    },
+    {
+      "key": "runtime_api_reads",
+      "id": "V1-079",
+      "title": "Wire the API to the active analytical serving batch",
+      "domain": "backend",
+      "refs": [
+        "architecture:5.4,5.7,8,9,13; BRD-I-01,FR-DATA-02,FR-DATA-03,NFR-DATA-02"
+      ],
+      "deps": [
+        "runtime_auth_setup",
+        "reads",
+        "serving",
+        "routes"
+      ],
+      "files": [
+        "backend/main.py",
+        "backend/app.py",
+        "backend/read_api/",
+        "backend/publication/",
+        "backend/openapi.py",
+        "tests/backend/runtime/"
+      ],
+      "scope": "Compose the existing repositories, publication state and analytical read service in the FastAPI factory and replace unconditional analysis placeholders with bounded batch-pinned reads for Swing, Long-Term, stock detail and chart responses.",
+      "contracts": "Consume immutable analytical batches and active publication state; expose the existing API envelopes and typed analysis_not_ready state without launching BigQuery in request handling.",
+      "checks": [
+        "The packaged API starts with the same dependency graph used by tests and production entry points.",
+        "All analysis routes read the active batch; missing publication, stale batch, ownership, pagination and malformed-symbol cases are tested."
+      ],
+      "estimate": "L",
+      "wave": 19,
+      "blocks": [
+        "bigquery_publication",
+        "frontend_runtime"
+      ]
+    },
+    {
+      "key": "bigquery_publication",
+      "id": "V1-080",
+      "title": "Publish daily analytical results from BigQuery to Firestore atomically",
+      "domain": "analysis",
+      "refs": [
+        "architecture:5.2,5.3,5.4,7,9,13; BRD-I-01,FR-DATA-01,FR-DATA-02,NFR-05,NFR-DATA-02"
+      ],
+      "deps": [
+        "runtime_api_reads",
+        "batch",
+        "snapshot",
+        "analysis_models"
+      ],
+      "files": [
+        "backend/jobs/",
+        "backend/publication/",
+        "backend/read_api/",
+        "tests/integration/daily/",
+        "tests/backend/publication/"
+      ],
+      "scope": "Implement the concrete daily worker behind the existing job protocol. Read one named BigQuery input snapshot, invoke versioned calculators once, persist immutable analytical evidence and a complete Firestore serving copy, then promote the active pointer atomically and idempotently.",
+      "contracts": "Consume normalized BigQuery snapshot and rule configuration; expose a batch publication manifest, immutable serving outputs and a complete-or-previous active pointer transition.",
+      "checks": [
+        "Complete publication, no-publication, retry, partial-write recovery and unavailable-company outputs are covered without exposing a partial batch.",
+        "Repeated input/session/rule identity is idempotent; no cloud job, paid query, schedule, seed or migration is executed by the ticket."
+      ],
+      "estimate": "L",
+      "wave": 20,
+      "blocks": [
+        "frontend_runtime"
+      ]
+    },
+    {
+      "key": "frontend_runtime",
+      "id": "V1-081",
+      "title": "Connect static workspaces to live analysis data and error states",
+      "domain": "frontend",
+      "refs": [
+        "architecture:5.5,8,9,13; BRD-A-02,FR-DATA-03,NFR-DATA-01,NFR-DATA-02"
+      ],
+      "deps": [
+        "runtime_api_reads",
+        "bigquery_publication",
+        "swing_ui",
+        "long_ui",
+        "paper_ui"
+      ],
+      "files": [
+        "frontend/src/app/",
+        "frontend/src/api/",
+        "tests/frontend/runtime/"
+      ],
+      "scope": "Use the generated API client for Swing recommendations, chart data, Long-Term rankings and paper reads. Render setup_required, analysis_not_ready, authentication and transport failures distinctly, and surface paper refresh errors.",
+      "contracts": "Consume the protected API envelopes and generated TypeScript client; expose equal first-class Swing, Long-Term and manual paper workflows without duplicating backend calculations.",
+      "checks": [
+        "Swing renders recommendations and chart series from API responses rather than hard-coded empty arrays; Long-Term and paper workspaces render published data or explicit unavailable states.",
+        "Frontend unit, type, build and browser-flow checks pass against contract fixtures, including distinct auth/setup/analysis/transport states."
+      ],
+      "estimate": "M",
+      "wave": 21,
+      "blocks": [
+        "release"
+      ]
     }
   ],
   "conflicts": [
