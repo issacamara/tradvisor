@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8080
 
 WORKDIR /app
-COPY backend/ /app/backend/
+COPY . /app/backend/
 RUN pip install --no-cache-dir /app/backend
 
 USER 10001:10001
