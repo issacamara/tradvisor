@@ -7,7 +7,7 @@ on:
         description: "Reviewed action; apply remains environment-gated"
         required: true
         type: choice
-        options: [plan, apply]
+        options: [import, plan, apply]
       api_image:
         description: "Immutable development API image URI"
         required: false
@@ -78,6 +78,14 @@ jobs:
           TF_VAR_manage_legacy_workflows: "false"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
         run: terraform plan -out=tfplan
+      - name: Import existing financials and ratings functions
+        if: inputs.action == 'import'
+        working-directory: terraform
+        run: |
+          terraform import 'google_cloudfunctions2_function.functions["insert_financials"]' projects/dev-tradvisor/locations/europe-central2/functions/insert_financials_function
+          terraform import 'google_cloudfunctions2_function.functions["insert_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/insert_ratings_function
+          terraform import 'google_cloudfunctions2_function.functions["scrape_financials"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_financials_function
+          terraform import 'google_cloudfunctions2_function.functions["scrape_ratings"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_ratings_function
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
         working-directory: terraform
