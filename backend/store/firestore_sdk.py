@@ -71,6 +71,12 @@ class FirestoreSdkStore(TransactionalStore):
         for attempt in range(max_attempts):
             transaction = self._client.transaction()
             try:
+                # The low-level SDK transaction must be begun before callbacks
+                # issue reads; the decorator-based helper is not used here.
+                begin = getattr(transaction, "_begin", None)
+                if begin is None:
+                    raise RuntimeError("Firestore transaction does not expose a begin operation")
+                begin()
                 result = callback(transaction)
                 transaction.commit()
                 return result
