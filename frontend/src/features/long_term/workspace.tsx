@@ -8,8 +8,10 @@ type Company = components["schemas"]["LongTermRankedCompany"];
 type Objective = "growth" | "dividend" | "balanced";
 const metricText = (metric: components["schemas"]["ScoreMetric"]) => metric.value === null ? metric.status.replaceAll("_", " ") : `${metric.value.toFixed(1)} / 100`;
 
-export function LongTermWorkspace({ items = [], publishedAt = "Unavailable" }: { items?: Company[]; publishedAt?: string }) {
-  const [objective, setObjective] = useState<Objective>("growth");
+export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", objective: controlledObjective, onObjectiveChange }: { items?: Company[]; publishedAt?: string; objective?: Objective; onObjectiveChange?: (objective: Objective) => void }) {
+  const [localObjective, setLocalObjective] = useState<Objective>("growth");
+  const objective = controlledObjective ?? localObjective;
+  const setObjective = (next: Objective) => { setLocalObjective(next); onObjectiveChange?.(next); };
   const [selected, setSelected] = useState<string | null>(items[0]?.symbol ?? null);
   const orderedItems = useMemo(() => items, [items]);
   const selectedCompany = items.find((company) => company.symbol === selected);
