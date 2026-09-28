@@ -29,6 +29,37 @@ resource "google_cloudfunctions2_function" "functions" {
   }
 }
 
+resource "google_cloudfunctions2_function" "initialization_functions" {
+  depends_on = [google_project_service.apis, data.google_project.project]
+  for_each   = var.initialization_functions
+  name       = "${each.key}_function"
+  location   = var.region
+
+  build_config {
+    runtime     = var.function_runtimes[each.key]
+    entry_point = "entry_point"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.bucket.name
+        object = "${each.key}.zip"
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = 1
+    available_memory      = each.key == "scrape_financials_init" ? "4Gi" : "512Mi"
+    available_cpu         = each.key == "scrape_financials_init" ? "1" : null
+    timeout_seconds       = each.key == "scrape_financials_init" ? 600 : 180
+    service_account_email = google_service_account.tradvisor_sa.email
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
+}
+
 
 locals {
   workflow_stages = [
