@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export type SessionStatus = "signed_out" | "checking" | "unverified" | "admitted";
@@ -132,6 +132,7 @@ function useSessionValue(): SessionActions {
   const [session, setSession] = useState<StoredSession | null>(readStoredSession);
   const [status, setStatus] = useState<SessionStatus>(() => readStoredSession() ? "checking" : "signed_out");
   const [message, setMessage] = useState("");
+  const admissionToken = useRef<string | null>(null);
 
   const currentSession = useCallback(async (force = false): Promise<StoredSession> => {
     if (!session) throw new Error("Protected API access is not available.");
@@ -173,10 +174,16 @@ function useSessionValue(): SessionActions {
 
   const refreshAdmission = useCallback(async () => {
     if (!session) { setStatus("signed_out"); return; }
+    if (admissionToken.current === session.idToken) {
+      setStatus("admitted");
+      return;
+    }
     try {
-      await currentSession();
+      const active = await currentSession();
+      admissionToken.current = active.idToken;
       setStatus("admitted");
     } catch (error) {
+      admissionToken.current = null;
       storeSession(null);
       setSession(null);
       setStatus("signed_out");
@@ -234,7 +241,7 @@ function useSessionValue(): SessionActions {
         setMessage(error instanceof Error ? error.message : "Verification email could not be sent.");
       }
     },
-    signOut() { storeSession(null); setSession(null); setStatus("signed_out"); setMessage(""); },
+    signOut() { admissionToken.current = null; storeSession(null); setSession(null); setStatus("signed_out"); setMessage(""); },
   }), [message, refreshAdmission, request, status]);
 }
 
