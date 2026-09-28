@@ -24,6 +24,7 @@ PUBLICATION_SCHEMA_VERSION = 1
 PUBLICATION_TRANSACTION_ATTEMPTS = 5
 MANIFEST_COLLECTION = "publication_manifests"
 ACTIVE_PUBLICATION_KEY = DocumentKey("publication_state", "current")
+ACTIVE_PUBLICATION_COLLECTION = "publication_state"
 
 
 class PublicationError(RuntimeError):
@@ -161,13 +162,22 @@ class AnalyticalPublisher:
         return self._promote(batch)
 
     def active_publication(self) -> ActivePublication | None:
-        stored = self._store.get(ACTIVE_PUBLICATION_KEY)
-        if stored is None:
+        page = self._store.page(
+            ACTIVE_PUBLICATION_COLLECTION,
+            filters=(),
+            order_by=(("effective_session", "desc"), ("revision", "desc"), ("batch_id", "desc")),
+            limit=MAX_PAGE_SIZE,
+            cursor=None,
+        )
+        if not page.items:
             return None
-        try:
-            return ActivePublication.model_validate(stored.record.model_dump(mode="python"))
-        except (TypeError, ValueError) as error:
-            raise PublicationError("active publication pointer is malformed") from error
+        publications: list[ActivePublication] = []
+        for item in page.items:
+            try:
+                publications.append(ActivePublication.model_validate(item.model_dump(mode="python")))
+            except (TypeError, ValueError) as error:
+                raise PublicationError("active publication pointer is malformed") from error
+        return max(publications, key=lambda item: (item.effective_session, item.revision, item.batch_id))
 
     def read_batch(
         self, batch_id: str, *, limit: int, cursor: str | None = None
@@ -354,40 +364,48 @@ class AnalyticalPublisher:
             strategy_id=batch.strategy_id,
         )
 
+        active = self.active_publication()
+        if active is not None:
+            if active == candidate:
+                return active
+            if batch.effective_session < active.effective_session:
+                raise PublicationError("an older batch cannot replace the active publication")
+            if batch.effective_session == active.effective_session:
+                if (
+                    batch.supersedes_batch_id != active.batch_id
+                    or batch.revision <= active.revision
+                ):
+                    raise PublicationError(
+                        "same-session correction must supersede the active batch"
+                    )
+        elif batch.revision > 1:
+            raise PublicationError("a correction cannot be promoted without its active predecessor")
+
+        key = DocumentKey(ACTIVE_PUBLICATION_COLLECTION, batch.batch_id)
+        document = VersionedDocument(key, PUBLICATION_SCHEMA_VERSION, 0, candidate)
+        if self._create_immutable(document):
+            return candidate
+
         def promote(transaction: Transaction) -> ActivePublication:
-            current = self._store.get_in_transaction(transaction, ACTIVE_PUBLICATION_KEY)
+            current = self._store.get_in_transaction(transaction, key)
             if current is not None:
-                active = ActivePublication.model_validate(current.record.model_dump(mode="python"))
-                if active == candidate:
-                    return active
-                if batch.effective_session < active.effective_session:
-                    raise PublicationError("an older batch cannot replace the active publication")
-                if batch.effective_session == active.effective_session:
-                    if (
-                        batch.supersedes_batch_id != active.batch_id
-                        or batch.revision <= active.revision
-                    ):
-                        raise PublicationError(
-                            "same-session correction must supersede the active batch"
-                        )
-            elif batch.revision > 1:
-                raise PublicationError(
-                    "a correction cannot be promoted without its active predecessor"
-                )
+                if (
+                    current.schema_version != PUBLICATION_SCHEMA_VERSION
+                    or current.record.model_dump(mode="json") != candidate.model_dump(mode="json")
+                ):
+                    raise RepositoryError("active publications are immutable")
+                return candidate
             self._store.put_in_transaction(
-                transaction,
-                VersionedDocument(
-                    ACTIVE_PUBLICATION_KEY,
-                    PUBLICATION_SCHEMA_VERSION,
-                    (0 if current is None else current.state_version + 1),
-                    candidate,
-                ),
+                transaction, cast(VersionedDocument[BaseModel], document)
             )
             return candidate
 
-        return run_transaction(
-            self._store, promote, max_attempts=PUBLICATION_TRANSACTION_ATTEMPTS
-        )
+        try:
+            return run_transaction(
+                self._store, promote, max_attempts=PUBLICATION_TRANSACTION_ATTEMPTS
+            )
+        except RepositoryError as error:
+            raise PublicationError("active publication conflicts with its retry") from error
 
     def _create_immutable(self, document: VersionedDocument[Any]) -> bool:
         creator = getattr(self._store, "create_immutable", None)
