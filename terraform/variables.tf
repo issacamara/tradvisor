@@ -27,8 +27,29 @@ variable "recovery_register_cleanup_members" {
 variable "functions" {
   description = "List of function names"
   type        = list(string)
-  default = ["scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-  "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations"]
+  default = [
+    "scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
+    "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations",
+    "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings",
+  ]
+}
+
+variable "initialization_functions" {
+  description = "One-time initialization functions retained from the production ingestion topology"
+  type        = set(string)
+  default     = ["scrape_financials_init", "scrape_ratings_init"]
+}
+
+variable "managed_function_sources" {
+  description = "New function source archives explicitly managed by this V1 deployment"
+  type        = set(string)
+  default     = ["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+}
+
+variable "manage_new_function_sources" {
+  description = "Whether Terraform may upload source archives for newly added financial and ratings functions"
+  type        = bool
+  default     = false
 }
 
 variable "function_runtimes" {
@@ -47,6 +68,8 @@ variable "function_runtimes" {
     insert_financials      = "python311"
     scrape_ratings         = "python311"
     insert_ratings         = "python311"
+    scrape_financials_init = "python311"
+    scrape_ratings_init    = "python311"
   }
 }
 
