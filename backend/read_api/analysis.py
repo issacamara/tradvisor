@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import re
@@ -73,7 +74,10 @@ def _output(stock: ServingStock, name: str) -> ServingOutput:
 
 def _payload(stock: ServingStock, name: str, model: type[T]) -> T:
     try:
-        return model.model_validate(_output(stock, name).value)
+        # Firestore returns the stored JSON envelope as ordinary mappings and
+        # lists; deserialize through JSON so strict contract models can restore
+        # tuple, date, and datetime fields at the API boundary.
+        return model.model_validate_json(json.dumps(_output(stock, name).value))
     except (AnalysisNotReady, TypeError, ValueError) as error:
         raise AnalysisNotReady from error
 
