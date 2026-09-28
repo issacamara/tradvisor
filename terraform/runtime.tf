@@ -38,6 +38,20 @@ resource "google_project_iam_member" "v1_runtime_firestore" {
   member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
 }
 
+resource "google_project_iam_member" "v1_runtime_bigquery_job_user" {
+  count   = local.v1_runtime_identity_enabled ? 1 : 0
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
+}
+
+resource "google_project_iam_member" "v1_runtime_bigquery_viewer" {
+  count   = local.v1_runtime_identity_enabled ? 1 : 0
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "v1_runtime_cursor" {
   count     = local.v1_runtime_identity_enabled ? 1 : 0
   project   = var.project_id
