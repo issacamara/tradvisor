@@ -108,12 +108,6 @@ jobs:
           TF_VAR_v1_analytical_snapshot_table: dev-tradvisor.stocks.analytical_snapshots
           TF_VAR_v1_analytical_snapshot_name: shares-baseline-2025-07-18
         run: terraform plan -out=tfplan
-      - name: Import existing financials and ratings functions
-        if: inputs.action == 'import'
-        working-directory: terraform
-        run: |
-          terraform import 'google_cloudfunctions2_function.initialization_functions["scrape_financials_init"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_financials_init_function
-          terraform import 'google_cloudfunctions2_function.initialization_functions["scrape_ratings_init"]' projects/dev-tradvisor/locations/europe-central2/functions/scrape_ratings_init_function
       - name: Clear failed Cloud Run taint
         if: inputs.action == 'apply'
         working-directory: terraform
