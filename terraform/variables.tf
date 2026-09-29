@@ -27,29 +27,9 @@ variable "recovery_register_cleanup_members" {
 variable "functions" {
   description = "List of function names"
   type        = list(string)
-  default = [
-    "scrape_shares", "scrape_bonds", "scrape_dividends", "scrape_capitalizations",
-    "insert_shares", "insert_bonds", "insert_dividends", "insert_capitalizations",
-    "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings",
-  ]
-}
-
-variable "initialization_functions" {
-  description = "One-time initialization functions retained from the production ingestion topology"
-  type        = set(string)
-  default     = ["scrape_financials_init", "scrape_ratings_init"]
-}
-
-variable "managed_function_sources" {
-  description = "New function source archives explicitly managed by this V1 deployment"
-  type        = set(string)
-  default     = ["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
-}
-
-variable "manage_new_function_sources" {
-  description = "Whether Terraform may upload source archives for newly added financial and ratings functions"
-  type        = bool
-  default     = false
+  default = ["scrape_shares", "scrape_dividends", "insert_shares", "insert_dividends",
+    "scrape_financials", "insert_financials", "scrape_financials_init", "scrape_ratings",
+  "insert_ratings", "scrape_ratings_init"]
 }
 
 variable "function_runtimes" {
@@ -57,18 +37,14 @@ variable "function_runtimes" {
   type        = map(string)
   default = {
     scrape_shares          = "python311"
-    scrape_bonds           = "python39"
     scrape_dividends       = "python311"
-    scrape_capitalizations = "python39"
     insert_shares          = "python311"
-    insert_bonds           = "python39"
     insert_dividends       = "python311"
-    insert_capitalizations = "python39"
     scrape_financials      = "python311"
     insert_financials      = "python311"
+    scrape_financials_init = "python311"
     scrape_ratings         = "python311"
     insert_ratings         = "python311"
-    scrape_financials_init = "python311"
     scrape_ratings_init    = "python311"
   }
 }
@@ -77,7 +53,11 @@ variable "function_local_files" {
   description = "Local Python modules and data files required by each existing function artifact"
   type        = map(list(string))
   default = {
-    insert_shares = ["scrape_shares.py"]
+    insert_shares          = ["scrape_shares.py"]
+    scrape_financials      = ["insert_financials.py", "scrape_financials_init.py"]
+    insert_financials      = ["financial_normalization.py"]
+    scrape_financials_init = ["company_reference.py", "insert_financials.py"]
+    scrape_ratings_init    = ["scrape_ratings.py"]
   }
 }
 
@@ -103,9 +83,7 @@ variable "jobs" {
   }))
   default = {
     job1 = { name = "shares", schedule = "0 20 * * 1-5" }
-    job2 = { name = "bonds", schedule = "0 20 1 * *" }
     job3 = { name = "dividends", schedule = "0 20 1 * *" }
-    job4 = { name = "capitalizations", schedule = "0 20 1 7 *" }
     job5 = { name = "financials", schedule = "0 20 1 * *" }
     job6 = { name = "ratings", schedule = "0 20 1 * *" }
   }
