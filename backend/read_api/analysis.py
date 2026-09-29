@@ -15,6 +15,7 @@ from backend.openapi import (
     ChartSeriesName,
     LongTermRankedCompany,
     LongTermRankingsData,
+    NumericMetric,
     ScoreMetric,
     StockChartData,
     StockDetailData,
@@ -140,15 +141,20 @@ def read_swing(
             # Market-data publication is useful before recommendation rules are
             # ready. Keep the symbol selectable and make the missing analysis
             # explicit instead of turning the whole endpoint into a 422.
-            missing = {
-                "status": "missing_inputs", "value": None,
-                "unit": "points", "reason_codes": ("analysis_not_published",),
-            }
             items.append(SwingRecommendation(
                 symbol=stock.symbol,
                 entry_action="insufficient_data",
-                buy_strength=ScoreMetric(**missing),
-                indicators={name: NumericMetric(**{**missing, "unit": "value"}) for name in ("ema20", "ema50", "rsi14", "atr14", "traded_value20")},
+                buy_strength=ScoreMetric(
+                    status="missing_inputs", value=None, unit="points",
+                    reason_codes=("analysis_not_published",),
+                ),
+                indicators={
+                    "ema20": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
+                    "ema50": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
+                    "rsi14": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
+                    "atr14": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
+                    "traded_value20": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
+                },
                 eligibility_guards=(), holding_advice=None,
             ))
     return SwingRecommendationsData(
