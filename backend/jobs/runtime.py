@@ -132,8 +132,9 @@ class BigQueryOutputCalculator(VersionedCalculator):
         if market:
             points = tuple({
                 "session_date": item["session_date"], "status": "traded" if item.get("close") is not None else "missing_price",
-                "open": item.get("open"), "high": item.get("high"), "low": item.get("low"),
-                "close": item.get("close"), "last_traded_close": item.get("close"),
+                "open": _money(item.get("open")), "high": _money(item.get("high")),
+                "low": _money(item.get("low")), "close": _money(item.get("close")),
+                "last_traded_close": _money(item.get("close")),
                 "analytical_carried_close": None, "volume": int(item["volume"]) if item.get("volume") is not None else None,
                 "indicators": {}, "source_evidence": [],
             } for item in market)
@@ -144,6 +145,13 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 },
             ),)
         return StockCalculation(symbol=symbol, outputs=result)
+
+
+def _money(value: object) -> dict[str, str] | None:
+    """Serialize BigQuery XOF values into the exact API money contract."""
+    if value is None:
+        return None
+    return {"amount": str(value), "currency": "XOF"}
 
 
 def build_worker() -> DailyAnalyticalWorker:

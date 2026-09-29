@@ -57,6 +57,19 @@ def test_bigquery_output_calculator_rejects_unknown_status() -> None:
         BigQueryOutputCalculator().calculate(invalid, symbol="NTLC")
 
 
+def test_bigquery_output_calculator_serializes_chart_prices_as_xof_money() -> None:
+    source = snapshot()
+    source.payload["market_data"] = [{
+        "symbol": "NTLC", "session_date": "2026-09-27", "open": 100,
+        "high": 110, "low": 90, "close": 105, "volume": 12,
+    }]
+
+    chart = next(output for output in BigQueryOutputCalculator().calculate(source, symbol="NTLC").outputs if output.name == "chart")
+    point = chart.value["points"][0]
+    assert point["close"] == {"amount": "105", "currency": "XOF"}
+    assert point["last_traded_close"] == {"amount": "105", "currency": "XOF"}
+
+
 def test_snapshot_reader_rejects_identifier_injection() -> None:
     with pytest.raises(ValueError, match="plain project.dataset.table"):
         BigQuerySnapshotReader(object(), "dev.dataset.table; DROP TABLE x")
