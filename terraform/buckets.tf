@@ -7,7 +7,7 @@ locals {
     insert_dividends       = "../functions/dividends"
     scrape_financials      = "../functions/financials"
     insert_financials      = "../functions/financials"
-    scrape_financials_init = "../archive/legacy-ingestion/scripts"
+    scrape_financials_init = "../functions/financials"
     scrape_ratings         = "../functions/ratings"
     insert_ratings         = "../functions/ratings"
     scrape_ratings_init    = "../functions/ratings"
@@ -146,7 +146,7 @@ data "archive_file" "initialization_assets" {
   dynamic "source" {
     for_each = each.key == "scrape_financials_init" ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/company_reference.py")
+      content  = file("../functions/financials/company_reference.py")
       filename = "company_reference.py"
     }
   }

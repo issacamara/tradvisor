@@ -14,7 +14,8 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = ROOT / "functions" / "financials"
+SUPPORT_SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
 
 
 class _Blob:
@@ -580,7 +581,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     )
     monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
 
-    helper = _load_module(SCRIPTS / "helper.py", "helper")
+    helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
     insert = _load_module(SCRIPTS / "insert_financials.py", "insert_financials")
     canonical_rows: list[dict[str, object]] = []
@@ -770,7 +771,7 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     requests = SimpleNamespace(Session=lambda: SimpleNamespace(get=lambda *a, **k: _DownloadResponse()))
     monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
 
-    helper = _load_module(SCRIPTS / "helper.py", "helper")
+    helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
     company_reference = ModuleType("company_reference")
     company_reference.build_company_records = lambda *args, **kwargs: []  # type: ignore[attr-defined]

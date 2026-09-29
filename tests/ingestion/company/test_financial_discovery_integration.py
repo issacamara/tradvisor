@@ -11,7 +11,8 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = ROOT / "functions" / "financials"
+SUPPORT_SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
 
 
 def _load_module(path: Path, name: str) -> ModuleType:
@@ -24,7 +25,7 @@ def _load_module(path: Path, name: str) -> ModuleType:
 
 
 def _load_financial_discovery(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
-    _load_module(SCRIPTS / "company_reference.py", "company_reference")
+    _load_module(SUPPORT_SCRIPTS / "company_reference.py", "company_reference")
 
     curl_cffi = ModuleType("curl_cffi")
     curl_cffi.requests = SimpleNamespace(  # type: ignore[attr-defined]

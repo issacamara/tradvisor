@@ -184,9 +184,8 @@ def _load_financial_processor(
 ) -> ModuleType:
     scripts = (
         Path(__file__).resolve().parents[3]
-        / "archive"
-        / "legacy-ingestion"
-        / "scripts"
+        / "functions"
+        / "financials"
     )
     bucket = SimpleNamespace(list_blobs=lambda prefix: [blob])
     storage_client = SimpleNamespace(bucket=lambda name: bucket)
@@ -252,7 +251,7 @@ def _load_monthly_scraper(
     monkeypatch.setitem(sys.modules, "google.auth", google_auth)
     monkeypatch.setitem(sys.modules, "helper", helper)
 
-    scripts = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+    scripts = Path(__file__).resolve().parents[3] / "functions" / "financials"
     path = scripts / "scrape_financials.py"
     specification = importlib.util.spec_from_file_location(
         "ingestion_monthly_scraper_loads", path
