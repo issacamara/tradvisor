@@ -26,7 +26,9 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
     <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-muted">Swing / shared market state</p><h1 className="text-2xl font-bold">Swing screener</h1></div><p className="text-sm text-muted">Market session: {marketSession}</p></header>
     <div className="grid gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
       <section aria-label="Swing recommendations" className="min-w-0 overflow-x-auto border-t border-line">
-        <table className="w-full min-w-[34rem] text-left text-sm"><caption className="sr-only">Swing recommendations with separate holding advice</caption><thead><tr>{table.getHeaderGroups()[0]?.headers.map((header) => <th key={header.id} scope="col" className="border-b border-line px-3 py-3 font-semibold">{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr></thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className="border-b border-line">{row.getVisibleCells().map((cell) => <td key={cell.id} className="px-3 py-3">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table>
+        <div className="max-h-[31rem] overflow-y-auto">
+          <table className="w-full min-w-[34rem] text-left text-sm"><caption className="sr-only">Swing recommendations with separate holding advice</caption><thead className="sticky top-0 z-10 bg-background"><tr>{table.getHeaderGroups()[0]?.headers.map((header) => <th key={header.id} scope="col" className="border-b border-line px-3 py-3 font-semibold">{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr></thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className="border-b border-line">{row.getVisibleCells().map((cell) => <td key={cell.id} className="px-3 py-3">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table>
+        </div>
         {!items.length && <p className="px-3 py-6 text-sm text-muted">No published Swing results.</p>}
       </section>
       <section className="min-w-0">
