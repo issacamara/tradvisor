@@ -27,6 +27,7 @@ from backend.contracts.routes import (
     CreatePaperOrderResource, ExecutionListRequest, ExecutionListResource, MeResource, OrderListRequest,
     OrderListResource, PatchPreferencesRequest, PortfolioResource, ResetPortfolioRequest,
     ResetPortfolioResource, SetupPortfolioRequest, SetupPortfolioResource,
+    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 )
 from backend.contracts.paper import PortfolioControl
 from backend.contracts.scalars import STARTING_CASH_MAX_XOF, STARTING_CASH_MIN_XOF
@@ -142,6 +143,30 @@ def _chart_query(
         "to": to_date,
         "batch_id": batch_id,
         "series": series,
+    })
+
+
+def _recommendation_query(
+    limit: int = Query(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+    cursor: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    sector: str | None = Query(default=None),
+) -> RecommendationQuery:
+    return RecommendationQuery.model_validate({
+        "limit": limit, "cursor": cursor, "symbol": symbol, "sector": sector,
+    })
+
+
+def _ranking_query(
+    objective: str = Query(...),
+    limit: int = Query(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+    cursor: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    sector: str | None = Query(default=None),
+) -> RankingQuery:
+    return RankingQuery.model_validate({
+        "objective": objective, "limit": limit, "cursor": cursor,
+        "symbol": symbol, "sector": sector,
     })
 
 
@@ -337,7 +362,7 @@ def create_app(
         return HTTPException(status_code=503, detail="analysis_not_ready")
 
     @application.get("/v1/swing/recommendations", response_model=ResponseEnvelope[SwingRecommendationsData])
-    async def get_swing_recommendations(request: Request, query: RecommendationQuery = Depends(), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[SwingRecommendationsData]:
+    async def get_swing_recommendations(request: Request, query: RecommendationQuery = Depends(_recommendation_query), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[SwingRecommendationsData]:
         try:
             data = read_swing(selected_analysis, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
@@ -345,7 +370,7 @@ def create_app(
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
 
     @application.get("/v1/long-term/rankings", response_model=ResponseEnvelope[LongTermRankingsData])
-    async def get_long_term_rankings(request: Request, query: RankingQuery = Depends(), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[LongTermRankingsData]:
+    async def get_long_term_rankings(request: Request, query: RankingQuery = Depends(_ranking_query), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[LongTermRankingsData]:
         try:
             data = read_long_term(selected_analysis, objective=query.objective, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
