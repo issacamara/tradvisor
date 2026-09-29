@@ -32,6 +32,24 @@ variable "functions" {
   "insert_ratings", "scrape_ratings_init"]
 }
 
+variable "initialization_functions" {
+  description = "One-time initialization functions retained from the production ingestion topology"
+  type        = set(string)
+  default     = ["scrape_financials_init", "scrape_ratings_init"]
+}
+
+variable "managed_function_sources" {
+  description = "Function source archives explicitly managed by this V1 deployment"
+  type        = set(string)
+  default     = ["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+}
+
+variable "manage_new_function_sources" {
+  description = "Whether Terraform may upload source archives for newly managed ingestion functions"
+  type        = bool
+  default     = false
+}
+
 variable "function_runtimes" {
   description = "Deployed runtime preserved for each legacy Gen 2 function"
   type        = map(string)
