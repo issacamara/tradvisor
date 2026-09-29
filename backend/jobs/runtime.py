@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from datetime import date, datetime
 from typing import Any, Literal, Mapping, Protocol, cast
 
@@ -80,6 +81,9 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             for row in market_rows
             if row["date"] is not None
         ]
+        market_data_fingerprint = hashlib.sha256(
+            json.dumps(market_data, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
         symbols = tuple(sorted({item["symbol"] for item in market_data}))
         effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
         enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
@@ -89,7 +93,11 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             name=str(payload["name"]),
             catalog_id=str(payload["catalog_id"]),
             effective_session=effective_session,
-            input_snapshot_id=str(payload["input_snapshot_id"]),
+            # The chart is derived from the bounded shares window as well as
+            # the named analytical snapshot. Include both in the immutable
+            # batch identity so changed market data cannot collide with an
+            # earlier partially published batch.
+            input_snapshot_id=f"{payload['input_snapshot_id']}:market-{market_data_fingerprint}",
             rule_version=str(payload["rule_version"]),
             expected_symbols=symbols or tuple(str(item) for item in payload["expected_symbols"]),
             expected_output_names=expected_output_names,

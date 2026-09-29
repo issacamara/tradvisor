@@ -38,7 +38,7 @@ function SwingController() {
     }
     try {
       const from = new Date(`${marketSession}T00:00:00Z`);
-      from.setUTCDate(from.getUTCDate() - 90);
+      from.setUTCDate(from.getUTCDate() - 365);
       const chartResult = await api.request({ method: "get", path: "/v1/stocks/{symbol}/chart", parameters: { path: { symbol: selectedSymbol }, query: { from: from.toISOString().slice(0, 10), to: marketSession, series: ["ohlcv"] } } });
       setChart(chartResult.data.points);
     } catch (error) { setChart([]); setState(apiState(error)); setMessage(safeApiMessage(error)); }
