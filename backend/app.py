@@ -146,28 +146,31 @@ def _chart_query(
     })
 
 
-def _recommendation_query(
-    limit: int = Query(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
-    cursor: str | None = Query(default=None),
-    symbol: str | None = Query(default=None),
-    sector: str | None = Query(default=None),
-) -> RecommendationQuery:
-    return RecommendationQuery.model_validate({
-        "limit": limit, "cursor": cursor, "symbol": symbol, "sector": sector,
-    })
+def _page_query(request: Request) -> dict[str, object]:
+    raw_limit = request.query_params.get("limit")
+    try:
+        limit = DEFAULT_PAGE_LIMIT if raw_limit is None else int(raw_limit)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="validation_failed") from error
+    if not 1 <= limit <= MAX_PAGE_LIMIT:
+        raise HTTPException(status_code=422, detail="validation_failed")
+    return {
+        "limit": limit,
+        "cursor": request.query_params.get("cursor"),
+        "symbol": request.query_params.get("symbol"),
+        "sector": request.query_params.get("sector"),
+    }
 
 
-def _ranking_query(
-    objective: str = Query(...),
-    limit: int = Query(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
-    cursor: str | None = Query(default=None),
-    symbol: str | None = Query(default=None),
-    sector: str | None = Query(default=None),
-) -> RankingQuery:
-    return RankingQuery.model_validate({
-        "objective": objective, "limit": limit, "cursor": cursor,
-        "symbol": symbol, "sector": sector,
-    })
+def _recommendation_query(request: Request) -> RecommendationQuery:
+    return RecommendationQuery.model_validate(_page_query(request))
+
+
+def _ranking_query(request: Request) -> RankingQuery:
+    objective = request.query_params.get("objective")
+    if objective is None:
+        raise HTTPException(status_code=422, detail="validation_failed")
+    return RankingQuery.model_validate({"objective": objective, **_page_query(request)})
 
 
 def _meta(request: Request, clock: Callable[[], datetime], recovery_id: str | None = None) -> ResponseMeta:
