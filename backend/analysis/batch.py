@@ -139,9 +139,9 @@ def _digest(payload: Any) -> str:
 
 
 def _batch_id(
-    catalog_id: str, effective_session: str, input_snapshot_id: str, rule_version: str
+    catalog_id: str, effective_session: str, input_snapshot_id: str, rule_version: str, revision: int
 ) -> str:
-    identity = _digest((catalog_id, effective_session, input_snapshot_id, rule_version))
+    identity = _digest((catalog_id, effective_session, input_snapshot_id, rule_version, revision))
     return f"analysis-batch-v1:{identity}"
 
 
@@ -194,7 +194,7 @@ def build_analytical_batch(
         raise BatchValidationError("batch revision must be positive")
     if (revision == 1) != (supersedes_batch_id is None):
         raise BatchValidationError("revisions after the first must name the batch they supersede")
-    if supersedes_batch_id == _batch_id(catalog_id, session, input_snapshot_id, rule_version):
+    if supersedes_batch_id == _batch_id(catalog_id, session, input_snapshot_id, rule_version, revision):
         raise BatchValidationError("a correction must have a new batch identity")
 
     expected = tuple(sorted(expected_symbols))
@@ -246,7 +246,7 @@ def build_analytical_batch(
             )
         )
 
-    batch_id = _batch_id(catalog_id, session, input_snapshot_id, rule_version)
+    batch_id = _batch_id(catalog_id, session, input_snapshot_id, rule_version, revision)
     content_sha256 = _digest(tuple(canonical_stocks))
     manifest = BatchManifest(
         catalog_id=catalog_id,
