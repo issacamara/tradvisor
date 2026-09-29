@@ -140,18 +140,17 @@ def read_swing(
             # Market-data publication is useful before recommendation rules are
             # ready. Keep the symbol selectable and make the missing analysis
             # explicit instead of turning the whole endpoint into a 422.
-            if any(output.name == "chart" and output.status == "available" for output in stock.outputs):
-                missing = {
-                    "status": "missing_inputs", "value": None,
-                    "unit": "points", "reason_codes": ("analysis_not_published",),
-                }
-                items.append(SwingRecommendation(
-                    symbol=stock.symbol,
-                    entry_action="insufficient_data",
-                    buy_strength=ScoreMetric(**missing),
-                    indicators={name: NumericMetric(**{**missing, "unit": "value"}) for name in ("ema20", "ema50", "rsi14", "atr14", "traded_value20")},
-                    eligibility_guards=(), holding_advice=None,
-                ))
+            missing = {
+                "status": "missing_inputs", "value": None,
+                "unit": "points", "reason_codes": ("analysis_not_published",),
+            }
+            items.append(SwingRecommendation(
+                symbol=stock.symbol,
+                entry_action="insufficient_data",
+                buy_strength=ScoreMetric(**missing),
+                indicators={name: NumericMetric(**{**missing, "unit": "value"}) for name in ("ema20", "ema50", "rsi14", "atr14", "traded_value20")},
+                eligibility_guards=(), holding_advice=None,
+            ))
     return SwingRecommendationsData(
         batch_id=context.active.batch_id, market_session=context.market_session,
         published_at=context.published_at, input_snapshot_id=context.active.input_snapshot_id,
