@@ -198,7 +198,6 @@ function useSessionValue(): SessionActions {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshAdmission, session]);
-
   return useMemo(() => ({
     status, message, refreshAdmission, request,
     async signIn(email, password) {
@@ -258,7 +257,12 @@ export function useAuthSession(): SessionActions {
 
 export function ProtectedWorkspace({ children }: { children: ReactNode }) {
   const session = useAuthSession();
-  if (session.status === "admitted") return <>{children}</>;
+  if (session.status === "admitted") return <>
+    <header className="flex items-center justify-end border-b border-line px-5 py-2">
+      <button type="button" className="rounded border border-line px-3 py-1.5 text-sm" onClick={session.signOut}>Sign out</button>
+    </header>
+    {children}
+  </>;
   return <section className="mx-auto max-w-3xl px-5 py-10" aria-live="polite">
     <h1 className="text-2xl font-bold">Sign-in required</h1>
     <p className="mt-2 text-sm text-muted">{session.message || "Sign in with a verified email."}</p>
