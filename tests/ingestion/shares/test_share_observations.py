@@ -14,7 +14,8 @@ import pytest
 from backend.contracts.analytical_storage import SHARE_PRICE_REVISIONS_V1
 
 
-SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "shares"
+LEGACY_SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 
@@ -29,7 +30,14 @@ def _load_script(name: str, filename: str):
 
 scraper = _load_script("share_scraper_for_tests", "scrape_shares.py")
 loader = _load_script("share_loader_for_tests", "insert_shares.py")
-actual_helper = _load_script("share_helper_for_signature_tests", "helper.py")
+actual_helper = importlib.util.spec_from_file_location(
+    "share_helper_for_signature_tests", LEGACY_SCRIPTS / "helper.py"
+)
+assert actual_helper is not None and actual_helper.loader is not None
+helper_module = importlib.util.module_from_spec(actual_helper)
+sys.modules[actual_helper.name] = helper_module
+actual_helper.loader.exec_module(helper_module)
+actual_helper = helper_module
 
 
 @pytest.mark.parametrize(
@@ -638,4 +646,3 @@ def test_load_requires_explicit_session_and_source_columns() -> None:
 
     assert normalized.empty
     assert evidence["missing_session_evidence"] == 1
-

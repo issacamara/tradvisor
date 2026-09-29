@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts" / "scrape_dividends.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "dividends" / "scrape_dividends.py"
 
 # The pure normalization helpers are tested without installing the legacy
 # scraper's network/runtime dependencies.

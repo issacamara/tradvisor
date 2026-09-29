@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts" / "scrape_ratings.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "ratings" / "scrape_ratings.py"
 
 bs4 = types.ModuleType("bs4")
 bs4.BeautifulSoup = object
