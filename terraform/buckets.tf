@@ -1,30 +1,53 @@
 
+locals {
+  function_entrypoint_roots = {
+    scrape_shares          = "../functions/shares"
+    insert_shares          = "../functions/shares"
+    scrape_dividends       = "../functions/dividends"
+    insert_dividends       = "../functions/dividends"
+    scrape_financials      = "../functions/financials"
+    insert_financials      = "../functions/financials"
+    scrape_financials_init = "../archive/legacy-ingestion/scripts"
+    scrape_ratings         = "../functions/ratings"
+    insert_ratings         = "../functions/ratings"
+    scrape_ratings_init    = "../functions/ratings"
+  }
+  function_dependency_roots = {
+    insert_shares          = "../functions/shares"
+    scrape_financials      = "../functions/financials"
+    insert_financials      = "../functions/financials"
+    scrape_financials_init = "../functions/financials"
+    scrape_ratings_init    = "../functions/ratings"
+  }
+  legacy_function_root = "../archive/legacy-ingestion/scripts"
+}
+
 data "archive_file" "assets" {
   for_each    = var.manage_legacy_source_objects ? toset(var.functions) : toset([])
   type        = "zip"
   output_path = "${each.key}.zip"
 
   source {
-    content  = file("../archive/legacy-ingestion/scripts/helper.py")
+    content  = file("${local.legacy_function_root}/helper.py")
     filename = "helper.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/config.yml")
+    content  = file("${local.legacy_function_root}/config.yml")
     filename = "config.yml"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
+    content  = file("${local.legacy_function_root}/requirements.txt")
     filename = "requirements.txt"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
     filename = "main.py"
   }
 
   dynamic "source" {
     for_each = lookup(var.function_local_files, each.key, [])
     content {
-      content  = file("../archive/legacy-ingestion/scripts/${source.value}")
+      content  = file("${lookup(local.function_dependency_roots, each.key, local.legacy_function_root)}/${source.value}")
       filename = source.value
     }
   }
@@ -76,20 +99,20 @@ data "archive_file" "new_function_assets" {
     filename = "mapping.csv"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
     filename = "main.py"
   }
   dynamic "source" {
     for_each = each.key == "scrape_financials" || each.key == "insert_financials" ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/scrape_financials_init.py")
+      content  = file("../functions/financials/scrape_financials_init.py")
       filename = "scrape_financials_init.py"
     }
   }
   dynamic "source" {
     for_each = each.key == "scrape_ratings" ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/scrape_ratings_init.py")
+      content  = file("../functions/ratings/scrape_ratings_init.py")
       filename = "scrape_ratings_init.py"
     }
   }
@@ -117,7 +140,7 @@ data "archive_file" "initialization_assets" {
     filename = "mapping.csv"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
     filename = "main.py"
   }
   dynamic "source" {
@@ -130,7 +153,7 @@ data "archive_file" "initialization_assets" {
   dynamic "source" {
     for_each = each.key == "scrape_ratings_init" ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/scrape_ratings.py")
+      content  = file("../functions/ratings/scrape_ratings.py")
       filename = "scrape_ratings.py"
     }
   }
