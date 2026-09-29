@@ -59,14 +59,14 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             raise ValueError("snapshot_json must be a JSON object")
         # The analytical snapshot currently contains indicators only. Enrich it
         # with a bounded market-data window so the serving copy can expose the
-        # close-price chart without calculating indicators in the API.
+        # close-price chart and provide enough history for the V1 calculations.
         market_table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
         if not market_table or "`" in market_table or ";" in market_table:
             raise ValueError("market data table must be a plain project.dataset.table identifier")
         market_rows = list(self._client.query(
             "SELECT symbol, date, open, high, low, close, volume "
             f"FROM `{market_table}` "
-            f"WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `{market_table}`), INTERVAL 90 DAY) "
+            f"WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `{market_table}`), INTERVAL 300 DAY) "
             "ORDER BY symbol, date",
             job_config=bigquery.QueryJobConfig(),
         ).result())
