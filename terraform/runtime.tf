@@ -241,6 +241,11 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         }
 
         env {
+          name  = "MARKET_DATA_TABLE"
+          value = "${var.project_id}.stocks.shares"
+        }
+
+        env {
           name  = "GOOGLE_CLOUD_PROJECT"
           value = var.project_id
         }

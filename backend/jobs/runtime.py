@@ -57,15 +57,43 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         payload = json.loads(raw) if isinstance(raw, str) else raw
         if not isinstance(payload, Mapping):
             raise ValueError("snapshot_json must be a JSON object")
+        # The analytical snapshot currently contains indicators only. Enrich it
+        # with a bounded market-data window so the serving copy can expose the
+        # close-price chart without calculating indicators in the API.
+        market_table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
+        if not market_table or "`" in market_table or ";" in market_table:
+            raise ValueError("market data table must be a plain project.dataset.table identifier")
+        market_rows = list(self._client.query(
+            "SELECT symbol, date, open, high, low, close, volume "
+            f"FROM `{market_table}` "
+            f"WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `{market_table}`), INTERVAL 90 DAY) "
+            "ORDER BY symbol, date",
+            job_config=bigquery.QueryJobConfig(),
+        ).result())
+        market_data = [
+            {
+                "symbol": str(row["symbol"]),
+                "session_date": row["date"].isoformat(),
+                "open": row["open"], "high": row["high"], "low": row["low"],
+                "close": row["close"], "volume": row["volume"],
+            }
+            for row in market_rows
+            if row["date"] is not None
+        ]
+        symbols = tuple(sorted({item["symbol"] for item in market_data}))
+        effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
+        enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
+        enriched_payload["market_data"] = market_data
+        expected_output_names = tuple(dict.fromkeys((*map(str, payload["expected_output_names"]), "chart")))
         return AnalyticalInputSnapshot(
             name=str(payload["name"]),
             catalog_id=str(payload["catalog_id"]),
-            effective_session=date.fromisoformat(str(payload["effective_session"])),
+            effective_session=effective_session,
             input_snapshot_id=str(payload["input_snapshot_id"]),
             rule_version=str(payload["rule_version"]),
-            expected_symbols=tuple(str(item) for item in payload["expected_symbols"]),
-            expected_output_names=tuple(str(item) for item in payload["expected_output_names"]),
-            payload=cast(Mapping[str, Any], payload.get("payload", {})),
+            expected_symbols=symbols or tuple(str(item) for item in payload["expected_symbols"]),
+            expected_output_names=expected_output_names,
+            payload=enriched_payload,
             inputs_ready=bool(payload.get("inputs_ready", True)),
             pending_inputs=tuple(str(item) for item in payload.get("pending_inputs", ())),
             revision=int(payload.get("revision", 1)),
@@ -85,8 +113,6 @@ class BigQueryOutputCalculator(VersionedCalculator):
     def calculate(self, snapshot: AnalyticalInputSnapshot, *, symbol: str) -> StockCalculation:
         calculations = snapshot.payload.get("calculations", {})
         outputs = calculations.get(symbol)
-        if not isinstance(outputs, Mapping):
-            raise ValueError(f"snapshot has no calculations for {symbol}")
         result = tuple(
             CalculationOutput(
                 name=name,
@@ -95,7 +121,28 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 reason_codes=tuple(str(reason) for reason in item.get("reason_codes", ())),
             )
             for name, item in outputs.items()
+        ) if isinstance(outputs, Mapping) else ()
+        present = {item.name for item in result}
+        result += tuple(
+            CalculationOutput(name=name, status="unavailable", reason_codes=("analysis_not_published",))
+            for name in snapshot.expected_output_names
+            if name not in present and name != "chart"
         )
+        market = [item for item in snapshot.payload.get("market_data", ()) if item.get("symbol") == symbol]
+        if market:
+            points = tuple({
+                "session_date": item["session_date"], "status": "traded" if item.get("close") is not None else "missing_price",
+                "open": item.get("open"), "high": item.get("high"), "low": item.get("low"),
+                "close": item.get("close"), "last_traded_close": item.get("close"),
+                "analytical_carried_close": None, "volume": int(item["volume"]) if item.get("volume") is not None else None,
+                "indicators": {}, "source_evidence": [],
+            } for item in market)
+            result += (CalculationOutput(
+                name="chart", status="available", value={
+                    "symbol": symbol, "from": points[0]["session_date"], "to": points[-1]["session_date"],
+                    "batch_id": "batch-pending", "points": points,
+                },
+            ),)
         return StockCalculation(symbol=symbol, outputs=result)
 
 

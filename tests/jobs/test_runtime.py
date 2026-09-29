@@ -42,9 +42,11 @@ def test_bigquery_output_calculator_preserves_precomputed_contract() -> None:
     )
 
 
-def test_bigquery_output_calculator_requires_complete_symbol_output() -> None:
-    with pytest.raises(ValueError, match="no calculations"):
-        BigQueryOutputCalculator().calculate(snapshot(), symbol="ORGT")
+def test_bigquery_output_calculator_marks_missing_symbol_outputs_unavailable() -> None:
+    result = BigQueryOutputCalculator().calculate(snapshot(), symbol="ORGT")
+
+    assert all(output.status == "unavailable" for output in result.outputs)
+    assert {output.name for output in result.outputs} == {"ema", "rsi", "atr", "traded_value"}
 
 
 def test_bigquery_output_calculator_rejects_unknown_status() -> None:
