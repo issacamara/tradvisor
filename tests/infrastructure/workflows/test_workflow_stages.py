@@ -25,14 +25,7 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     workflows = _workflows()
     assert workflows == [
         ("shares", ["scrape_shares", "insert_shares"], ["stocks.shares"], "stocks.shares"),
-        ("bonds", ["scrape_bonds", "insert_bonds"], ["stocks.bonds"], "stocks.bonds"),
         ("dividends", ["scrape_dividends", "insert_dividends"], ["stocks.dividends"], "stocks.dividends"),
-        (
-            "capitalizations",
-            ["scrape_capitalizations", "insert_capitalizations"],
-            ["stocks.capitalizations"],
-            "stocks.capitalizations",
-        ),
         ("financials", ["scrape_financials", "insert_financials"], ["stocks.financials"], "stocks.financials"),
         ("ratings", ["scrape_ratings", "insert_ratings"], ["stocks.ratings"], "stocks.ratings"),
     ]
