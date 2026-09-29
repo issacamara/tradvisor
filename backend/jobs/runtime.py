@@ -11,7 +11,7 @@ import json
 import os
 import hashlib
 from datetime import date, datetime
-from typing import Any, Literal, Mapping, Protocol, cast
+from typing import Any, Callable, Literal, Mapping, Protocol, cast
 
 from backend.analysis.batch import CalculationOutput, StockCalculation
 from backend.jobs.daily import (
@@ -28,14 +28,19 @@ class QueryClient(Protocol):
     def query(self, query: str, *, job_config: Any) -> Any: ...
 
 
+class ActivePublicationReader(Protocol):
+    def active_publication(self) -> Any | None: ...
+
+
 class BigQuerySnapshotReader(AnalyticalSnapshotReader):
     """Read exactly one immutable JSON snapshot from a BigQuery table."""
 
-    def __init__(self, client: QueryClient, table: str) -> None:
+    def __init__(self, client: QueryClient, table: str, active_publication: Callable[[], Any | None] | None = None) -> None:
         if not table or "`" in table or ";" in table:
             raise ValueError("snapshot table must be a plain project.dataset.table identifier")
         self._client = client
         self._table = table
+        self._active_publication = active_publication
 
     def read(self, snapshot_name: str) -> AnalyticalInputSnapshot | None:
         from google.cloud import bigquery  # type: ignore[import-untyped]
@@ -89,6 +94,12 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
         enriched_payload["market_data"] = market_data
         expected_output_names = tuple(dict.fromkeys((*map(str, payload["expected_output_names"]), "chart")))
+        active = self._active_publication() if self._active_publication is not None else None
+        revision = int(payload.get("revision", 1))
+        supersedes_batch_id = payload.get("supersedes_batch_id")
+        if active is not None and active.effective_session == effective_session.isoformat():
+            revision = max(revision, int(active.revision) + 1)
+            supersedes_batch_id = str(active.batch_id)
         return AnalyticalInputSnapshot(
             name=str(payload["name"]),
             catalog_id=str(payload["catalog_id"]),
@@ -104,8 +115,8 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             payload=enriched_payload,
             inputs_ready=bool(payload.get("inputs_ready", True)),
             pending_inputs=tuple(str(item) for item in payload.get("pending_inputs", ())),
-            revision=int(payload.get("revision", 1)),
-            supersedes_batch_id=payload.get("supersedes_batch_id"),
+            revision=revision,
+            supersedes_batch_id=supersedes_batch_id,
             published_at=(
                 None
                 if payload.get("published_at") is None
@@ -169,10 +180,11 @@ def build_worker() -> DailyAnalyticalWorker:
     from google.cloud import bigquery
 
     store = FirestoreSdkStore(project_id=project_id, cursor_secret=secret)
+    publisher = AnalyticalPublisher(store)
     return DailyAnalyticalWorker(
-        snapshots=BigQuerySnapshotReader(bigquery.Client(project=project_id), table),
+        snapshots=BigQuerySnapshotReader(bigquery.Client(project=project_id), table, publisher.active_publication),
         calculator=BigQueryOutputCalculator(),
-        publisher=AnalyticalPublisher(store),
+        publisher=publisher,
     )
 
 
