@@ -28,7 +28,7 @@ variable "functions" {
   description = "List of function names"
   type        = list(string)
   default = ["scrape_shares", "scrape_dividends", "insert_shares", "insert_dividends",
-    "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+  "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
 }
 
 variable "initialization_functions" {
