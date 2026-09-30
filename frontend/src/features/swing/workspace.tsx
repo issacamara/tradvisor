@@ -23,7 +23,12 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
   const detail = items.find((item) => item.symbol === selected);
 
   return <main className="grid gap-5 p-4 sm:p-6">
-    <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-muted">Swing / shared market state</p><h1 className="text-2xl font-bold">Swing screener</h1></div><p className="text-sm text-muted">Market session: {marketSession}</p></header>
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted">Swing / shared market state</p><h1 className="text-2xl font-bold">Swing screener</h1></div><div className="flex flex-wrap items-end gap-4"><label className="grid gap-1 text-sm font-medium">Symbol
+      <select aria-label="Chart symbol" value={selected ?? ""} onChange={(event) => selectSymbol(event.target.value)} disabled={!items.length} className="min-w-32 rounded border border-line bg-panel px-3 py-2 text-sm font-normal">
+        {!items.length && <option value="">No symbols available</option>}
+        {items.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
+      </select>
+    </label><p className="text-sm text-muted">Market session: {marketSession}</p></div></header>
     <div className="grid gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
       <section aria-label="Swing recommendations" className="min-w-0 overflow-x-auto border-t border-line">
         <div className="max-h-[31rem] overflow-y-auto">
@@ -32,15 +37,7 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
         {!items.length && <p className="px-3 py-6 text-sm text-muted">No published Swing results.</p>}
       </section>
       <section className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-sm font-semibold">{selected ?? "Close price"} / close price</h2>
-          <label className="grid gap-1 text-sm font-medium">Symbol
-            <select aria-label="Chart symbol" value={selected ?? ""} onChange={(event) => selectSymbol(event.target.value)} disabled={!items.length} className="min-w-32 rounded border border-line bg-panel px-3 py-2 text-sm font-normal">
-              {!items.length && <option value="">No symbols available</option>}
-              {items.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
-            </select>
-          </label>
-        </div>
+        <h2 className="mb-2 text-sm font-semibold">{selected ?? "Close price"} / close price</h2>
         <SwingChart points={chart} />
       </section>
       <aside aria-label="Selected recommendation detail" className="border-t border-line pt-3">
