@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.auth.identity import VerifiedIdentity
+from backend.openapi import StockChartData
 from tests.auth.test_app_startup import AdmissionFixture, CurrentUserFixture, TokenVerifierFixture
 
 
@@ -38,6 +39,29 @@ def test_analysis_routes_return_typed_not_ready_without_a_complete_publication()
         response = application.get(path, params=params, headers=headers)
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "analysis_not_ready"
+
+
+def test_empty_published_chart_falls_back_to_market_data(monkeypatch) -> None:
+    application = client()
+    empty_chart = StockChartData(
+        symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
+        batch_id="published-batch", points=(),
+    )
+    market_chart = StockChartData(
+        symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
+        batch_id="market-fallback:2026-01-02", points=(),
+    )
+    monkeypatch.setattr("backend.app.read_chart", lambda *args, **kwargs: empty_chart)
+    monkeypatch.setattr("backend.app._market_chart_fallback", lambda **kwargs: market_chart)
+
+    response = application.get(
+        "/v1/stocks/AAA/chart",
+        params={"from": "2026-01-01", "to": "2026-01-02"},
+        headers={"Authorization": "Bearer fixture-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["batch_id"] == "market-fallback:2026-01-02"
 
 
 def test_analysis_routes_remain_protected() -> None:

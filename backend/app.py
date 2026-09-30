@@ -173,7 +173,7 @@ def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch
         "close": None if row["close"] is None else {"amount": str(row["close"]), "currency": "XOF"},
         "last_traded_close": None if row["close"] is None else {"amount": str(row["close"]), "currency": "XOF"},
         "analytical_carried_close": None,
-        "volume": None, "indicators": {}, "source_evidence": [],
+        "volume": None, "indicators": {}, "source_evidence": (),
     }) for row in rows)
     return StockChartData.model_validate({
         "symbol": symbol, "from": from_date, "to": to_date,
