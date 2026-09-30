@@ -167,7 +167,13 @@ def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch
         bigquery.ScalarQueryParameter("from_date", "DATE", from_date),
         bigquery.ScalarQueryParameter("to_date", "DATE", to_date),
     ])
-    rows = list(client.query(query, job_config=config).result())
+    rows_by_date: dict[date, Any] = {}
+    for row in client.query(query, job_config=config).result():
+        session_date = row["date"]
+        current = rows_by_date.get(session_date)
+        if current is None or (current["close"] is None and row["close"] is not None):
+            rows_by_date[session_date] = row
+    rows = [rows_by_date[session_date] for session_date in sorted(rows_by_date)]
     points = tuple(ChartPoint.model_validate({
         "session_date": row["date"],
         "status": "traded" if row["close"] is not None else "missing_price",
