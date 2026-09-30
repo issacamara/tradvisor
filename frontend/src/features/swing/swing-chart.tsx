@@ -53,23 +53,11 @@ export function SwingChart({ points }: { points: ChartPoint[] }) {
     return () => { disposed = true; observer?.disconnect(); chart?.remove(); chartRef.current = null; };
   }, [visiblePoints]);
 
-  return <section aria-label="Stock market tracker" className="rounded-lg border border-line bg-panel p-4 sm:p-5">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h3 className="flex items-center gap-2 text-base font-semibold"><span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded border border-line text-muted">▥</span>Stock Market Tracker</h3>
-      <span className="text-sm text-muted">{visiblePoints.at(-1)?.date ?? "No data"}</span>
+  return <section aria-label="Stock closing prices" className="chart-workspace">
+    <div className="chart-toolbar"><div><span className="eyebrow">CLOSE PRICE</span><div className="chart-value"><strong>{summary.latest === null ? "—" : summary.latest.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong><span>XOF</span>{summary.changePercent !== null && <span className={`price-change ${summary.changePercent >= 0 ? "positive" : "negative"}`}>{summary.changePercent >= 0 ? "+" : ""}{summary.changePercent.toFixed(2)}%</span>}</div></div>
+      <div className="segmented" aria-label="Chart period">{["1W", "1M", "3M", "1Y"].map((option) => <button key={option} type="button" aria-pressed={range === option} onClick={() => setRange(option)}>{option}</button>)}</div>
     </div>
-    <div className="mt-4 grid grid-cols-5 overflow-hidden rounded-lg border border-line text-center text-sm font-medium">
-      {["1D", "1W", "1M", "3M", "1Y"].map((option) => <button key={option} type="button" aria-pressed={range === option} onClick={() => setRange(option)} className={`py-2 transition-colors ${range === option ? "bg-white/10 text-foreground" : "text-muted hover:bg-white/5"}`}>{option}</button>)}
-    </div>
-    <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <strong className="text-2xl tracking-normal">{summary.latest === null ? "—" : summary.latest.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
-      {summary.changePercent !== null && <span className={`rounded px-2 py-1 text-xs font-semibold ${summary.changePercent >= 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>{summary.changePercent >= 0 ? "↗" : "↘"} {Math.abs(summary.changePercent).toFixed(2)}%</span>}
-      <span className="basis-full text-xs uppercase tracking-wide text-muted">{visiblePoints.length ? "Close price" : "No close-price observations"}</span>
-    </div>
-    <div className="mt-4 min-h-[16rem] w-full overflow-hidden border-y border-line py-2" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session.</span></div>
-    <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-line text-center text-sm">
-      <div className="border-r border-line py-2"><span className="text-muted">Highest </span><strong>{summary.high === null ? "—" : summary.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
-      <div className="py-2"><span className="text-muted">Lowest </span><strong>{summary.low === null ? "—" : summary.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
-    </div>
+    {visiblePoints.length ? <div className="chart-canvas" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session.</span></div> : <div className="chart-empty" role="status">No close-price history is available for this stock and period.</div>}
+    <div className="chart-footer"><span>Last session <strong>{visiblePoints.at(-1)?.date ?? "—"}</strong></span><span>High <strong>{summary.high === null ? "—" : summary.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span><span>Low <strong>{summary.low === null ? "—" : summary.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span></div>
   </section>;
 }

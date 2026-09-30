@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { InvestorNav } from "@/components/investor-nav";
 import type { components } from "@/api/generated/schema";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { PaperWorkspace } from "@/features/paper/views/workspace";
@@ -78,7 +78,7 @@ function PaperCommandController() {
     }
   }, [refresh, session]);
 
-  return <><WorkspaceNav />{refreshMessage && <p role="alert" data-state={refreshState} className="border-b border-warning px-5 py-3 text-sm">{refreshMessage}</p>}<PaperCommands
+  return <><InvestorNav active="paper" />{refreshMessage && <p role="alert" data-state={refreshState} className="data-alert">{refreshMessage}</p>}<div className="workspace-page"><header className="page-heading paper-heading"><div><p className="eyebrow">SIMULATED INVESTING <span aria-hidden="true">/</span> BRVM</p><h1>Paper portfolio</h1><p className="page-subtitle">Place manual orders linked to published recommendations.</p></div><span className="session-stamp">Simulated account</span></header><PaperCommands
     setupRequired={setupRequired}
     recoveryId={recoveryId ?? "setup-required"}
     generation={generation}
@@ -86,7 +86,5 @@ function PaperCommandController() {
     onSetup={(request, key) => mutate("/v1/paper/portfolio", request, key)}
     onOrder={(request, key) => mutate("/v1/paper/orders", request, key)}
     onReset={(request, key) => mutate("/v1/paper/reset", request, key)}
-  /><PaperWorkspace portfolio={portfolio} orders={orders} executions={executions} movements={movements} /></>;
+  /><PaperWorkspace portfolio={portfolio} orders={orders} executions={executions} movements={movements} /></div></>;
 }
-
-function WorkspaceNav() { return <nav aria-label="Investor workspaces" className="flex gap-4 border-b border-line px-5 py-3 text-sm"><Link href="/swing/" className="text-muted">Swing</Link><Link href="/long-term/" className="text-muted">Long-Term</Link><Link href="/paper/" aria-current="page" className="font-semibold text-accent">Paper</Link></nav>; }

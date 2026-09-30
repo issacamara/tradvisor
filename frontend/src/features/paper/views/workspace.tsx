@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { components } from "@/api/generated/schema";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Portfolio = components["schemas"]["PortfolioResource"];
 type Order = components["schemas"]["PaperOrder"];
@@ -27,8 +26,8 @@ export function PaperWorkspace({ portfolio, orders = [], executions = [], moveme
   const [view, setView] = useState<"orders" | "executions" | "ledger">("orders");
   const summary = portfolio?.summary;
   const positions = portfolio?.positions ?? [];
-  return <main className="grid gap-5 p-4 sm:p-6">
-    <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-muted">Paper / manual simulation</p><h1 className="text-2xl font-bold">Portfolio reporting</h1></div><p className="text-sm text-muted">Valuation freshness: {freshness}</p></header>
+  return <main className="paper-report grid gap-5">
+    <header className="flex flex-wrap items-end justify-between gap-3"><h2 className="text-lg font-semibold">Account overview</h2><p className="text-sm text-muted">Valuation freshness: {freshness}</p></header>
     <section aria-label="Paper balances and reservations" className="grid gap-3 border-y border-line py-4 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="Cash" value={summary ? xof(summary.cash.amount) : "Unavailable"} />
       <Metric label="Reserved cash" value={summary ? xof(summary.reserved_cash.amount) : "Unavailable"} />
@@ -45,7 +44,7 @@ export function PaperWorkspace({ portfolio, orders = [], executions = [], moveme
       </div>
       <aside className="grid content-start gap-4 border-t border-line pt-3">
         <section aria-label="Position valuation"><h2 className="text-lg font-semibold">Positions</h2><table className="mt-2 w-full text-left text-sm"><caption className="sr-only">Paper positions and reserved quantities</caption><thead><tr><th className="py-2" scope="col">Symbol</th><th scope="col">Shares</th><th scope="col">Reserved</th><th scope="col">Cost basis</th></tr></thead><tbody>{positions.map((position) => <tr className="border-t border-line" key={position.symbol}><th className="py-2" scope="row">{position.symbol}</th><td>{position.quantity}</td><td>{position.reserved_sell_quantity}</td><td>{xof(position.remaining_gross_cost.amount)}</td></tr>)}</tbody></table>{!positions.length && <p className="mt-2 text-sm text-muted">No open simulated positions.</p>}<p className="mt-3 text-xs text-muted">{portfolio?.valuation_status === "incomplete" ? "At least one position lacks a current valuation. The total is intentionally withheld." : "Position market value and P&amp;L appear only when provided by the backend valuation contract."}</p></section>
-        <section aria-label="Simulated performance"><h2 className="text-lg font-semibold">Simulated performance</h2><div className="mt-3 h-40" role="img" aria-label="No backend P and L series available"><ResponsiveContainer width="100%" height="100%"><AreaChart data={[]}><XAxis dataKey="session" /><YAxis /><Tooltip /><Area dataKey="value" stroke="#65b8d1" fill="#65b8d1" /></AreaChart></ResponsiveContainer></div><p className="text-sm text-muted">Gross and net realized/unrealized P&amp;L are unavailable in the current generated portfolio read contract.</p><dl className="mt-2 grid grid-cols-2 gap-2 text-sm"><Metric label="Gross realized" value="Unavailable" /><Metric label="Net realized" value="Unavailable" /><Metric label="Gross unrealized" value="Unavailable" /><Metric label="Net unrealized" value="Unavailable" /></dl></section>
+        <section aria-label="Simulated performance"><h2 className="text-lg font-semibold">Simulated performance</h2><p className="mt-3 border-l-2 border-line pl-3 text-sm text-muted">A performance series is not available for this portfolio yet.</p><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><Metric label="Gross realized" value="Unavailable" /><Metric label="Net realized" value="Unavailable" /><Metric label="Gross unrealized" value="Unavailable" /><Metric label="Net unrealized" value="Unavailable" /></dl></section>
       </aside>
     </section>
     <p className="text-xs text-muted">Pending orders are reservations, never fills. Execution rows show confirmed simulated fills only.</p>

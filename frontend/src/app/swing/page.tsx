@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { InvestorNav } from "@/components/investor-nav";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { SwingWorkspace } from "@/features/swing/workspace";
 import { apiState, safeApiMessage, type RuntimeDataState } from "@/features/auth/api-error";
@@ -43,7 +43,5 @@ function SwingController() {
       setChart(chartResult.data.points);
     } catch (error) { setChart([]); setState(apiState(error)); setMessage(safeApiMessage(error)); }
   })(); }, [api, marketSession, selectedSymbol]);
-  return <><WorkspaceNav active="swing" />{message && <p role="alert" data-state={state} className="border-b border-warning px-5 py-3 text-sm">{message}</p>}<SwingWorkspace items={items} chart={chart} marketSession={marketSession} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
+  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} marketSession={marketSession} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
 }
-
-function WorkspaceNav({ active }: { active: "swing" | "long-term" | "paper" }) { return <nav aria-label="Investor workspaces" className="flex gap-4 border-b border-line px-5 py-3 text-sm">{([["swing", "/swing/", "Swing"], ["long-term", "/long-term/", "Long-Term"], ["paper", "/paper/", "Paper"]] as const).map(([id, href, label]) => <Link key={id} aria-current={active === id ? "page" : undefined} href={href} className={active === id ? "font-semibold text-accent" : "text-muted"}>{label}</Link>)}</nav>; }

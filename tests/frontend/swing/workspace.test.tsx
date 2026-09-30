@@ -12,10 +12,17 @@ const item: Recommendation = { symbol: "SAMPLE", entry_action: "no_clear_signal"
 describe("Swing workspace", () => {
   it("keeps market entry separate from holding advice and never labels a non-buy as sell", () => {
     render(<SwingWorkspace items={[item]} />);
-    fireEvent.click(screen.getByRole("button", { name: "SAMPLE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect SAMPLE" }));
     expect(screen.getAllByText("no clear signal")).toHaveLength(2);
     expect(screen.getAllByText("not applicable")).toHaveLength(2);
     expect(screen.getByText(/not a Sell instruction/)).toBeInTheDocument();
+  });
+
+  it("filters symbols while keeping the selected recommendation available", () => {
+    render(<SwingWorkspace items={[item]} selectedSymbol="SAMPLE" />);
+    fireEvent.change(screen.getByPlaceholderText("Search symbol"), { target: { value: "OTHER" } });
+    expect(screen.getByText("No symbols match this filter.")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "SAMPLE" })).toHaveLength(2);
   });
 
   it("does not render the removed dated evidence table", () => {
