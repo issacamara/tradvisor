@@ -151,7 +151,7 @@ def _chart_query(
 
 def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch_id: str) -> StockChartData:
     """Serve close prices directly when the analytical chart output is unavailable."""
-    from google.cloud import bigquery  # type: ignore[attr-defined]
+    from google.cloud import bigquery
 
     table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
     if not table or "`" in table or ";" in table:
