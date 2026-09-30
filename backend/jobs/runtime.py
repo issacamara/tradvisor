@@ -149,7 +149,7 @@ class BigQueryOutputCalculator(VersionedCalculator):
     def calculate(self, snapshot: AnalyticalInputSnapshot, *, symbol: str) -> StockCalculation:
         calculations = snapshot.payload.get("calculations", {})
         outputs = calculations.get(symbol)
-        result = tuple(
+        result = [
             CalculationOutput(
                 name=name,
                 status=_status(item.get("status")),
@@ -157,16 +157,16 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 reason_codes=tuple(str(reason) for reason in item.get("reason_codes", ())),
             )
             for name, item in outputs.items()
-        ) if isinstance(outputs, Mapping) else ()
-        present = {item.name for item in result}
-        result += tuple(
-            CalculationOutput(name=name, status="unavailable", reason_codes=("analysis_not_published",))
-            for name in snapshot.expected_output_names
-            if name not in present and name != "chart"
-        )
+        ] if isinstance(outputs, Mapping) else []
         market = [item for item in snapshot.payload.get("market_data", ()) if item.get("symbol") == symbol]
         if market:
-            result += (_development_swing_output(snapshot, symbol, market),)
+            # Prefer the development-derived recommendation when the named
+            # snapshot has no usable Swing result. Keep one output per family;
+            # batch validation intentionally rejects duplicate families.
+            existing_swing = next((item for item in result if item.name == "swing"), None)
+            if existing_swing is None or existing_swing.status == "unavailable":
+                result = [item for item in result if item.name != "swing"]
+                result.append(_development_swing_output(snapshot, symbol, market))
         if market:
             points = tuple({
                 "session_date": item["session_date"], "status": "traded" if item.get("close") is not None else "missing_price",
@@ -176,13 +176,19 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 "analytical_carried_close": None, "volume": int(item["volume"]) if item.get("volume") is not None else None,
                 "indicators": {}, "source_evidence": [],
             } for item in market)
-            result += (CalculationOutput(
+            result.append(CalculationOutput(
                 name="chart", status="available", value={
                     "symbol": symbol, "from": points[0]["session_date"], "to": points[-1]["session_date"],
                     "batch_id": "batch-pending", "points": points,
                 },
-            ),)
-        return StockCalculation(symbol=symbol, outputs=result)
+            ))
+        present = {item.name for item in result}
+        result.extend(
+            CalculationOutput(name=name, status="unavailable", reason_codes=("analysis_not_published",))
+            for name in snapshot.expected_output_names
+            if name not in present
+        )
+        return StockCalculation(symbol=symbol, outputs=tuple(result))
 
 
 def _development_swing_output(

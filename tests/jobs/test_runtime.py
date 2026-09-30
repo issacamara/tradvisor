@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
+import json
+
 import pytest
 
 from backend.analysis.batch import CalculationOutput
 from backend.analysis.batch import StockCalculation
+from backend.analysis.batch import build_analytical_batch
 from backend.jobs.daily import AnalyticalInputSnapshot
 from backend.jobs.runtime import BigQueryOutputCalculator, BigQuerySnapshotReader
+from backend.openapi import SwingRecommendation
 
 
 def snapshot() -> AnalyticalInputSnapshot:
@@ -96,6 +101,83 @@ def test_bigquery_output_calculator_derives_swing_recommendation_from_shares() -
     assert swing.value["buy_strength"]["status"] == "assessable"
     assert swing.value["indicators"]["ema20"]["status"] == "assessable"
     assert swing.value["indicators"]["traded_value20"]["value"] == 34950000.0
+
+
+def test_development_swing_output_replaces_placeholder_and_builds_complete_batch() -> None:
+    source = snapshot()
+    source = replace(
+        source,
+        expected_output_names=("atr", "chart", "ema", "rsi", "swing", "traded_value"),
+        payload={
+            **source.payload,
+            "market_data": [
+                {
+                    "symbol": "NTLC",
+                    "session_date": (date(2025, 1, 1) + timedelta(days=index)).isoformat(),
+                    "open": 100 + index,
+                    "high": 102 + index,
+                    "low": 98 + index,
+                    "close": 100 + index,
+                    "volume": 100000,
+                }
+                for index in range(260)
+            ],
+        },
+    )
+
+    result = BigQueryOutputCalculator().calculate(source, symbol="NTLC")
+    swing_outputs = [output for output in result.outputs if output.name == "swing"]
+
+    assert len(swing_outputs) == 1
+    assert swing_outputs[0].status == "available"
+    SwingRecommendation.model_validate_json(json.dumps(swing_outputs[0].value))
+    build_analytical_batch(
+        catalog_id=source.catalog_id,
+        effective_session=source.effective_session,
+        input_snapshot_id=source.input_snapshot_id,
+        rule_version=source.rule_version,
+        expected_symbols=source.expected_symbols,
+        expected_output_names=source.expected_output_names,
+        stocks=(result,),
+        inputs_ready=source.inputs_ready,
+        pending_inputs=source.pending_inputs,
+        revision=source.revision,
+        supersedes_batch_id=source.supersedes_batch_id,
+        published_at=source.published_at,
+        strategy_id=source.strategy_id,
+    )
+
+
+def test_development_swing_requires_warmup_history() -> None:
+    source = snapshot()
+    source = replace(
+        source,
+        expected_output_names=("atr", "chart", "ema", "rsi", "swing", "traded_value"),
+        payload={
+            **source.payload,
+            "market_data": [
+                {
+                    "symbol": "NTLC",
+                    "session_date": (date(2026, 1, 1) + timedelta(days=index)).isoformat(),
+                    "open": 100,
+                    "high": 102,
+                    "low": 98,
+                    "close": 100,
+                    "volume": 100000,
+                }
+                for index in range(100)
+            ],
+        },
+    )
+
+    swing = next(
+        output for output in BigQueryOutputCalculator().calculate(source, symbol="NTLC").outputs
+        if output.name == "swing"
+    )
+
+    assert swing.status == "available"
+    assert swing.value["entry_action"] == "insufficient_data"
+    assert swing.value["buy_strength"]["value"] is None
 
 
 def test_snapshot_reader_rejects_identifier_injection() -> None:
