@@ -154,11 +154,16 @@ class LongTermRankedCompany(ContractModel):
 
     @model_validator(mode="after")
     def validate_analysis_views(self) -> "LongTermRankedCompany":
-        if self.growth.overall_score.model_dump() != self.result.growth.overall_score.model_dump():
+        if _score_semantics(self.growth.overall_score) != _score_semantics(self.result.growth.overall_score):
             raise ValueError("Growth view must match its immutable LongTermResult")
-        if self.dividend_research.dividend_score.model_dump() != self.result.dividend.overall_score.model_dump():
+        if _score_semantics(self.dividend_research.dividend_score) != _score_semantics(self.result.dividend.overall_score):
             raise ValueError("Dividend view must match its deferred LongTermResult objective")
         return self
+
+
+def _score_semantics(value: AnalyticalMetric[Any]) -> tuple[Any, ...]:
+    """Compare score meaning across the API and immutable contract model types."""
+    return (value.status, value.value, value.unit, value.reason_codes, value.evidence_refs, value.effective_date, value.basis)
 
 
 class LongTermRankingsData(ContractModel):
