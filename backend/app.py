@@ -427,6 +427,13 @@ def create_app(
     async def get_stock_chart(request: Request, symbol: str, query: ChartQuery = Depends(_chart_query), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[StockChartData]:
         try:
             data = read_chart(selected_analysis, symbol=symbol, from_date=query.from_date, to_date=query.to_date, series=query.series, cursor_secret=selected_analysis_secret, now=clock)
+            if not data.points:
+                data = _market_chart_fallback(
+                    symbol=symbol,
+                    from_date=query.from_date,
+                    to_date=query.to_date,
+                    batch_id=f"market-fallback:{query.to_date.isoformat()}",
+                )
         except AnalysisNotReady:
             try:
                 data = _market_chart_fallback(
