@@ -23,12 +23,16 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
   const detail = items.find((item) => item.symbol === selected);
 
   return <main className="grid gap-5 p-4 sm:p-6">
-    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted">Swing / shared market state</p><h1 className="text-2xl font-bold">Swing screener</h1></div><div className="flex flex-wrap items-end gap-4"><label className="grid gap-1 text-sm font-medium">Symbol
-      <select aria-label="Chart symbol" value={selected ?? ""} onChange={(event) => selectSymbol(event.target.value)} disabled={!items.length} className="min-w-32 rounded border border-line bg-panel px-3 py-2 text-sm font-normal">
-        {!items.length && <option value="">No symbols available</option>}
-        {items.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
-      </select>
-    </label><p className="text-sm text-muted">Market session: {marketSession}</p></div></header>
+    <header className="grid items-end gap-4 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
+      <div><p className="text-sm text-muted">Swing / shared market state</p><h1 className="text-2xl font-bold">Swing screener</h1></div>
+      <h2 className="min-w-0 text-sm font-semibold">{selected ?? "Close price"} / close price</h2>
+      <div className="flex flex-wrap items-end justify-between gap-4 xl:justify-end"><label className="grid gap-1 text-sm font-medium">Symbol
+        <select aria-label="Chart symbol" value={selected ?? ""} onChange={(event) => selectSymbol(event.target.value)} disabled={!items.length} className="min-w-32 rounded border border-line bg-panel px-3 py-2 text-sm font-normal">
+          {!items.length && <option value="">No symbols available</option>}
+          {items.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}
+        </select>
+      </label><p className="text-sm text-muted">Market session: {marketSession}</p></div>
+    </header>
     <div className="grid gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.4fr)_minmax(16rem,0.7fr)]">
       <section aria-label="Swing recommendations" className="min-w-0 overflow-x-auto border-t border-line">
         <div className="max-h-[31rem] overflow-y-auto">
@@ -36,10 +40,7 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
         </div>
         {!items.length && <p className="px-3 py-6 text-sm text-muted">No published Swing results.</p>}
       </section>
-      <section className="min-w-0">
-        <h2 className="mb-2 text-sm font-semibold">{selected ?? "Close price"} / close price</h2>
-        <SwingChart points={chart} />
-      </section>
+      <section className="min-w-0"><SwingChart points={chart} /></section>
       <aside aria-label="Selected recommendation detail" className="border-t border-line pt-3">
         <h2 className="text-lg font-semibold">{detail?.symbol ?? "Recommendation detail"}</h2>
         {detail ? <><p className="mt-2 text-sm">Entry: <strong>{detail.entry_action.replaceAll("_", " ")}</strong></p><p className="mt-1 text-sm text-muted">Strength is a rule score, not a probability. A result that does not qualify for Buy is not a Sell instruction.</p><h3 className="mt-5 text-sm font-semibold">Eligibility evidence</h3><ul className="mt-2 grid gap-2 text-sm">{detail.eligibility_guards.map((guard) => <li key={guard.code} className="flex justify-between gap-3"><span>{guard.code.replaceAll("_", " ")}</span><span className="text-muted">{guard.status}{guard.observed !== null ? ` · ${guard.observed}` : ""}</span></li>)}</ul><h3 className="mt-5 text-sm font-semibold">Holding advice</h3><p className="mt-2 text-sm">{detail.holding_advice?.action.replaceAll("_", " ") ?? "Not applicable"}</p><ul className="mt-2 grid gap-2 text-sm text-muted">{detail.holding_advice?.reasons.map((reason) => <li key={reason.code}>{reason.message}</li>)}</ul></> : <p className="mt-2 text-sm text-muted">Select a row to inspect rule and holding evidence.</p>}
