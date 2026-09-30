@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { InvestorNav } from "@/components/investor-nav";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { LongTermWorkspace } from "@/features/long_term/workspace";
 import { apiState, safeApiMessage, type RuntimeDataState } from "@/features/auth/api-error";
@@ -15,7 +15,7 @@ export default function LongTermPage() {
 function LongTermController() {
   const session = useAuthSession();
   const api = useMemo(() => createApiTransport(session.request), [session.request]);
-  const [objective, setObjective] = useState<"growth" | "dividend" | "balanced">("growth");
+  const [objective, setObjective] = useState<"growth" | "dividend">("growth");
   const [items, setItems] = useState<components["schemas"]["LongTermRankedCompany"][]>([]);
   const [publishedAt, setPublishedAt] = useState("Unavailable");
   const [state, setState] = useState<RuntimeDataState>("ready");
@@ -27,7 +27,5 @@ function LongTermController() {
       setItems(result.data.items); setPublishedAt(result.data.published_at); setMessage("");
     } catch (error) { setState(apiState(error)); setMessage(safeApiMessage(error)); }
   })(); }, [api, objective]);
-  return <><WorkspaceNav />{message && <p role="alert" data-state={state} className="border-b border-warning px-5 py-3 text-sm">{message}</p>}<LongTermWorkspace items={items} publishedAt={publishedAt} objective={objective} onObjectiveChange={setObjective} /></>;
+  return <><InvestorNav active="long-term" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<LongTermWorkspace items={items} publishedAt={publishedAt} objective={objective} onObjectiveChange={setObjective} /></>;
 }
-
-function WorkspaceNav() { return <nav aria-label="Investor workspaces" className="flex gap-4 border-b border-line px-5 py-3 text-sm"><Link href="/swing/" className="text-muted">Swing</Link><Link href="/long-term/" aria-current="page" className="font-semibold text-accent">Long-Term</Link><Link href="/paper/" className="text-muted">Paper</Link></nav>; }

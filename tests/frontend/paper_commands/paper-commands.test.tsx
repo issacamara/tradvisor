@@ -3,6 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import { PaperCommands } from "@/features/paper/commands/paper-commands";
 
 describe("PaperCommands", () => {
+  it("requires a second explicit action before resetting a paper portfolio", async () => {
+    const onReset = vi.fn(async () => "confirmed" as const);
+    render(<PaperCommands setupRequired={false} generation="g1" stateVersion={3} recoveryId="r1" onReset={onReset} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reset portfolio" }));
+    expect(onReset).not.toHaveBeenCalled();
+    expect(screen.getByText(/Start a new simulated portfolio/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onReset).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reset portfolio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm reset" }));
+    await waitFor(() => expect(onReset).toHaveBeenCalledOnce());
+  });
+
   it("does not show an optimistic fill and surfaces uncertain outcomes", async () => {
     const onOrder = vi.fn(async () => "uncertain" as const);
     render(<PaperCommands setupRequired={false} generation="g1" stateVersion={3} recoveryId="r1" onOrder={onOrder} />);

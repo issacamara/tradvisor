@@ -17,7 +17,7 @@ describe("paper reporting", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load next page" }));
     expect(onNext).toHaveBeenCalledWith("executions");
     fireEvent.click(screen.getByRole("tab", { name: "Cash ledger" }));
-    expect(screen.getByRole("heading", { name: "Portfolio reporting" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Account overview" })).toBeInTheDocument();
   });
 
   it("clears a stale page boundary rather than combining history snapshots", () => {
@@ -30,7 +30,7 @@ describe("paper reporting", () => {
 
   it("does not report P&L until the backend read contract supplies it", () => {
     render(<PaperWorkspace />);
-    expect(screen.getByText(/P&L are unavailable in the current generated portfolio read contract/)).toBeInTheDocument();
+    expect(screen.getByText(/A performance series is not available/)).toBeInTheDocument();
     expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(5);
   });
 });

@@ -3,11 +3,10 @@ import { describe, expect, it } from "vitest";
 import { LongTermWorkspace } from "@/features/long_term/workspace";
 
 describe("Long-Term workspace", () => {
-  it("keeps the three objective states distinct and marks Balanced deferred", () => {
+  it("keeps V1 objectives separate without offering a deferred composite score", () => {
     render(<LongTermWorkspace />);
-    fireEvent.click(screen.getByRole("tab", { name: "balanced" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Balanced scoring is deferred in V1");
-    expect(screen.getByText("No catalog research results are available.")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /balanced/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No published company research yet.")).toBeInTheDocument();
   });
 
   it("offers dividend facts as a separate research view", () => {
