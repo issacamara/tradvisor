@@ -66,7 +66,7 @@ export function SwingChart({ points }: { points: ChartPoint[] }) {
       {summary.changePercent !== null && <span className={`rounded px-2 py-1 text-xs font-semibold ${summary.changePercent >= 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>{summary.changePercent >= 0 ? "↗" : "↘"} {Math.abs(summary.changePercent).toFixed(2)}%</span>}
       <span className="basis-full text-xs uppercase tracking-wide text-muted">{visiblePoints.length ? "Close price" : "No close-price observations"}</span>
     </div>
-    <div className="mt-4 min-h-[16rem] w-full overflow-hidden border-y border-line py-2" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session. A dated evidence table follows.</span></div>
+    <div className="mt-4 min-h-[16rem] w-full overflow-hidden border-y border-line py-2" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session.</span></div>
     <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-line text-center text-sm">
       <div className="border-r border-line py-2"><span className="text-muted">Highest </span><strong>{summary.high === null ? "—" : summary.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
       <div className="py-2"><span className="text-muted">Lowest </span><strong>{summary.low === null ? "—" : summary.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>

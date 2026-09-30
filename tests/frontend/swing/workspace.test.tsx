@@ -18,18 +18,16 @@ describe("Swing workspace", () => {
     expect(screen.getByText(/not a Sell instruction/)).toBeInTheDocument();
   });
 
-  it("renders missing price evidence without fabricating a candle", () => {
+  it("does not render the removed dated evidence table", () => {
     render(<SwingWorkspace chart={[{ session_date: "2026-09-01", status: "missing_price", open: null, high: null, low: null, close: null, last_traded_close: null, analytical_carried_close: null, indicators: {}, source_evidence: [], volume: null }]} />);
-    expect(screen.getByText("missing price")).toBeInTheDocument();
-    expect(screen.getAllByText("—", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.queryByText("missing price")).not.toBeInTheDocument();
   });
 
-  it("renders backend supplied source attribution and links without inventing evidence", () => {
+  it("does not render backend source attribution in the removed table", () => {
     render(<SwingWorkspace chart={[{ session_date: "2026-09-01", status: "traded", open: null, high: null, low: null, close: null, last_traded_close: null, analytical_carried_close: null, indicators: {}, source_evidence: [{ source_id: "brvm-market-feed", source_url: "https://example.test/source", collected_at: "2026-09-01T16:00:00Z", published_at: "2026-09-01T17:00:00Z", original_unit: null, basis: "actual" }], volume: null }]} />);
-    expect(screen.getByRole("link", { name: "brvm-market-feed" })).toHaveAttribute("href", "https://example.test/source");
-    const evidenceRow = screen.getByRole("row", { name: /brvm-market-feed/ });
-    expect(evidenceRow).toHaveTextContent("actual");
-    expect(evidenceRow).toHaveTextContent("collected 2026-09-01T16:00:00Z");
-    expect(evidenceRow).toHaveTextContent("published 2026-09-01T17:00:00Z");
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.queryByText("brvm-market-feed")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "brvm-market-feed" })).not.toBeInTheDocument();
   });
 });

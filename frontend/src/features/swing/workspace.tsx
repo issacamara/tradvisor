@@ -42,10 +42,6 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
           </label>
         </div>
         <SwingChart points={chart} />
-        <div className="mt-3 overflow-x-auto border-t border-line">
-          <table className="w-full min-w-[28rem] text-left text-xs"><caption className="sr-only">Dated closing prices and source evidence</caption><thead><tr>{["Session", "Status", "Close", "Source evidence"].map((label) => <th className="px-2 py-2 font-semibold" key={label} scope="col">{label}</th>)}</tr></thead><tbody>{chart.map((point) => <tr key={point.session_date} className="border-t border-line"><th scope="row" className="px-2 py-2">{point.session_date}</th><td className="px-2 py-2">{point.status.replaceAll("_", " ")}</td><td className="px-2 py-2">{point.close?.amount ?? "—"}</td><td className="px-2 py-2">{point.source_evidence.length ? <ul className="grid gap-1">{point.source_evidence.map((evidence, index) => <li key={`${evidence.source_id}-${index}`}>{evidence.source_url?.startsWith("https://") ? <a className="underline" href={evidence.source_url} target="_blank" rel="noreferrer">{evidence.source_id}</a> : evidence.source_id} ({evidence.basis}){evidence.collected_at ? ` · collected ${evidence.collected_at}` : ""}{evidence.published_at ? ` · published ${evidence.published_at}` : ""}</li>)}</ul> : "Unavailable"}</td></tr>)}</tbody></table>
-          {!chart.length && <p className="px-2 py-4 text-xs text-muted">Chart evidence is unavailable until a typed session series is supplied.</p>}
-        </div>
       </section>
       <aside aria-label="Selected recommendation detail" className="border-t border-line pt-3">
         <h2 className="text-lg font-semibold">{detail?.symbol ?? "Recommendation detail"}</h2>
