@@ -11,7 +11,7 @@ from backend.analysis.batch import StockCalculation
 from backend.analysis.batch import build_analytical_batch
 from backend.jobs.daily import AnalyticalInputSnapshot
 from backend.jobs.runtime import BigQueryOutputCalculator, BigQuerySnapshotReader
-from backend.openapi import SwingRecommendation
+from backend.openapi import LongTermRankedCompany, SwingRecommendation
 
 
 def snapshot() -> AnalyticalInputSnapshot:
@@ -40,7 +40,7 @@ def test_bigquery_output_calculator_preserves_precomputed_contract() -> None:
     result = BigQueryOutputCalculator().calculate(snapshot(), symbol="NTLC")
 
     assert isinstance(result, StockCalculation)
-    assert result.outputs == (
+    assert result.outputs[:4] == (
         CalculationOutput("ema", "available", {"ema20": 10.5}),
         CalculationOutput("rsi", "unavailable", reason_codes=("warming_up",)),
         CalculationOutput("atr", "available", {"atr14": 1.2}),
@@ -51,8 +51,9 @@ def test_bigquery_output_calculator_preserves_precomputed_contract() -> None:
 def test_bigquery_output_calculator_marks_missing_symbol_outputs_unavailable() -> None:
     result = BigQueryOutputCalculator().calculate(snapshot(), symbol="ORGT")
 
-    assert all(output.status == "unavailable" for output in result.outputs)
-    assert {output.name for output in result.outputs} == {"ema", "rsi", "atr", "traded_value"}
+    assert all(output.status == "unavailable" for output in result.outputs if output.name != "long_term")
+    assert next(output for output in result.outputs if output.name == "long_term").status == "available"
+    assert {output.name for output in result.outputs} == {"ema", "rsi", "atr", "traded_value", "long_term"}
 
 
 def test_bigquery_output_calculator_rejects_unknown_status() -> None:
@@ -107,7 +108,7 @@ def test_development_swing_output_replaces_placeholder_and_builds_complete_batch
     source = snapshot()
     source = replace(
         source,
-        expected_output_names=("atr", "chart", "ema", "rsi", "swing", "traded_value"),
+        expected_output_names=("atr", "chart", "ema", "long_term", "rsi", "swing", "traded_value"),
         payload={
             **source.payload,
             "market_data": [
@@ -178,6 +179,47 @@ def test_development_swing_requires_warmup_history() -> None:
     assert swing.status == "available"
     assert swing.value["entry_action"] == "insufficient_data"
     assert swing.value["buy_strength"]["value"] is None
+
+
+def test_development_publication_exposes_long_term_company_with_explicit_missing_evidence() -> None:
+    source = snapshot()
+
+    long_term = next(
+        output
+        for output in BigQueryOutputCalculator().calculate(source, symbol="NTLC").outputs
+        if output.name == "long_term"
+    )
+
+    assert long_term.status == "available"
+    company = LongTermRankedCompany.model_validate_json(json.dumps(long_term.value))
+    assert company.symbol == "NTLC"
+    assert company.growth.advisory_state == "insufficient_evidence"
+    assert company.growth.overall_score.status == "missing_inputs"
+    assert company.growth.overall_score.value is None
+    assert company.dividend_research.dividend_score.status == "deferred_scope"
+
+
+def test_precomputed_long_term_output_is_preserved() -> None:
+    source = snapshot()
+    expected = {
+        "company_id": "brvm:NTLC",
+        "symbol": "NTLC",
+        "result": {
+            "company_id": "brvm:NTLC",
+            "growth": {"objective": "growth", "overall_score": {"status": "missing_inputs", "value": None, "unit": "score", "reason_codes": ["annual_financial_history_incomplete"]}},
+            "dividend": {"objective": "dividend", "overall_score": {"status": "deferred_scope", "value": None, "unit": "score", "reason_codes": ["dividend_scoring_deferred_v1"]}},
+            "balanced": {"objective": "balanced", "overall_score": {"status": "deferred_scope", "value": None, "unit": "score", "reason_codes": ["balanced_scoring_deferred_v1"]}},
+            "revision": {"revision": 1, "known_at": "1970-01-01T00:00:00Z", "provenance": {"source_id": "development-publication", "collected_at": "1970-01-01T00:00:00Z", "basis": "modeled"}},
+        },
+        "growth": {"growth_score": {"status": "missing_inputs", "value": None, "unit": "score", "reason_codes": ["annual_financial_history_incomplete"]}, "overall_score": {"status": "missing_inputs", "value": None, "unit": "score", "reason_codes": ["annual_financial_history_incomplete"]}, "dimension_contributions": {}, "advisory_state": "insufficient_evidence", "reasons": [{"code": "annual_financial_history_incomplete", "message": "Five consecutive comparable annual reports are not available."}]},
+        "dividend_research": {"payments": [], "coverage": [], "trailing_ordinary_yield": None, "dividend_score": {"status": "deferred_scope", "value": None, "unit": "score", "reason_codes": ["dividend_scoring_deferred_v1"]}},
+    }
+    source.payload["calculations"]["NTLC"]["long_term"] = {"status": "available", "value": expected}
+
+    result = BigQueryOutputCalculator().calculate(source, symbol="NTLC")
+    actual = next(output for output in result.outputs if output.name == "long_term")
+
+    assert actual.value == expected
 
 
 def test_snapshot_reader_rejects_identifier_injection() -> None:

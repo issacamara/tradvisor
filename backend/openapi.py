@@ -154,9 +154,9 @@ class LongTermRankedCompany(ContractModel):
 
     @model_validator(mode="after")
     def validate_analysis_views(self) -> "LongTermRankedCompany":
-        if self.growth.overall_score != self.result.growth.overall_score:
+        if self.growth.overall_score.model_dump() != self.result.growth.overall_score.model_dump():
             raise ValueError("Growth view must match its immutable LongTermResult")
-        if self.dividend_research.dividend_score != self.result.dividend.overall_score:
+        if self.dividend_research.dividend_score.model_dump() != self.result.dividend.overall_score.model_dump():
             raise ValueError("Dividend view must match its deferred LongTermResult objective")
         return self
 

@@ -110,7 +110,9 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
         enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
         enriched_payload["market_data"] = market_data
-        expected_output_names = tuple(dict.fromkeys((*map(str, payload["expected_output_names"]), "chart", "swing")))
+        expected_output_names = tuple(
+            dict.fromkeys((*map(str, payload["expected_output_names"]), "chart", "swing", "long_term"))
+        )
         active = self._active_publication() if self._active_publication is not None else None
         revision = int(payload.get("revision", 1))
         supersedes_batch_id = payload.get("supersedes_batch_id")
@@ -182,6 +184,10 @@ class BigQueryOutputCalculator(VersionedCalculator):
                     "batch_id": "batch-pending", "points": points,
                 },
             ))
+        existing_long_term = next((item for item in result if item.name == "long_term"), None)
+        if existing_long_term is None or existing_long_term.status == "unavailable":
+            result = [item for item in result if item.name != "long_term"]
+            result.append(_development_long_term_output(snapshot, symbol))
         present = {item.name for item in result}
         result.extend(
             CalculationOutput(name=name, status="unavailable", reason_codes=("analysis_not_published",))
@@ -189,6 +195,74 @@ class BigQueryOutputCalculator(VersionedCalculator):
             if name not in present
         )
         return StockCalculation(symbol=symbol, outputs=tuple(result))
+
+
+def _development_long_term_output(
+    snapshot: AnalyticalInputSnapshot, symbol: str
+) -> CalculationOutput:
+    """Publish an explicit Long-Term research row when financial inputs are absent.
+
+    The development shares snapshot is sufficient to identify a catalog symbol,
+    but it is not sufficient to manufacture a Growth score. Keeping the row in
+    the serving copy lets the UI expose the company and its evidence state while
+    preserving the V1-deferred Dividend and Balanced objectives.
+    """
+    reason = "annual_financial_history_incomplete"
+    score = {
+        "status": "missing_inputs",
+        "value": None,
+        "unit": "score",
+        "reason_codes": [reason],
+    }
+    deferred_dividend = {
+        "status": "deferred_scope",
+        "value": None,
+        "unit": "score",
+        "reason_codes": ["dividend_scoring_deferred_v1"],
+    }
+    deferred_balanced = {
+        "status": "deferred_scope",
+        "value": None,
+        "unit": "score",
+        "reason_codes": ["balanced_scoring_deferred_v1"],
+    }
+    revision = {
+        "revision": snapshot.revision,
+        "known_at": "1970-01-01T00:00:00Z",
+        "provenance": {
+            "source_id": "development-publication",
+            "collected_at": "1970-01-01T00:00:00Z",
+            "published_at": None,
+            "source_url": None,
+            "original_unit": None,
+            "basis": "modeled",
+        },
+    }
+    value = {
+        "company_id": f"brvm:{symbol}",
+        "symbol": symbol,
+        "result": {
+            "company_id": f"brvm:{symbol}",
+            "growth": {"objective": "growth", "overall_score": score},
+            "dividend": {"objective": "dividend", "overall_score": deferred_dividend},
+            "balanced": {"objective": "balanced", "overall_score": deferred_balanced},
+            "revision": revision,
+        },
+        "growth": {
+            "growth_score": score,
+            "overall_score": score,
+            "dimension_contributions": {},
+            "advisory_state": "insufficient_evidence",
+            "reasons": [{"code": reason, "message": "Five consecutive comparable annual reports are not available."}],
+        },
+        "dividend_research": {
+            "payments": [],
+            "coverage": [],
+            "trailing_ordinary_yield": None,
+            "dividend_score": deferred_dividend,
+        },
+    }
+    return CalculationOutput(name="long_term", status="available", value=value)
 
 
 def _development_swing_output(
