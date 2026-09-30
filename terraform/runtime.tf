@@ -52,6 +52,13 @@ resource "google_project_iam_member" "v1_runtime_bigquery_viewer" {
   member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
 }
 
+resource "google_project_iam_member" "v1_runtime_bigquery_editor" {
+  count   = local.v1_runtime_identity_enabled ? 1 : 0
+  project = var.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
+}
+
 resource "google_project_iam_member" "v1_runtime_firebase_auth_viewer" {
   count   = local.v1_runtime_identity_enabled ? 1 : 0
   project = var.project_id
@@ -243,6 +250,11 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         env {
           name  = "MARKET_DATA_TABLE"
           value = "${var.project_id}.stocks.shares"
+        }
+
+        env {
+          name  = "ANALYTICAL_MARKET_DATA_TABLE"
+          value = "${var.project_id}.stocks.shares_analytical"
         }
 
         env {

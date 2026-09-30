@@ -67,12 +67,22 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         # with a bounded market-data window so the serving copy can expose the
         # close-price chart and provide enough history for the V1 calculations.
         market_table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
-        if not market_table or "`" in market_table or ";" in market_table:
-            raise ValueError("market data table must be a plain project.dataset.table identifier")
+        analytical_table = os.environ.get("ANALYTICAL_MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares_analytical").strip()
+        for name, value in (("market data", market_table), ("analytical market data", analytical_table)):
+            if not value or "`" in value or ";" in value:
+                raise ValueError(f"{name} table must be a plain project.dataset.table identifier")
+        self._client.query(
+            "CREATE OR REPLACE TABLE `" + analytical_table + "` "
+            "PARTITION BY date CLUSTER BY symbol AS "
+            "SELECT symbol, name, open, high, low, close, volume, date "
+            "FROM `" + market_table + "` "
+            "WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `" + market_table + "`), INTERVAL 400 DAY)",
+            job_config=bigquery.QueryJobConfig(),
+        ).result()
         market_rows = list(self._client.query(
             "SELECT symbol, date, open, high, low, close, volume "
-            f"FROM `{market_table}` "
-            f"WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `{market_table}`), INTERVAL 300 DAY) "
+            f"FROM `{analytical_table}` "
+            "WHERE date IS NOT NULL "
             "ORDER BY symbol, date",
             job_config=bigquery.QueryJobConfig(),
         ).result())
