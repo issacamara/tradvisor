@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timezone
 from functools import lru_cache
 import os
+import logging
 from typing import Any, Final, cast
 from uuid import uuid4
 
@@ -57,6 +58,7 @@ from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 PRIVATE_NO_STORE: Final = "private, no-store"
 MAX_BODY_BYTES: Final = 16 * 1024
 STARTING_CASH_DEFAULT_XOF: Final = 1_000_000
+LOGGER = logging.getLogger(__name__)
 ERROR_MESSAGES: Final = {
     "unauthenticated": "Authentication is required.", "admission_denied": "Current invitation access is required.",
     "email_unverified": "Verify your email before accessing the workspace.",
@@ -443,6 +445,7 @@ def create_app(
                     batch_id=f"market-fallback:{query.to_date.isoformat()}",
                 )
             except Exception as error:
+                LOGGER.exception("market chart fallback failed for %s", symbol)
                 raise _analysis_failure(error) from error
         except Exception as error:
             raise _analysis_failure(error) from error
