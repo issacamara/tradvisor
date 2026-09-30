@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 import pytest
 
 from backend.analysis.batch import CalculationOutput
@@ -68,6 +69,33 @@ def test_bigquery_output_calculator_serializes_chart_prices_as_xof_money() -> No
     point = chart.value["points"][0]
     assert point["close"] == {"amount": "105", "currency": "XOF"}
     assert point["last_traded_close"] == {"amount": "105", "currency": "XOF"}
+
+
+def test_bigquery_output_calculator_derives_swing_recommendation_from_shares() -> None:
+    source = snapshot()
+    source.payload["market_data"] = [
+        {
+            "symbol": "NTLC",
+            "session_date": (date(2025, 1, 1) + timedelta(days=index)).isoformat(),
+            "open": 100 + index,
+            "high": 102 + index,
+            "low": 98 + index,
+            "close": 100 + index,
+            "volume": 100000,
+        }
+        for index in range(260)
+    ]
+
+    swing = next(
+        output for output in BigQueryOutputCalculator().calculate(source, symbol="NTLC").outputs
+        if output.name == "swing"
+    )
+
+    assert swing.status == "available"
+    assert swing.value["symbol"] == "NTLC"
+    assert swing.value["buy_strength"]["status"] == "assessable"
+    assert swing.value["indicators"]["ema20"]["status"] == "assessable"
+    assert swing.value["indicators"]["traded_value20"]["value"] == 34950000.0
 
 
 def test_snapshot_reader_rejects_identifier_injection() -> None:

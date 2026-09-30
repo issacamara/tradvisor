@@ -10,10 +10,17 @@ from __future__ import annotations
 import json
 import os
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, Protocol, cast
 
 from backend.analysis.batch import CalculationOutput, StockCalculation
+from backend.analysis.atr import calculate_atr14
+from backend.analysis.ema import calculate_ema20_50
+from backend.analysis.inputs import AnalyticalInputSnapshot as TechnicalSnapshot, SessionInput
+from backend.analysis.liquidity import CurrentTradeGate as LiquidityTradeGate, LiquidityResult
+from backend.analysis.rsi import calculate_rsi14
+from backend.analysis.swing import CurrentTradeGate, SwingStrategyInput, evaluate_swing
 from backend.jobs.daily import (
     AnalyticalInputSnapshot,
     AnalyticalSnapshotReader,
@@ -103,7 +110,7 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
         enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
         enriched_payload["market_data"] = market_data
-        expected_output_names = tuple(dict.fromkeys((*map(str, payload["expected_output_names"]), "chart")))
+        expected_output_names = tuple(dict.fromkeys((*map(str, payload["expected_output_names"]), "chart", "swing")))
         active = self._active_publication() if self._active_publication is not None else None
         revision = int(payload.get("revision", 1))
         supersedes_batch_id = payload.get("supersedes_batch_id")
@@ -159,6 +166,8 @@ class BigQueryOutputCalculator(VersionedCalculator):
         )
         market = [item for item in snapshot.payload.get("market_data", ()) if item.get("symbol") == symbol]
         if market:
+            result += (_development_swing_output(snapshot, symbol, market),)
+        if market:
             points = tuple({
                 "session_date": item["session_date"], "status": "traded" if item.get("close") is not None else "missing_price",
                 "open": _money(item.get("open")), "high": _money(item.get("high")),
@@ -174,6 +183,122 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 },
             ),)
         return StockCalculation(symbol=symbol, outputs=result)
+
+
+def _development_swing_output(
+    snapshot: AnalyticalInputSnapshot, symbol: str, market: list[Mapping[str, Any]]
+) -> CalculationOutput:
+    """Derive a development Swing recommendation from the bounded shares feed.
+
+    The source table has dated OHLCV rows but no normalized calendar or
+    provenance contract.  This adapter therefore labels every metric as
+    estimated and binds it to the source snapshot; it is intentionally kept in
+    the development publication path until the normalized ingestion contract is
+    available.
+    """
+    rows = sorted(market, key=lambda item: str(item["session_date"]))
+    evidence = "development_shares_snapshot"
+    sessions: list[SessionInput] = []
+    previous_close: int | None = None
+    for index, row in enumerate(rows):
+        session_date = date.fromisoformat(str(row["session_date"]))
+        close = _micros(row.get("close"))
+        high = _micros(row.get("high"))
+        low = _micros(row.get("low"))
+        true_range = None
+        true_range_state = "unknown"
+        if close is not None and high is not None and low is not None:
+            if previous_close is None:
+                true_range = high - low
+            else:
+                true_range = max(high - low, abs(high - previous_close), abs(low - previous_close))
+            true_range_state = "observed"
+        sessions.append(SessionInput(
+            session_id=f"dev-shares:{symbol}:{session_date.isoformat()}",
+            session_date=session_date, session_index=index,
+            price_basis_ref=evidence, close_micros=close,
+            close_state="traded" if close is not None else "unknown",
+            close_segment=0 if close is not None else None,
+            true_range_state=true_range_state, true_range_micros=true_range,
+            source_price_revision=1,
+        ))
+        previous_close = close
+    if not sessions:
+        return CalculationOutput(name="swing", status="unavailable", reason_codes=("history_incomplete",))
+    technical = TechnicalSnapshot(
+        snapshot_id=f"{snapshot.input_snapshot_id}:swing:{symbol}",
+        contract_version="analysis-input-v1", symbol=symbol,
+        as_of=datetime.now(timezone.utc), calendar_version="development-shares-calendar",
+        sessions=tuple(sessions),
+    )
+    rule_version = snapshot.rule_version
+    ema20, ema50 = calculate_ema20_50(technical, rule_version=rule_version)
+    rsi14 = calculate_rsi14(technical, rule_version=rule_version)
+    atr14 = calculate_atr14(technical, rule_version=rule_version)
+    window = rows[-20:]
+    turnovers = [
+        Decimal(str(row["close"])) * Decimal(str(row["volume"]))
+        for row in window
+        if row.get("close") is not None and row.get("volume") is not None
+    ]
+    median = sorted(turnovers)[len(turnovers) // 2] if turnovers else None
+    if len(turnovers) == 20 and len(turnovers) % 2 == 0:
+        ordered = sorted(turnovers)
+        median = (ordered[9] + ordered[10]) / Decimal(2)
+    liquidity = LiquidityResult(
+        technical.snapshot_id, "assessable" if len(turnovers) == 20 else "unavailable",
+        median if len(turnovers) == 20 else None,
+        len(turnovers) if len(turnovers) == 20 else None, "estimated" if len(turnovers) == 20 else None,
+        None if len(turnovers) != 20 else median >= Decimal("5000000") and len(turnovers) >= 18,
+        tuple(item.session_id for item in technical.sessions[-20:]), (evidence,),
+        () if len(turnovers) == 20 else ("history_incomplete",),
+    )
+    current = technical.sessions[-1]
+    strategy = evaluate_swing(SwingStrategyInput(
+        snapshot=technical, ema20=ema20, ema50=ema50, rsi14=rsi14, atr14=atr14,
+        liquidity=liquidity,
+        current_trade=CurrentTradeGate(
+            str(technical.snapshot_id), str(current.session_id),
+            "pass" if current.close_state == "traded" else "unknown", (evidence,),
+            () if current.close_state == "traded" else ("current_price_missing",),
+        ),
+    ))
+    points = {
+        "ema20": _latest_metric(ema20.points, evidence, "value"),
+        "ema50": _latest_metric(ema50.points, evidence, "value"),
+        "rsi14": _latest_metric(rsi14.points, evidence, "value"),
+        "atr14": _latest_metric(atr14.points, evidence, "value"),
+        "traded_value20": _metric(median, evidence, "XOF"),
+    }
+    score = None if strategy.score is None else {
+        "status": "assessable", "value": float(strategy.score.display_total), "unit": "points",
+        "basis": "estimated", "reason_codes": list(strategy.reason_codes), "evidence_refs": [evidence],
+    }
+    value = {
+        "symbol": symbol,
+        "entry_action": {"buy": "buy", "not_buy": "no_clear_signal", "unavailable": "insufficient_data"}[strategy.decision],
+        "buy_strength": score or {"status": "missing_inputs", "value": None, "unit": "points", "reason_codes": list(strategy.reason_codes or ("analysis_unavailable",))},
+        "indicators": points,
+        "eligibility_guards": [
+            {"code": guard.code, "status": guard.status, "observed": None, "threshold": None, "evidence_refs": [evidence]}
+            for guard in strategy.guards
+        ],
+        "holding_advice": None,
+    }
+    return CalculationOutput(name="swing", status="available", value=value)
+
+
+def _micros(value: object) -> int | None:
+    return None if value is None else int(Decimal(str(value)) * Decimal(1_000_000))
+
+
+def _metric(value: Decimal | None, evidence: str, unit: str) -> dict[str, Any]:
+    return {"status": "assessable" if value is not None else "missing_inputs", "value": None if value is None else float(value), "unit": unit, "basis": "estimated", "reason_codes": [] if value is not None else ["analysis_unavailable"], "evidence_refs": [evidence]}
+
+
+def _latest_metric(points: Any, evidence: str, unit: str) -> dict[str, Any]:
+    point = points[-1]
+    return _metric(None if point.value is None else Decimal(str(point.value)), evidence, unit)
 
 
 def _money(value: object) -> dict[str, str] | None:
