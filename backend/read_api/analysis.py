@@ -83,6 +83,67 @@ def _payload(stock: ServingStock, name: str, model: type[T]) -> T:
         raise AnalysisNotReady from error
 
 
+def _missing_long_term(symbol: str) -> LongTermRankedCompany:
+    """Keep one unreadable research row visible without inventing a score."""
+    reason = "long_term_record_unreadable"
+    missing_score = {
+        "status": "missing_inputs",
+        "value": None,
+        "unit": "score",
+        "reason_codes": (reason,),
+    }
+    deferred_dividend = {
+        "status": "deferred_scope",
+        "value": None,
+        "unit": "score",
+        "reason_codes": ("dividend_scoring_deferred_v1",),
+    }
+    deferred_balanced = {
+        "status": "deferred_scope",
+        "value": None,
+        "unit": "score",
+        "reason_codes": ("balanced_scoring_deferred_v1",),
+    }
+    return LongTermRankedCompany.model_validate({
+        "company_id": f"brvm:{symbol}",
+        "symbol": symbol,
+        "result": {
+            "company_id": f"brvm:{symbol}",
+            "growth": {"objective": "growth", "overall_score": missing_score},
+            "dividend": {"objective": "dividend", "overall_score": deferred_dividend},
+            "balanced": {"objective": "balanced", "overall_score": deferred_balanced},
+            "revision": {
+                "revision": 0,
+                "known_at": datetime(1970, 1, 1, tzinfo=timezone.utc),
+                "provenance": {
+                    "source_id": "read-api-fallback",
+                    "collected_at": datetime(1970, 1, 1, tzinfo=timezone.utc),
+                    "published_at": None,
+                    "source_url": None,
+                    "original_unit": None,
+                    "basis": "modeled",
+                },
+            },
+        },
+        "growth": {
+            "growth_score": missing_score,
+            "overall_score": missing_score,
+            "dimension_contributions": {},
+            "advisory_state": "insufficient_evidence",
+            "reasons": ({
+                "code": reason,
+                "message": "The published Long-Term record could not be decoded.",
+            },),
+        },
+        "dividend_research": {
+            "payments": (),
+            "coverage": (),
+            "trailing_ordinary_yield": None,
+            "dividend_score": deferred_dividend,
+        },
+    })
+
+
 def _validate_symbol(symbol: str) -> str:
     if not _SYMBOL.fullmatch(symbol):
         raise InvalidAnalysisSymbol
@@ -173,9 +234,16 @@ def read_long_term(
     if symbol is not None:
         symbol = _validate_symbol(symbol)
     stocks, next_cursor = _page(publisher, context=context, limit=limit, cursor=cursor, cursor_secret=cursor_secret, now=now, symbol=symbol, sector=sector)
-    items = () if objective == "balanced" else tuple(
-        _payload(stock, "long_term", LongTermRankedCompany) for stock in stocks
-    )
+    if objective == "balanced":
+        items = ()
+    else:
+        decoded: list[LongTermRankedCompany] = []
+        for stock in stocks:
+            try:
+                decoded.append(_payload(stock, "long_term", LongTermRankedCompany))
+            except AnalysisNotReady:
+                decoded.append(_missing_long_term(stock.symbol))
+        items = tuple(decoded)
     overall_score = (
         ScoreMetric(
             status="deferred_scope",
