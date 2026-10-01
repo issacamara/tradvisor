@@ -268,6 +268,26 @@ variable "v1_analytical_snapshot_name" {
   default     = ""
 }
 
+variable "v1_financials_table" {
+  description = "Development-only raw financials table used by the bounded daily precompute"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.v1_financials_table == "" || can(regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", var.v1_financials_table))
+    error_message = "The financials table must be project.dataset.table."
+  }
+}
+
+variable "v1_analytical_financials_table" {
+  description = "Development-only partitioned table containing the latest three financial years per symbol"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.v1_analytical_financials_table == "" || can(regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", var.v1_analytical_financials_table))
+    error_message = "The analytical financials table must be project.dataset.table."
+  }
+}
+
 variable "v1_batch_timeout_seconds" {
   description = "Bounded timeout for each V1 batch task"
   type        = number
