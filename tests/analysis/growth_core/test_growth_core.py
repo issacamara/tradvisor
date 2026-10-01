@@ -25,12 +25,12 @@ def _money(value: str, *, signed: bool = False) -> SignedMoney | NonNegativeMone
 
 def _input(
     *,
-    earnings: tuple[str | None, ...] = ("10",) * 5,
-    opening_equity: tuple[str | None, ...] = ("100",) * 5,
-    equity: tuple[str | None, ...] = ("100",) * 5,
+    earnings: tuple[str | None, ...] = ("10",) * 3,
+    opening_equity: tuple[str | None, ...] = ("100",) * 3,
+    equity: tuple[str | None, ...] = ("100",) * 3,
 ) -> GrowthInput:
     rows: list[NormalizedFinancial] = []
-    for index in range(5):
+    for index in range(3):
         start = date(2020 + index, 1, 1)
         end = date(2020 + index, 12, 31)
         provenance = Provenance(
@@ -52,7 +52,7 @@ def _input(
 
 
 def test_normalized_earnings_scores_but_growth_composite_is_unavailable_without_activity() -> None:
-    result = calculate_growth_core(_input(earnings=("10", "10", "10", "10", "17.28")))
+    result = calculate_growth_core(_input(earnings=("10", "10", "14.4")))
     assert result.activity_growth.status == "unavailable"
     assert result.activity_growth.reason_codes == ("normalized_activity_measure_unavailable",)
     assert result.earnings_growth.status == "assessable"
@@ -63,12 +63,12 @@ def test_normalized_earnings_scores_but_growth_composite_is_unavailable_without_
 
 
 def test_earnings_uses_three_year_endpoints_and_caps_contribution() -> None:
-    result = calculate_growth_core(_input(earnings=("1", "10", "10", "10", "21.6")))
+    result = calculate_growth_core(_input(earnings=("1", "10", "14.4")))
     assert result.earnings_growth.points == Decimal("18")
-    assert dict(result.earnings_growth.details)["starting_earnings"] == Decimal("10")
+    assert dict(result.earnings_growth.details)["starting_earnings"] == Decimal("1")
 
     half_credit = calculate_growth_core(
-        _input(earnings=("1", "100", "100", "100", "133.1"))
+        _input(earnings=("100", "100", "121"))
     )
     assert half_credit.earnings_growth.points == pytest.approx(9)
     assert half_credit.growth.status == "unavailable"
@@ -87,47 +87,47 @@ def test_bank_activity_remains_unavailable_and_detached_activity_cannot_be_score
 
 
 def test_latest_losses_and_recoveries_earn_zero_growth_and_report_reasons() -> None:
-    loss = calculate_growth_core(_input(earnings=("10", "10", "10", "10", "0")))
+    loss = calculate_growth_core(_input(earnings=("10", "10", "0")))
     assert loss.earnings_growth.points == 0
     assert "latest_earnings_nonpositive" in loss.earnings_growth.reason_codes
     assert dict(loss.earnings_growth.details)["cagr"] is None
 
-    recovery = calculate_growth_core(_input(earnings=("-10", "-5", "2", "3", "10")))
+    recovery = calculate_growth_core(_input(earnings=("-10", "2", "10")))
     assert recovery.earnings_growth.points == 0
     assert "nonpositive_earnings_base_recovery" in recovery.earnings_growth.reason_codes
 
 
-def test_small_base_warning_is_strict_and_uses_all_five_years_including_zero() -> None:
+def test_small_base_warning_is_strict_and_uses_all_three_years_including_zero() -> None:
     equality = calculate_growth_core(
-        _input(earnings=("100", "10", "100", "100", "100"))
+        _input(earnings=("100", "10", "100"))
     )
-    assert dict(equality.earnings_growth.details)["five_year_absolute_earnings_median"] == Decimal("100")
+    assert dict(equality.earnings_growth.details)["three_year_absolute_earnings_median"] == Decimal("100")
     assert dict(equality.earnings_growth.details)["small_base_warning"] is False
 
     below = calculate_growth_core(
-        _input(earnings=("100", "9.9", "100", "100", "100"))
+        _input(earnings=("9.9", "100", "100"))
     )
     assert dict(below.earnings_growth.details)["small_base_warning"] is True
     assert "small_earnings_base" in below.earnings_growth.reason_codes
 
-    zero_median = calculate_growth_core(_input(earnings=("0", "1", "0", "0", "0")))
-    assert dict(zero_median.earnings_growth.details)["five_year_absolute_earnings_median"] == 0
+    zero_median = calculate_growth_core(_input(earnings=("0", "1", "0")))
+    assert dict(zero_median.earnings_growth.details)["three_year_absolute_earnings_median"] == 0
     assert dict(zero_median.earnings_growth.details)["small_base_warning"] is False
 
 
 def test_profitability_fixtures_are_25_and_15_point_5() -> None:
-    full = calculate_growth_core(_input(earnings=("15",) * 5))
+    full = calculate_growth_core(_input(earnings=("15",) * 3))
     assert full.profitability.points == Decimal("25")
 
     partial = calculate_growth_core(
-        _input(earnings=("-1", "7.5", "7.5", "7.5", "7.5"))
+        _input(earnings=("-1", "7.5", "7.5"))
     )
-    assert partial.profitability.points == Decimal("15.5")
+    assert partial.profitability.points == Decimal("14.16666666666666666666666667")
 
 
 @pytest.mark.parametrize(
     "opening_equity,equity",
-    [(("0",) + ("100",) * 4, ("100",) * 5), (("100",) * 5, ("100",) * 4 + ("-1",))],
+    [(("0",) + ("100",) * 2, ("100",) * 3), (("100",) * 3, ("100",) * 2 + ("-1",))],
 )
 def test_nonpositive_equity_is_zero_factor_with_reason(
     opening_equity: tuple[str, ...], equity: tuple[str, ...]
@@ -154,7 +154,7 @@ def test_unknown_equity_or_earnings_makes_only_profitability_unavailable() -> No
 
 
 def test_unavailable_activity_is_not_redistributed_to_growth_or_profitability() -> None:
-    result = calculate_growth_core(_input(earnings=("10", "10", "10", "10", "17.28")))
+    result = calculate_growth_core(_input(earnings=("10", "10", "14.4")))
     assert result.growth.status == "unavailable"
     assert result.growth.points is None
     assert result.earnings_growth.points == Decimal("18")
@@ -184,7 +184,7 @@ def test_gap_in_annual_history_is_rejected_instead_of_interpolated() -> None:
         calculate_growth_core(GrowthInput(source.company_id, tuple(rows)))
 
 
-def test_six_annual_equity_dates_must_reconcile() -> None:
+def test_three_annual_equity_dates_must_reconcile() -> None:
     source = _input()
     rows = list(source.financials)
     rows[2] = rows[2].model_copy(update={"opening_equity": _money("101", signed=True)})
@@ -195,7 +195,7 @@ def test_six_annual_equity_dates_must_reconcile() -> None:
 
 def test_results_retain_unrounded_points_evidence_and_unavailability_reasons() -> None:
     result = calculate_growth_core(
-        _input(earnings=("10", "10", "10", "10", "11.5"))
+        _input(earnings=("10", "10", "11.5"))
     )
     assert result.activity_growth.points is None
     assert result.activity_growth.reason_codes == ("normalized_activity_measure_unavailable",)

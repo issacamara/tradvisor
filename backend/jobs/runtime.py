@@ -253,7 +253,7 @@ def _development_long_term_output(
             "overall_score": score,
             "dimension_contributions": {},
             "advisory_state": "insufficient_evidence",
-            "reasons": [{"code": reason, "message": "Five consecutive comparable annual reports are not available."}],
+                "reasons": [{"code": reason, "message": "Three consecutive comparable annual reports are not available."}],
         },
         "dividend_research": {
             "payments": [],

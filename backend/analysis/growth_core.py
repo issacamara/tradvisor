@@ -14,8 +14,10 @@ EARNINGS_POINTS = Decimal("18")
 PROFITABILITY_POINTS = Decimal("25")
 ROE_FULL_CREDIT = Decimal("0.15")
 SMALL_BASE_FRACTION = Decimal("0.10")
-HISTORY_YEARS = 5
-CAGR_YEARS = 3
+# V1 uses the shortest defensible annual history: three observations provide
+# two year-over-year intervals for a comparable CAGR.
+HISTORY_YEARS = 3
+CAGR_YEARS = 2
 
 DimensionStatus = Literal["assessable", "unavailable"]
 
@@ -93,7 +95,7 @@ def _cagr_and_factor(latest: Decimal, base: Decimal, ceiling: Decimal) -> tuple[
 def _require_history(inputs: GrowthInput) -> tuple[NormalizedFinancial, ...]:
     rows = tuple(sorted(inputs.financials, key=lambda row: row.fiscal_period_end))
     if len(rows) != HISTORY_YEARS:
-        raise GrowthCalculationError("exactly five annual financial observations are required")
+        raise GrowthCalculationError("exactly three annual financial observations are required")
     if any(row.company_id != inputs.company_id for row in rows):
         raise GrowthCalculationError("annual financial rows must belong to one company")
     ends = tuple(row.fiscal_period_end for row in rows)
@@ -141,7 +143,7 @@ def _earnings_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
     return TermResult(
         "assessable", EARNINGS_POINTS * factor, refs, tuple(reason_list),
         (("cagr", cagr), ("starting_earnings", base), ("latest_earnings", latest),
-         ("five_year_absolute_earnings_median", absolute_median), ("small_base_warning", small_base)),
+         ("three_year_absolute_earnings_median", absolute_median), ("small_base_warning", small_base)),
     )
 
 
@@ -182,7 +184,7 @@ def _profitability_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
         "assessable", latest_points + typical_points + consistency_points, refs,
         tuple(dict.fromkeys(annual_reasons)),
         (("latest_roe_factor", annual_factors[-1]),
-         ("median_five_year_roe_factor", Decimal(str(median(annual_factors)))),
+         ("median_three_year_roe_factor", Decimal(str(median(annual_factors)))),
          ("profitable_years", Decimal(profitable_years)),
          ("latest_roe_points", latest_points), ("typical_roe_points", typical_points),
          ("consistency_points", consistency_points),
