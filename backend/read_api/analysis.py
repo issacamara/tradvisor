@@ -234,6 +234,7 @@ def read_long_term(
     if symbol is not None:
         symbol = _validate_symbol(symbol)
     stocks, next_cursor = _page(publisher, context=context, limit=limit, cursor=cursor, cursor_secret=cursor_secret, now=now, symbol=symbol, sector=sector)
+    items: tuple[LongTermRankedCompany, ...]
     if objective == "balanced":
         items = ()
     else:
