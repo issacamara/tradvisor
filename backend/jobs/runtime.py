@@ -21,6 +21,9 @@ from backend.analysis.inputs import AnalyticalInputSnapshot as TechnicalSnapshot
 from backend.analysis.liquidity import CurrentTradeGate as LiquidityTradeGate, LiquidityResult
 from backend.analysis.rsi import calculate_rsi14
 from backend.analysis.swing import CurrentTradeGate, SwingStrategyInput, evaluate_swing
+from backend.analysis.growth_core import GrowthInput, calculate_growth_core
+from backend.contracts.analysis import NormalizedFinancial, Provenance, Revision
+from backend.contracts.scalars import NonNegativeMoney, SignedMoney
 from backend.jobs.daily import (
     AnalyticalInputSnapshot,
     AnalyticalSnapshotReader,
@@ -103,13 +106,35 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             for row in market_rows
             if row["date"] is not None
         ]
+        financial_data: list[dict[str, Any]] = []
+        financial_table = os.environ.get("ANALYTICAL_FINANCIALS_TABLE", "").strip()
+        if financial_table:
+            if "`" in financial_table or ";" in financial_table or any(char.isspace() for char in financial_table):
+                raise ValueError("analytical financials table must be a plain project.dataset.table identifier")
+            financial_rows = list(self._client.query(
+                "SELECT symbol, fiscal_year, revenue, net_income, total_equity, collected_at, document_link "
+                f"FROM `{financial_table}` ORDER BY symbol, fiscal_year",
+                job_config=bigquery.QueryJobConfig(),
+            ).result())
+            financial_data = [
+                {
+                    "symbol": str(row["symbol"]), "fiscal_year": int(row["fiscal_year"]),
+                    "revenue": row["revenue"], "net_income": row["net_income"],
+                    "total_equity": row["total_equity"],
+                    "collected_at": row["collected_at"].isoformat() if row["collected_at"] is not None else None,
+                    "document_link": row["document_link"],
+                }
+                for row in financial_rows
+            ]
         market_data_fingerprint = hashlib.sha256(
-            json.dumps(market_data, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+            json.dumps({"market": market_data, "financial": financial_data}, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
         symbols = tuple(sorted({item["symbol"] for item in market_data}))
         effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
         enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
         enriched_payload["market_data"] = market_data
+        if financial_table:
+            enriched_payload["financial_data"] = financial_data
         expected_output_names = tuple(
             dict.fromkeys((*map(str, payload["expected_output_names"]), "chart", "swing", "long_term"))
         )
@@ -207,13 +232,32 @@ def _development_long_term_output(
     the serving copy lets the UI expose the company and its evidence state while
     preserving the V1-deferred Dividend and Balanced objectives.
     """
-    reason = "annual_financial_history_incomplete"
+    financials = tuple(
+        _normalized_financial(row, symbol=symbol)
+        for row in snapshot.payload.get("financial_data", ())
+        if isinstance(row, Mapping) and row.get("symbol") == symbol
+    )
+    core = None
+    if len(financials) == 3:
+        try:
+            core = calculate_growth_core(GrowthInput(company_id=f"brvm:{symbol}", financials=financials))
+        except (TypeError, ValueError):
+            core = None
+    reason = "annual_financial_history_incomplete" if core is None else "growth_inputs_partial"
     score = {
         "status": "missing_inputs",
         "value": None,
         "unit": "score",
         "reason_codes": [reason],
     }
+    dimensions = {}
+    if core is not None:
+        for name, term in (("earnings_growth", core.earnings_growth), ("profitability", core.profitability)):
+            if term.status == "assessable":
+                dimensions[name] = {
+                    "status": "assessable", "value": float(term.points or 0), "unit": "points",
+                    "reason_codes": list(term.reason_codes), "evidence_refs": list(term.evidence_refs),
+                }
     deferred_dividend = {
         "status": "deferred_scope",
         "value": None,
@@ -251,8 +295,8 @@ def _development_long_term_output(
         "growth": {
             "growth_score": score,
             "overall_score": score,
-            "dimension_contributions": {},
-            "advisory_state": "insufficient_evidence",
+            "dimension_contributions": dimensions,
+            "advisory_state": "partial_evidence" if dimensions else "insufficient_evidence",
                 "reasons": [{"code": reason, "message": "Three consecutive comparable annual reports are not available."}],
         },
         "dividend_research": {
@@ -263,6 +307,31 @@ def _development_long_term_output(
         },
     }
     return CalculationOutput(name="long_term", status="available", value=value)
+
+
+def _normalized_financial(row: Mapping[str, Any], *, symbol: str) -> NormalizedFinancial:
+    year = int(row["fiscal_year"])
+    collected = row.get("collected_at")
+    known_at = (
+        datetime.fromisoformat(str(collected).replace("Z", "+00:00"))
+        if collected else datetime(1970, 1, 1, tzinfo=timezone.utc)
+    )
+    provenance = Provenance(
+        source_id=str(row.get("document_link") or "development-financials"),
+        collected_at=known_at, source_url=row.get("document_link"), basis="actual",
+    )
+    def money(value: Any, *, non_negative: bool = False) -> Any:
+        if value is None:
+            return None
+        cls = NonNegativeMoney if non_negative else SignedMoney
+        return cls(amount=str(value), currency="XOF")
+    return NormalizedFinancial(
+        company_id=f"brvm:{symbol}", fiscal_period_start=date(year, 1, 1), fiscal_period_end=date(year, 12, 31),
+        report_scope="standalone", currency="XOF", original_scale="units",
+        revenue=money(row.get("revenue"), non_negative=True), ordinary_owner_earnings=money(row.get("net_income")),
+        equity=money(row.get("total_equity")), opening_equity=money(row.get("total_equity")),
+        publication_status="published", revision=Revision(revision=1, known_at=known_at, provenance=provenance),
+    )
 
 
 def _development_swing_output(

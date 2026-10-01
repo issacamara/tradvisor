@@ -104,6 +104,28 @@ def test_bigquery_output_calculator_derives_swing_recommendation_from_shares() -
     assert swing.value["indicators"]["traded_value20"]["value"] == 34950000.0
 
 
+def test_development_long_term_publishes_partial_financial_evidence() -> None:
+    source = snapshot()
+    source = replace(source, payload={
+        **source.payload,
+        "financial_data": [
+            {"symbol": "NTLC", "fiscal_year": year, "revenue": 1000 + year,
+             "net_income": 100 + (year - 2023) * 20, "total_equity": 900,
+             "collected_at": "2026-09-22T00:00:00+00:00", "document_link": "report-1"}
+            for year in (2023, 2024, 2025)
+        ],
+    })
+
+    long_term = next(
+        output for output in BigQueryOutputCalculator().calculate(source, symbol="NTLC").outputs
+        if output.name == "long_term"
+    )
+
+    assert long_term.value["growth"]["advisory_state"] == "partial_evidence"
+    assert set(long_term.value["growth"]["dimension_contributions"]) == {"earnings_growth", "profitability"}
+    assert long_term.value["growth"]["overall_score"]["status"] == "missing_inputs"
+
+
 def test_development_swing_output_replaces_placeholder_and_builds_complete_batch() -> None:
     source = snapshot()
     source = replace(
