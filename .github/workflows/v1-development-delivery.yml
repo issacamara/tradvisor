@@ -115,11 +115,6 @@ jobs:
           TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
           TF_VAR_v1_analytical_financials_table: dev-tradvisor.stocks.financials_analytical
         run: terraform plan -out=tfplan
-      - name: Clear failed Cloud Run taint
-        if: inputs.action == 'apply'
-        continue-on-error: true
-        working-directory: terraform
-        run: terraform untaint 'google_cloud_run_v2_service.v1_api[0]' || true
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
         working-directory: terraform
