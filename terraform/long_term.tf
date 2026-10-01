@@ -6,6 +6,13 @@ locals {
   )
 }
 
+resource "google_service_account_iam_member" "v1_financial_precompute_token_creator" {
+  count              = local.v1_financial_precompute_enabled ? 1 : 0
+  service_account_id = google_service_account.v1_runtime[0].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com"
+}
+
 resource "google_bigquery_data_transfer_config" "v1_financial_precompute" {
   count                = local.v1_financial_precompute_enabled ? 1 : 0
   project              = var.project_id
