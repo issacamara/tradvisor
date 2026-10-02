@@ -16,7 +16,7 @@ resource "google_service_account_iam_member" "v1_financial_precompute_token_crea
 resource "google_bigquery_data_transfer_config" "v1_financial_precompute" {
   count                = local.v1_financial_precompute_enabled ? 1 : 0
   project              = var.project_id
-  location             = "US"
+  location             = "europe-central2"
   display_name         = "tradvisor-v1-financial-precompute"
   data_source_id       = "scheduled_query"
   schedule             = "every 24 hours"
