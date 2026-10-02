@@ -103,6 +103,13 @@ data "archive_file" "new_function_assets" {
     filename = "main.py"
   }
   dynamic "source" {
+    for_each = lookup(var.function_local_files, each.key, [])
+    content {
+      content  = file("${lookup(local.function_dependency_roots, each.key, local.legacy_function_root)}/${source.value}")
+      filename = source.value
+    }
+  }
+  dynamic "source" {
     for_each = each.key == "scrape_financials" || each.key == "insert_financials" ? [1] : []
     content {
       content  = file("../functions/financials/scrape_financials_init.py")
