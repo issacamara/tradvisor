@@ -9,7 +9,7 @@ from backend.contracts.analytical_storage import (
 def test_share_revision_contract_is_additive_and_revision_keyed() -> None:
     fields = {field.name: field for field in SHARE_PRICE_REVISIONS_V1.fields}
 
-    assert SHARE_PRICE_REVISIONS_V1.table_name == "shares"
+    assert SHARE_PRICE_REVISIONS_V1.table_name == "share_price_revisions_v1"
     assert SHARE_PRICE_REVISIONS_V1.immutable_key == (
         "symbol",
         "session_date",
