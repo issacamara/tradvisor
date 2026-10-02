@@ -58,11 +58,16 @@ def test_live_ingestion_entrypoints_are_outside_the_legacy_archive() -> None:
 def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     buckets = (TERRAFORM / "buckets.tf").read_text()
     variables = (TERRAFORM / "variables.tf").read_text()
+    managed_archive = buckets[
+        buckets.index('data "archive_file" "new_function_assets"') : buckets.index(
+            'data "archive_file" "initialization_assets"'
+        )
+    ]
     assert 'filename = "main.py"' in buckets
     assert 'filename = "helper.py"' in buckets
     assert 'filename = "config.yml"' in buckets
     assert 'filename = "requirements.txt"' in buckets
-    assert 'lookup(var.function_local_files, each.key, [])' in buckets
+    assert 'lookup(var.function_local_files, each.key, [])' in managed_archive
     assert 'insert_shares' in variables and '"scrape_shares.py"' in variables
 
     source = ast.parse((FUNCTION_ROOTS["insert_shares"] / "insert_shares.py").read_text())
