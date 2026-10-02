@@ -24,10 +24,11 @@ resource "google_bigquery_data_transfer_config" "v1_financial_precompute" {
   params = {
     query = <<-SQL
       CREATE OR REPLACE TABLE `${var.v1_analytical_financials_table}`
-      PARTITION BY DATE(fiscal_year, 12, 31)
+  PARTITION BY fiscal_year_date
       CLUSTER BY symbol AS
       SELECT symbol, fiscal_year, revenue, net_income, total_debt,
-             cash_and_cash_equivalents, total_equity, collected_at, document_link
+       cash_and_cash_equivalents, total_equity, collected_at, document_link,
+       DATE(CAST(fiscal_year AS INT64), 12, 31) AS fiscal_year_date
       FROM `${var.v1_financials_table}`
       WHERE fiscal_year IS NOT NULL
       QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_year DESC) <= 3
