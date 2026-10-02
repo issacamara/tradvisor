@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { components } from "@/api/generated/schema";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -13,6 +13,9 @@ const scoreStatus = (company: Company, objective: Objective) => objective === "g
 export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", objective: controlledObjective, onObjectiveChange }: { items?: Company[]; publishedAt?: string; objective?: Objective; onObjectiveChange?: (objective: Objective) => void }) {
   const [localObjective, setLocalObjective] = useState<Objective>("growth");
   const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    setSelected((current) => items.some((company) => company.symbol === current) ? current : items[0]?.symbol ?? null);
+  }, [items]);
   const objective = controlledObjective ?? localObjective;
   const setObjective = (next: Objective) => { setLocalObjective(next); onObjectiveChange?.(next); };
   const selectedCompany = items.find((company) => company.symbol === selected) ?? items[0];

@@ -28,7 +28,7 @@ class GrowthCalculationError(ValueError):
 
 @dataclass(frozen=True)
 class GrowthInput:
-    """Five normalized annual financial rows."""
+    """Three normalized annual financial rows."""
 
     company_id: str
     financials: tuple[NormalizedFinancial, ...]
