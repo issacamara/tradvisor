@@ -10,7 +10,7 @@ resource "google_cloudfunctions2_function" "functions" {
     source {
       storage_source {
         bucket = google_storage_bucket.bucket.name
-        object = "${each.key}.zip"
+        object = google_storage_bucket_object.new-function-src-code[each.key].name
       }
     }
   }
@@ -21,12 +21,7 @@ resource "google_cloudfunctions2_function" "functions" {
     service_account_email = google_service_account.tradvisor_sa.email
   }
 
-  lifecycle {
-    # Existing Gen 2 functions retain their deployed source until a separately
-    # approved deployment migration takes ownership of source artifacts.
-    prevent_destroy = true
-    ignore_changes  = all
-  }
+  lifecycle { prevent_destroy = true }
 }
 
 resource "google_cloudfunctions2_function" "initialization_functions" {
@@ -41,7 +36,7 @@ resource "google_cloudfunctions2_function" "initialization_functions" {
     source {
       storage_source {
         bucket = google_storage_bucket.bucket.name
-        object = "${each.key}.zip"
+        object = google_storage_bucket_object.initialization-src-code[each.key].name
       }
     }
   }
@@ -54,10 +49,7 @@ resource "google_cloudfunctions2_function" "initialization_functions" {
     service_account_email = google_service_account.tradvisor_sa.email
   }
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
+  lifecycle { prevent_destroy = true }
 }
 
 

@@ -98,7 +98,10 @@ class PreservationDeclarationTests(unittest.TestCase):
         )
         self.assertEqual(buckets.count(guard), 3)
         self.assertIn('name       = "${each.key}.zip"', buckets)
-        self.assertIn('object = "${each.key}.zip"', functions)
+        self.assertIn(
+            "object = google_storage_bucket_object.new-function-src-code[each.key].name",
+            functions,
+        )
         self.assertNotIn(
             "google_storage_bucket_object.src-code[each.key].name",
             functions,
