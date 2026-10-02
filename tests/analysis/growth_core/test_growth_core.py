@@ -175,13 +175,14 @@ def test_unpublished_or_incomparable_financial_history_has_explicit_unavailable_
     assert unknown_scope.earnings_growth.reason_codes == ("reporting_scope_unknown",)
 
 
-def test_gap_in_annual_history_is_rejected_instead_of_interpolated() -> None:
+def test_gap_in_annual_history_is_retained_as_partial_evidence() -> None:
     source = _input()
     rows = list(source.financials)
-    row = rows[2].model_copy(update={"fiscal_period_start": date(2022, 2, 1)})
+    row = rows[2].model_copy(update={"fiscal_period_start": date(2023, 1, 1), "fiscal_period_end": date(2023, 12, 31)})
     rows[2] = row
-    with pytest.raises(GrowthCalculationError, match="consecutive"):
-        calculate_growth_core(GrowthInput(source.company_id, tuple(rows)))
+    result = calculate_growth_core(GrowthInput(source.company_id, tuple(rows)))
+    assert result.earnings_growth.status == "assessable"
+    assert "annual_history_gap" in result.earnings_growth.reason_codes
 
 
 def test_three_annual_equity_dates_must_reconcile() -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Literal
@@ -106,11 +106,16 @@ def _require_history(inputs: GrowthInput) -> tuple[NormalizedFinancial, ...]:
             raise GrowthCalculationError("annual financial rows must be ordered by fiscal period")
         if prior.fiscal_period_start >= current.fiscal_period_start:
             raise GrowthCalculationError("annual financial periods must be ordered")
-        if current.fiscal_period_start != prior.fiscal_period_end + timedelta(days=1):
-            raise GrowthCalculationError("annual financial periods must be consecutive without interpolation")
     if any(not 350 <= (row.fiscal_period_end - row.fiscal_period_start).days + 1 <= 380 for row in rows):
         raise GrowthCalculationError("each normalized record must represent a full fiscal year")
     return rows
+
+
+def _history_gap(rows: tuple[NormalizedFinancial, ...]) -> bool:
+    return any(
+        current.fiscal_period_start.year != prior.fiscal_period_start.year + 1
+        for prior, current in zip(rows, rows[1:])
+    )
 
 
 def _earnings_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
@@ -125,6 +130,8 @@ def _earnings_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
     values = tuple(value for value in earnings if value is not None)
     base, latest = values[-1 - CAGR_YEARS], values[-1]
     reason_list: list[str] = []
+    if _history_gap(rows):
+        reason_list.append("annual_history_gap")
     cagr: Decimal | None = None
     if latest <= 0:
         reason_list.append("latest_earnings_nonpositive")
@@ -167,6 +174,8 @@ def _profitability_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
 
     annual_factors: list[Decimal] = []
     annual_reasons: list[str] = []
+    if _history_gap(rows):
+        annual_reasons.append("annual_history_gap")
     for year, income, opening, closing in zip(rows, earnings, opening_equities, closing_equities):
         assert income is not None and opening is not None and closing is not None
         if opening <= 0 or closing <= 0:

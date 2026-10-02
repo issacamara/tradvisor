@@ -238,6 +238,9 @@ def _development_long_term_output(
         if isinstance(row, Mapping) and row.get("symbol") == symbol
     )
     core = None
+    score_status = "missing_inputs"
+    score_value: float | None = None
+    score_reasons = ["annual_financial_history_incomplete"]
     if len(financials) == 3:
         try:
             core = calculate_growth_core(GrowthInput(company_id=f"brvm:{symbol}", financials=financials))
@@ -258,6 +261,18 @@ def _development_long_term_output(
                     "status": "assessable", "value": float(term.points or 0), "unit": "points",
                     "reason_codes": list(term.reason_codes), "evidence_refs": list(term.evidence_refs),
                 }
+        score_value = sum(
+            float(term.points or 0)
+            for term in (core.earnings_growth, core.profitability)
+            if term.status == "assessable"
+        )
+        score_status = "warming_up"
+        score_reasons = ["partial_dimension_coverage"]
+        if any(
+            "annual_history_gap" in term.reason_codes
+            for term in (core.earnings_growth, core.profitability)
+        ):
+            score_reasons.append("annual_history_gap")
     deferred_dividend = {
         "status": "deferred_scope",
         "value": None,
@@ -287,16 +302,16 @@ def _development_long_term_output(
         "symbol": symbol,
         "result": {
             "company_id": f"brvm:{symbol}",
-            "growth": {"objective": "growth", "overall_score": score},
+            "growth": {"objective": "growth", "overall_score": {**score, "status": score_status, "value": score_value, "reason_codes": score_reasons}},
             "dividend": {"objective": "dividend", "overall_score": deferred_dividend},
             "balanced": {"objective": "balanced", "overall_score": deferred_balanced},
             "revision": revision,
         },
         "growth": {
-            "growth_score": score,
-            "overall_score": score,
+            "growth_score": {**score, "status": score_status, "value": score_value, "reason_codes": score_reasons},
+            "overall_score": {**score, "status": score_status, "value": score_value, "reason_codes": score_reasons},
             "dimension_contributions": dimensions,
-            "advisory_state": "partial_evidence" if dimensions else "insufficient_evidence",
+            "advisory_state": "insufficient_evidence" if not dimensions else "low_score",
                 "reasons": [{"code": reason, "message": "Three consecutive comparable annual reports are not available."}],
         },
         "dividend_research": {

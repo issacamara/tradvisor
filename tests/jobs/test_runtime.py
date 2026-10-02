@@ -121,9 +121,9 @@ def test_development_long_term_publishes_partial_financial_evidence() -> None:
         if output.name == "long_term"
     )
 
-    assert long_term.value["growth"]["advisory_state"] == "partial_evidence"
+    assert long_term.value["growth"]["advisory_state"] == "low_score"
     assert set(long_term.value["growth"]["dimension_contributions"]) == {"earnings_growth", "profitability"}
-    assert long_term.value["growth"]["overall_score"]["status"] == "missing_inputs"
+    assert long_term.value["growth"]["overall_score"]["status"] == "warming_up"
 
 
 def test_development_swing_output_replaces_placeholder_and_builds_complete_batch() -> None:
