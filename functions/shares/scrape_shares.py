@@ -5,7 +5,7 @@ import io
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 RAW_COLUMNS = (
@@ -18,9 +18,25 @@ RAW_COLUMNS = (
     "close",
 )
 
-SOURCE_ID = "richbourse-shares"
-PARSER_VERSION = "shares-parser-v1"
+SOURCE_ID = "sikafinance-shares"
+PARSER_VERSION = "shares-parser-v2"
 PRICE_BASIS_REF = "raw-v1"
+BRVM_SESSION_URL = "https://www.brvm.org/fr/jours-feries"
+
+FRENCH_MONTHS = {
+    "janvier": 1,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "decembre": 12,
+}
 
 
 def parse_localized_decimal(value: str) -> Decimal | None:
@@ -81,6 +97,82 @@ def _normalize_single_separator(text: str, separator: str, original: str) -> str
     ):
         raise ValueError(f"invalid localized decimal: {original!r}")
     return "".join(groups)
+
+
+def _normalize_french_text(value: str) -> str:
+    return (
+        value.lower()
+        .replace("é", "e")
+        .replace("è", "e")
+        .replace("ê", "e")
+        .replace("à", "a")
+        .replace("ù", "u")
+        .replace("û", "u")
+        .replace("ô", "o")
+        .replace("ï", "i")
+        .replace("î", "i")
+        .replace("ç", "c")
+    )
+
+
+def _parse_brvm_display_date(page_text: str) -> date | None:
+    normalized = _normalize_french_text(page_text)
+    match = re.search(
+        r"\b\w+\s*,\s*(\d{1,2})\s+([a-z]+),\s*(\d{4})\s*-\s*\d{1,2}:\d{2}",
+        normalized,
+    )
+    if match is None:
+        return None
+    month = FRENCH_MONTHS.get(match.group(2))
+    if month is None:
+        return None
+    try:
+        return date(int(match.group(3)), month, int(match.group(1)))
+    except ValueError:
+        return None
+
+
+def _parse_brvm_holidays(page_text: str) -> set[date]:
+    holidays: set[date] = set()
+    for day, month, year in re.findall(r"\b(\d{2})/(\d{2})/(\d{4})\b", page_text):
+        try:
+            holidays.add(date(int(year), int(month), int(day)))
+        except ValueError:
+            continue
+    return holidays
+
+
+def resolve_brvm_session(page_text: str) -> tuple[date | None, str]:
+    """Return a verified closed BRVM session date, or preserve uncertainty.
+
+    The official page is a session-evidence source, while Sika Finance remains
+    the price observation source. A displayed calendar date alone is not enough:
+    it must be a weekday, absent from BRVM's published holidays, and explicitly
+    report a closed session before the prices are attributed to that date.
+    """
+    session_date = _parse_brvm_display_date(page_text)
+    if session_date is None:
+        return None, "unknown"
+    normalized = _normalize_french_text(page_text)
+    if session_date.weekday() >= 5 or session_date in _parse_brvm_holidays(page_text):
+        return None, "unknown"
+    if "seance fermee" not in normalized:
+        return None, "unknown"
+    return session_date, "verified"
+
+
+def scrape_brvm_session(url: str = BRVM_SESSION_URL) -> tuple[date | None, str]:
+    from curl_cffi import requests
+
+    page = requests.get(
+        url=url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30,
+        impersonate="chrome",
+        allow_redirects=True,
+    )
+    page.raise_for_status()
+    return resolve_brvm_session(page.text)
 
 
 def _source_observation_id(row: dict[str, object], collected_at: str) -> str:
@@ -144,28 +236,35 @@ def scrape(url: str):
     return rows
 
 
-def scrape_brvm_shares(url: str, *, collected_at: datetime | None = None) -> pd.DataFrame:
+def scrape_brvm_shares(
+    url: str,
+    *,
+    collected_at: datetime | None = None,
+    session_evidence_url: str = BRVM_SESSION_URL,
+) -> pd.DataFrame:
     import pandas as pd
 
     instant = collected_at or datetime.now(timezone.utc)
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
     collected_text = instant.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    session_date, session_date_status = scrape_brvm_session(session_evidence_url)
+    session_date_text = session_date.isoformat() if session_date else ""
 
     observations = []
     for source_row in scrape(url):
         row: dict[str, object] = {
             **source_row,
             "source_id": SOURCE_ID,
-            "session_date": "",
-            "session_date_status": "unknown",
+            "session_date": session_date_text,
+            "session_date_status": session_date_status,
             "trade_status": "unknown",
             "collected_at": collected_text,
             "known_at": collected_text,
             "parser_version": PARSER_VERSION,
             "basis": "actual",
             "price_basis_ref": PRICE_BASIS_REF,
-            "original_source_date": "",
+            "original_source_date": session_date_text,
             "suspension_status": "unknown",
         }
         parse_errors = []
@@ -248,10 +347,13 @@ def entry_point(request=None):
     with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
     collected_at = datetime.now(timezone.utc)
-    df = scrape_brvm_shares(config["url"]["shares"], collected_at=collected_at)
+    df = scrape_brvm_shares(
+        config["url"]["shares"],
+        collected_at=collected_at,
+        session_evidence_url=config["url"].get("brvm_session", BRVM_SESSION_URL),
+    )
     return _save_raw_observations(df, collected_at)
 
 
 if __name__ == "__main__" and not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
     print(entry_point())
-
