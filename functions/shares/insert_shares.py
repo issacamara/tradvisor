@@ -41,7 +41,8 @@ NORMALIZED_COLUMNS = (
     "snapshot_sha256",
     "parser_version",
 )
-REVISION_TABLE = "share_price_revisions_v1"
+# Canonical V1 market input consumed by the API and daily publication job.
+REVISION_TABLE = "shares"
 REVISION_KEYS = ("symbol", "session_date", "revision_id")
 REVISION_HASH_EXCLUDED_COLUMNS = frozenset(
     {
@@ -468,4 +469,3 @@ def entry_point(request=None):
 if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
     if __name__ == "__main__":
         print(entry_point())
-
