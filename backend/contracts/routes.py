@@ -50,12 +50,6 @@ def _require_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _require_utc(value: datetime) -> datetime:
-    if value.tzinfo is None or value.utcoffset() != timezone.utc.utcoffset(value):
-        raise ValueError("instant must be an explicit UTC RFC3339 timestamp")
-    return value.astimezone(timezone.utc)
-
-
 class PageRequest(ContractModel):
     limit: Annotated[int, Field(strict=True, ge=1, le=MAX_PAGE_LIMIT)] = DEFAULT_PAGE_LIMIT
     cursor: Cursor | None = None
