@@ -122,6 +122,7 @@ def test_development_long_term_publishes_partial_financial_evidence() -> None:
     )
 
     assert long_term.value["growth"]["advisory_state"] == "low_score"
+    assert long_term.value["growth"]["overall_score"]["value"] is None
     assert set(long_term.value["growth"]["dimension_contributions"]) == {"earnings_growth", "profitability"}
     assert long_term.value["growth"]["overall_score"]["status"] == "warming_up"
 

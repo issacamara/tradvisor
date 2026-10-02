@@ -264,11 +264,6 @@ def _development_long_term_output(
                     "status": "assessable", "value": float(term.points or 0), "unit": "points",
                     "reason_codes": list(term.reason_codes), "evidence_refs": list(term.evidence_refs),
                 }
-        score_value = sum(
-            float(term.points or 0)
-            for term in (core.earnings_growth, core.profitability)
-            if term.status == "assessable"
-        )
         score_status = "warming_up"
         score_reasons = ["partial_dimension_coverage"]
         if any(
