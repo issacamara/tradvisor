@@ -317,7 +317,7 @@ def _normalized_financial(row: Mapping[str, Any], *, symbol: str) -> NormalizedF
         if collected else datetime(1970, 1, 1, tzinfo=timezone.utc)
     )
     provenance = Provenance(
-        source_id=str(row.get("document_link") or "development-financials"),
+        source_id="development-financials",
         collected_at=known_at, source_url=row.get("document_link"), basis="actual",
     )
     def money(value: Any, *, non_negative: bool = False) -> Any:

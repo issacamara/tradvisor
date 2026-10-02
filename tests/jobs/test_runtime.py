@@ -111,7 +111,7 @@ def test_development_long_term_publishes_partial_financial_evidence() -> None:
         "financial_data": [
             {"symbol": "NTLC", "fiscal_year": year, "revenue": 1000 + year,
              "net_income": 100 + (year - 2023) * 20, "total_equity": 900,
-             "collected_at": "2026-09-22T00:00:00+00:00", "document_link": "report-1"}
+            "collected_at": "2026-09-22T00:00:00+00:00", "document_link": "gs://archive/rapport - Exercice 2023.pdf"}
             for year in (2023, 2024, 2025)
         ],
     })
