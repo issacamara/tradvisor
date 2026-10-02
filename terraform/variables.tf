@@ -38,9 +38,18 @@ variable "initialization_functions" {
 }
 
 variable "managed_function_sources" {
-  description = "Function source archives explicitly managed by this V1 deployment"
+  description = "Function source archives managed by the V1 development deployment"
   type        = set(string)
-  default     = ["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+  default = [
+    "scrape_shares",
+    "insert_shares",
+    "scrape_dividends",
+    "insert_dividends",
+    "scrape_financials",
+    "insert_financials",
+    "scrape_ratings",
+    "insert_ratings",
+  ]
 }
 
 variable "manage_new_function_sources" {

@@ -216,7 +216,7 @@ resource "google_storage_bucket_object" "src-code" {
 resource "google_storage_bucket_object" "new-function-src-code" {
   for_each   = var.manage_new_function_sources ? var.managed_function_sources : toset([])
   depends_on = [data.archive_file.new_function_assets, google_storage_bucket.bucket]
-  name       = "${each.key}.zip"
+  name       = "${each.key}-${data.archive_file.new_function_assets[each.key].output_md5}.zip"
   bucket     = google_storage_bucket.bucket.name
   source     = data.archive_file.new_function_assets[each.key].output_path
 }
@@ -224,14 +224,10 @@ resource "google_storage_bucket_object" "new-function-src-code" {
 resource "google_storage_bucket_object" "initialization-src-code" {
   for_each   = var.manage_new_function_sources ? var.initialization_functions : toset([])
   depends_on = [data.archive_file.initialization_assets, google_storage_bucket.bucket]
-  name       = "${each.key}.zip"
+  name       = "${each.key}-${data.archive_file.initialization_assets[each.key].output_md5}.zip"
   bucket     = google_storage_bucket.bucket.name
   source     = data.archive_file.initialization_assets[each.key].output_path
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
 }
 
 resource "null_resource" "delete_archive" {
