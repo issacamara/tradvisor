@@ -54,7 +54,7 @@ _SOURCE_REVISION_FIELDS = (
 
 
 SHARE_PRICE_REVISIONS_V1 = TableSpec(
-    table_name="share_price_revisions_v1",
+    table_name="shares",
     version=1,
     fields=(
         FieldSpec("symbol", "STRING", "REQUIRED"),
