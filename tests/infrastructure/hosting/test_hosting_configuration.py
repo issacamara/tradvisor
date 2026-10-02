@@ -29,7 +29,7 @@ class HostingConfigurationTests(unittest.TestCase):
         self.assertRegex(next_config, r'output\s*:\s*"export"')
         self.assertRegex(next_config, r'trailingSlash\s*:\s*true')
 
-        for route in ("swing", "long-term", "paper"):
+        for route in ("swing", "long-term"):
             with self.subTest(route=route):
                 self.assertTrue((ROOT / "frontend/src/app" / route / "page.tsx").is_file())
 

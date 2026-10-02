@@ -5,7 +5,7 @@ Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
 - [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 5.5,11; NFR-10
 
 ## Scope
-Run automated and manual keyboard/screen-reader checks on authentication, both analysis workspaces and complete paper flows across desktop/mobile.
+Run automated and manual keyboard/screen-reader checks on authentication and both analysis workspaces across desktop/mobile.
 
 Owned files/modules (new paths are proposed boundaries, not claims that code exists):
 - `tests/accessibility/`

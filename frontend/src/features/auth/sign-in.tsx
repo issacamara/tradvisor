@@ -24,14 +24,14 @@ export function AuthScreen() {
   if (session.status === "admitted") return <section className="mx-auto max-w-5xl px-5 py-8" aria-live="polite">
     <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-bold">Workspace access verified</h1><button className="rounded border border-line px-3 py-2 text-sm" onClick={() => session.signOut()}>Sign out</button></div>
     <p className="mt-2 text-sm text-muted">Your current invitation is confirmed. Choose a workspace from the navigation.</p>
-    <nav aria-label="Investor workspaces" className="mt-5 flex flex-wrap gap-4 text-sm"><a className="underline" href="/swing/">Swing</a><a className="underline" href="/long-term/">Long-Term</a><a className="underline" href="/paper/">Paper portfolio</a></nav>
+    <nav aria-label="Investor workspaces" className="mt-5 flex flex-wrap gap-4 text-sm"><a className="underline" href="/swing/">Swing</a><a className="underline" href="/long-term/">Long-Term</a></nav>
   </section>;
 
   return <main className="mx-auto grid min-h-[70vh] max-w-5xl content-center gap-10 px-5 py-10 md:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)]">
     <section>
       <p className="text-sm font-semibold text-accent">TRADVISOR / INVITED ACCESS</p>
       <h1 className="mt-3 max-w-xl text-3xl font-bold">Research with the evidence in view.</h1>
-      <p className="mt-3 max-w-xl text-sm leading-6 text-muted">Swing, Long-Term research, and manual paper trading are separate workspaces. Access is checked against your current invitation after sign-in.</p>
+      <p className="mt-3 max-w-xl text-sm leading-6 text-muted">Swing and Long-Term research are separate workspaces. Access is checked against your current invitation after sign-in.</p>
     </section>
     <section aria-labelledby="auth-title" className="border-l border-line pl-0 md:pl-8">
       <div className="mb-5 flex gap-2" role="tablist" aria-label="Account access">

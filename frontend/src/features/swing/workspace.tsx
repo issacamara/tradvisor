@@ -22,7 +22,6 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
     { accessorKey: "symbol", header: "Symbol", cell: ({ row }) => <button type="button" className="symbol-button" onClick={() => onSymbolChange?.(row.original.symbol)} aria-label={`Inspect ${row.original.symbol}`}>{row.original.symbol}</button> },
     { accessorKey: "entry_action", header: "Entry", cell: ({ row }) => <span className={`signal signal-${row.original.entry_action}`}>{label(row.original.entry_action)}</span> },
     { id: "strength", header: "Strength", cell: ({ row }) => <span className="tabular-nums">{strength(row.original)}</span> },
-    { id: "holding", header: "Holding", cell: ({ row }) => row.original.holding_advice ? label(row.original.holding_advice.action) : "Not held" },
   ], [onSymbolChange]);
   const table = useReactTable({ data: filtered, columns, getCoreRowModel: getCoreRowModel() });
   const detail = items.find((item) => item.symbol === selected);
@@ -45,7 +44,7 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
           <label className="search-field"><Search size={16} aria-hidden="true" /><span className="sr-only">Search symbol</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search symbol" /></label>
           <div className="segmented" aria-label="Entry filter"><button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All</button><button type="button" aria-pressed={filter === "buy"} onClick={() => setFilter("buy")}>Buy</button></div>
         </div>
-        <div className="table-scroll"><table className="data-table"><caption className="sr-only">Swing recommendations with separate holding advice</caption><thead><tr>{table.getHeaderGroups()[0]?.headers.map((header) => <th key={header.id} scope="col">{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr></thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={row.original.symbol === selected ? "selected-row" : undefined} aria-selected={row.original.symbol === selected}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table></div>
+        <div className="table-scroll"><table className="data-table"><caption className="sr-only">Swing recommendations</caption><thead><tr>{table.getHeaderGroups()[0]?.headers.map((header) => <th key={header.id} scope="col">{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr></thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={row.original.symbol === selected ? "selected-row" : undefined} aria-selected={row.original.symbol === selected}>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table></div>
         {!items.length && <p className="empty-message">No published Swing recommendations yet.</p>}
         {items.length > 0 && !filtered.length && <p className="empty-message">No symbols match this filter.</p>}
       </section>
@@ -56,10 +55,10 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
         </section>
         <section className="evidence-section" aria-label="Selected recommendation detail">
           <div className="detail-heading"><div><p className="eyebrow">RECOMMENDATION EVIDENCE</p><h2>{detail?.symbol ?? "No stock selected"}</h2></div>{detail && <span className={`signal signal-${detail.entry_action}`}>{label(detail.entry_action)}</span>}</div>
-          {detail ? <><div className="evidence-summary"><div><span>Entry strength</span><strong>{strength(detail)}</strong></div><div><span>Holding advice</span><strong>{detail.holding_advice ? label(detail.holding_advice.action) : "Not held"}</strong></div></div><p className="evidence-note">Strength is a rule score, not a probability. A non-Buy result is not a Sell instruction.</p><h3>Eligibility</h3><ul className="evidence-list">{detail.eligibility_guards.map((guard) => <li key={guard.code}><span>{label(guard.code)}</span><span>{guard.status}{guard.observed !== null ? ` · ${guard.observed}` : ""}</span></li>)}</ul>{detail.holding_advice?.reasons.length ? <><h3>Holding rationale</h3><ul className="reason-list">{detail.holding_advice.reasons.map((reason) => <li key={reason.code}>{reason.message}</li>)}</ul></> : null}</> : <p className="empty-message">Select a stock to review the evidence.</p>}
+          {detail ? <><div className="evidence-summary"><div><span>Entry strength</span><strong>{strength(detail)}</strong></div></div><p className="evidence-note">Strength is a rule score, not a probability. A non-Buy result is not a Sell instruction.</p><h3>Eligibility</h3><ul className="evidence-list">{detail.eligibility_guards.map((guard) => <li key={guard.code}><span>{label(guard.code)}</span><span>{guard.status}{guard.observed !== null ? ` · ${guard.observed}` : ""}</span></li>)}</ul></> : <p className="empty-message">Select a stock to review the evidence.</p>}
         </section>
       </div>
     </div>
-    <p className="workspace-footnote">Market recommendations are shared. Holding advice applies only to simulated positions; no order is submitted from this screen.</p>
+    <p className="workspace-footnote">Market recommendations are shared research, not trading instructions.</p>
   </main>;
 }

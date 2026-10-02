@@ -216,13 +216,13 @@ def read_swing(
                     "atr14": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
                     "traded_value20": NumericMetric(status="missing_inputs", value=None, unit="value", reason_codes=("analysis_not_published",)),
                 },
-                eligibility_guards=(), holding_advice=None,
+                eligibility_guards=(),
             ))
     return SwingRecommendationsData(
         batch_id=context.active.batch_id, market_session=context.market_session,
         published_at=context.published_at, input_snapshot_id=context.active.input_snapshot_id,
         rule_version=context.active.rule_version, strategy_id=context.strategy_id,
-        generation=None, state_version=None, items=tuple(items), next_cursor=next_cursor,
+        items=tuple(items), next_cursor=next_cursor,
     )
 
 

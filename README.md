@@ -12,7 +12,7 @@ data-ingestion foundation for BRVM market data:
 - `terraform/`: Google Cloud infrastructure for storage buckets, Cloud
   Functions, Workflows, Scheduler jobs, BigQuery, IAM, and supporting services.
 - `tradvisor_brd.md`: V1 business requirements for Swing recommendations,
-  Long-Term scoring, and manual paper trading.
+  Long-Term scoring.
 
 The previous Streamlit webapp has been removed so the next architecture pass can
 target the V1 BRD cleanly.

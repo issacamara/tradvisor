@@ -16,8 +16,8 @@ def test_cursor_is_signed_and_snapshot_bound() -> None:
 
 
 def test_cursor_expiry_and_context_are_rejected() -> None:
-    token = encode_cursor(CursorClaims("paper", "u1", "g1", 2, None, "k", NOW), b"secret")
+    token = encode_cursor(CursorClaims("analysis", "u1", "b1", 2, None, "k", NOW), b"secret")
     with pytest.raises(CursorError):
-        decode_cursor(token, b"secret", now=NOW + timedelta(hours=24, seconds=1), scope="paper", owner_uid="u1", generation="g1", state_version=2)
+        decode_cursor(token, b"secret", now=NOW + timedelta(hours=24, seconds=1), scope="analysis", owner_uid="u1", generation="b1", state_version=2)
     with pytest.raises(CursorError):
-        decode_cursor(token, b"secret", now=NOW, scope="paper", owner_uid="u2", generation="g1", state_version=2)
+        decode_cursor(token, b"secret", now=NOW, scope="analysis", owner_uid="u2", generation="b1", state_version=2)

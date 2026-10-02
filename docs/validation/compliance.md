@@ -3,11 +3,11 @@
 ## Owner Decision
 
 The product owner confirms that V1 is limited to private invited-group use and
-paper trading. The product provides advisory information only:
+research-only workflows. The product provides advisory information only:
 
 - It makes no return or performance guarantee.
 - It does not execute trades or connect to a broker for automatic execution.
-- It does not present paper-trading records as real brokerage records.
+- It does not present analytical publications as real brokerage records.
 - It must disclose that recommendations and indicators are informational and
   require the user's independent judgment.
 
@@ -15,7 +15,7 @@ paper trading. The product provides advisory information only:
 
 V1 must not claim retention or deletion behavior that has not been verified.
 The implementation must document the data categories retained for invited users
-and paper portfolios, the retention period, deletion/reset behavior, and the
+and admission records, the retention period, deletion/reset behavior, and the
 operator access boundary before release.
 
 ## MVP Scope Decision

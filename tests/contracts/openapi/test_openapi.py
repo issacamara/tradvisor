@@ -23,21 +23,13 @@ def test_schema_covers_every_api_v013_operation() -> None:
         for path, path_item in spec["paths"].items()
         for method, operation in path_item.items()
     }
-    assert len(operations) == 13
+    assert len(operations) == 5
     assert set(operations) == {
         ("GET", "/v1/me"),
-        ("PATCH", "/v1/me/preferences"),
         ("GET", "/v1/swing/recommendations"),
         ("GET", "/v1/long-term/rankings"),
         ("GET", "/v1/stocks/{symbol}"),
         ("GET", "/v1/stocks/{symbol}/chart"),
-        ("GET", "/v1/paper/portfolio"),
-        ("POST", "/v1/paper/portfolio"),
-        ("POST", "/v1/paper/orders"),
-        ("GET", "/v1/paper/orders"),
-        ("GET", "/v1/paper/executions"),
-        ("GET", "/v1/paper/cash-movements"),
-        ("POST", "/v1/paper/reset"),
     }
     assert all(operation["security"] == [{"BearerAuth": []}] for operation in operations.values())
     assert all(
@@ -45,28 +37,17 @@ def test_schema_covers_every_api_v013_operation() -> None:
         for operation in operations.values()
         for response in operation["responses"].values()
     )
-    assert operations[("GET", "/v1/paper/orders")]["responses"]["429"]["headers"]["Retry-After"]["required"]
     assert spec["info"]["version"] == API_VERSION
 
 
-def test_schema_retains_exact_money_nullable_metrics_and_command_fence() -> None:
+def test_schema_retains_nullable_metrics_and_analytical_contracts() -> None:
     schemas = build_openapi()["components"]["schemas"]
-    for name in ("NonNegativeMoney", "SignedMoney", "StartingCash"):
+    for name in ("NonNegativeMoney",):
         amount = schemas[name]["properties"]["amount"]
         assert amount["type"] == "string"
-        expected_pattern = (
-            r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$"
-            if name == "SignedMoney"
-            else (
-                r"^(?:0|[1-9][0-9]*)(?:\.0{1,6})?$"
-                if name == "StartingCash"
-                else r"^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$"
-            )
-        )
+        expected_pattern = r"^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$"
         assert amount["pattern"] == expected_pattern
         assert amount["x-money-currency"] == "XOF"
-    assert schemas["StartingCash"]["properties"]["amount"]["x-whole-xof-minimum"] == 100_000
-    assert schemas["StartingCash"]["properties"]["amount"]["x-whole-xof-maximum"] == 100_000_000
 
     metric = schemas["ScoreMetric"]
     assert {"assessable", "warming_up", "missing_inputs", "unsupported_basis", "deferred_scope"} <= set(
@@ -79,33 +60,10 @@ def test_schema_retains_exact_money_nullable_metrics_and_command_fence() -> None
     objective = schemas["LongTermObjectiveState"]
     assert "dividend" in str(objective) and "balanced" in str(objective)
 
-    command = schemas["CommandMetadata"]
-    assert {"idempotency_key", "recovery_id"} <= set(command["required"])
-    command_body = schemas["CommandMetadataBody"]
-    assert "recovery_id" in command_body["required"]
-    assert "idempotency_key" not in command_body["properties"]
-    assert "expected_generation" not in command_body["required"]
-    assert "expected_state_version" not in command_body["required"]
-    order_request = schemas["CreatePaperOrderRequest"]
-    assert "command" in order_request["required"]
     overall_score = schemas["LongTermRankingsData"]["properties"]["overall_score"]["anyOf"]
     assert {"$ref": "#/components/schemas/ScoreMetric"} in overall_score
     assert {"type": "null"} in overall_score
 
-    paths = build_openapi()["paths"]
-    for method, path in (
-        ("patch", "/v1/me/preferences"),
-        ("post", "/v1/paper/portfolio"),
-        ("post", "/v1/paper/orders"),
-        ("post", "/v1/paper/reset"),
-    ):
-        header = next(
-            parameter
-            for parameter in paths[path][method]["parameters"]
-            if parameter["in"] == "header"
-        )
-        assert header["name"] == "Idempotency-Key"
-        assert header["required"] is True
 
 
 def test_chart_query_rejects_reversed_or_duplicate_series() -> None:

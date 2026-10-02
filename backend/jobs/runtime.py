@@ -445,7 +445,6 @@ def _development_swing_output(
             {"code": guard.code, "status": guard.status, "observed": None, "threshold": None, "evidence_refs": [evidence]}
             for guard in strategy.guards
         ],
-        "holding_advice": None,
     }
     return CalculationOutput(name="swing", status="available", value=value)
 

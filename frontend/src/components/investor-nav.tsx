@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, BriefcaseBusiness, ChartNoAxesCombined } from "lucide-react";
+import { BarChart3, ChartNoAxesCombined } from "lucide-react";
 
 const views = [
   { id: "swing", label: "Swing", href: "/swing/", icon: ChartNoAxesCombined },
   { id: "long-term", label: "Long-Term", href: "/long-term/", icon: BarChart3 },
-  { id: "paper", label: "Paper", href: "/paper/", icon: BriefcaseBusiness },
 ] as const;
 
 export function InvestorNav({ active }: { active: (typeof views)[number]["id"] }) {

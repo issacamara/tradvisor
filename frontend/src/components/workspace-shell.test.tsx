@@ -15,9 +15,9 @@ describe("WorkspaceShell", () => {
   });
 
   it("keeps a usable stacked navigation structure for narrow screens", () => {
-    render(<WorkspaceShell workspace="paper" />);
+    render(<WorkspaceShell workspace="long-term" />);
     expect(screen.getAllByRole("navigation", { name: "Investor workspaces" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Open workspace navigation" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { name: "Paper trading" })).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { name: "Long-Term research" })).toHaveLength(2);
   });
 });

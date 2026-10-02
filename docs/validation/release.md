@@ -10,14 +10,14 @@ The implementation and contract gates are delivered, but this record does not si
 
 | Gate | Evidence | Status | Required owner/operator action |
 | --- | --- | --- | --- |
-| API, paper, ingestion and recovery contracts | Merged V1 implementation plus CI and regression tests | PASS | None for code gate |
+| API, analytical publication, ingestion and recovery contracts | Merged V1 implementation plus CI and regression tests | PASS | None for code gate |
 | Source/company coverage | `docs/validation/coverage.md` and focused tests | PASS WITH LIMITATIONS | Accept visible partial/unavailable states |
 | Financial rule effectiveness | `docs/validation/effectiveness.md`; offline known-at evaluator | BLOCKED | Review an approved holdout report before actionable publication |
 | Accessibility | `docs/validation/accessibility.md`; automated checks | BLOCKED | Named operator runs keyboard and screen-reader checks and records results |
 | Restore/recovery | `docs/validation/restore.md`; reconciliation tests | BLOCKED | Approve isolated development target and execute the drill |
 | Performance and placement | `docs/validation/performance.md`; offline benchmark | BLOCKED | Approve bounded development load measurement |
 | Cost | `docs/validation/cost.md` | BLOCKED | Accept measured development cost evidence and assumptions |
-| Privacy/advisory scope | `docs/validation/compliance.md` | PASS WITH LIMITATIONS | Keep V1 private, invited-group, informational and paper-only |
+| Privacy/advisory scope | `docs/validation/compliance.md` | PASS WITH LIMITATIONS | Keep V1 private, invited-group, informational |
 | Monitoring | `docs/operations/monitoring.md`; opt-in Terraform declarations | PASS WITH LIMITATIONS | Name destination/operator and separately approve activation |
 
 ## Named Decisions Required

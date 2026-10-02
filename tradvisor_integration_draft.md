@@ -7,7 +7,7 @@
 
 ## 1. Review Boundary
 
-This approved design closes three integration-design gaps without changing the seven component boundaries, financial formulas, manual paper trading or low-cost direction. Approved by the stakeholder on 2026-09-20 and incorporated by reference into the architecture and API/data contract. The filename is retained for link stability. No production access, deployment or application changes are authorized by this document.
+This approved design closes three integration-design gaps without changing the analytical boundaries, financial formulas, or low-cost direction. Approved by the stakeholder on 2026-09-20 and incorporated by reference into the architecture and API/data contract. The filename is retained for link stability. No production access, deployment or application changes are authorized by this document.
 
 Approved foundations: next-session execution, one following-session missing-price grace, immutable price availability, rejection on material calendar corrections, no automatic repricing, independent reset/access protection, rejection of restored pending orders, recovery identifiers and explicit reconfirmation. The stakeholder approved the mechanisms below on 2026-09-20; approval is not evidence of implementation or passing tests.
 
@@ -34,7 +34,7 @@ Keep the active calendar version in a small application control document. Accept
 
 ### One Execution Authority
 
-Retain canonical analytical history in BigQuery. Introduce compact execution-price records in the existing Application Store, not a new service. Paper workers use these records exclusively; they do not join live BigQuery results during a financial mutation.
+Retain canonical analytical history in BigQuery. Publish compact analytical serving records in the existing Application Store, not a new service. Interactive API requests read the published serving copy and do not join live BigQuery results.
 
 Proposed logical records:
 

@@ -23,6 +23,6 @@ Backfills require an explicit row/date range and a maximum attempt count. A fail
 
 ## Decision
 
-Recommended V1 placement remains: daily indicators and publication in bounded batch/analytical queries; request-time reads from immutable serving copies; paper mutations in short transactional requests; static frontend scale-to-zero hosting. This is an architecture recommendation, not a cost acceptance.
+Recommended V1 placement remains: daily indicators and publication in bounded batch/analytical queries; request-time reads from immutable serving copies; static frontend scale-to-zero hosting. This is an architecture recommendation, not a cost acceptance.
 
 The cost gate is **pending owner acceptance** of measured development evidence. The release process must not claim the five-euro target passed, must not activate schedules solely to collect evidence, and must not treat free-tier assumptions as guaranteed credits.

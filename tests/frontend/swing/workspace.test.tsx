@@ -7,14 +7,13 @@ vi.mock("@/features/swing/swing-chart", () => ({ SwingChart: () => null }));
 
 type Recommendation = components["schemas"]["SwingRecommendation"];
 const score: components["schemas"]["ScoreMetric"] = { basis: null, effective_date: null, evidence_refs: [], reason_codes: [], status: "assessable", unit: "points", value: 74 };
-const item: Recommendation = { symbol: "SAMPLE", entry_action: "no_clear_signal", buy_strength: score, eligibility_guards: [{ code: "current_trade", evidence_refs: [], observed: null, status: "unknown", threshold: null }], holding_advice: { action: "not_applicable", evaluation_session: null, exit_policy_version: null, generation: null, reasons: [], state_version: null, unavailable_checks: [] }, indicators: {} };
+const item: Recommendation = { symbol: "SAMPLE", entry_action: "no_clear_signal", buy_strength: score, eligibility_guards: [{ code: "current_trade", evidence_refs: [], observed: null, status: "unknown", threshold: null }], indicators: {} };
 
 describe("Swing workspace", () => {
-  it("keeps market entry separate from holding advice and never labels a non-buy as sell", () => {
+  it("keeps market entry evidence visible and never labels a non-buy as sell", () => {
     render(<SwingWorkspace items={[item]} />);
     fireEvent.click(screen.getByRole("button", { name: "Inspect SAMPLE" }));
     expect(screen.getAllByText("no clear signal")).toHaveLength(2);
-    expect(screen.getAllByText("not applicable")).toHaveLength(2);
     expect(screen.getByText(/not a Sell instruction/)).toBeInTheDocument();
   });
 
