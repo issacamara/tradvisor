@@ -41,9 +41,11 @@ NORMALIZED_COLUMNS = (
     "snapshot_sha256",
     "parser_version",
 )
-# Canonical V1 market input consumed by the API and daily publication job.
-REVISION_TABLE = "shares"
+REVISION_TABLE = "share_price_revisions_v1"
 REVISION_KEYS = ("symbol", "session_date", "revision_id")
+MARKET_TABLE = "shares"
+MARKET_KEYS = ("symbol", "date")
+MARKET_COLUMNS = ("symbol", "name", "open", "high", "low", "close", "volume", "date")
 REVISION_HASH_EXCLUDED_COLUMNS = frozenset(
     {
         "revision_id",
@@ -319,19 +321,19 @@ def _archive_after_optional_load(
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
+    market_rows = project_market_rows(raw_frame, normalized)
 
     if os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET"):
         from google.auth import default
 
         _, project_id = default()
-        if not normalized.empty:
+        if not market_rows.empty:
             upsert_into_bigquery(
-                normalized,
+                market_rows,
                 project_id,
                 "stocks",
-                REVISION_TABLE,
-                list(REVISION_KEYS),
-                update_matched=False,
+                MARKET_TABLE,
+                list(MARKET_KEYS),
             )
         project_number = get_project_number(project_id)
         move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)
@@ -345,6 +347,40 @@ def _archive_after_optional_load(
             )
         move_csv_file(config["csv_directory"], config["archive"], file)
     return evidence
+
+
+def project_market_rows(raw_frame: pd.DataFrame, normalized: pd.DataFrame) -> pd.DataFrame:
+    """Project verified observations into the canonical lowercase market table."""
+    if normalized.empty:
+        return pd.DataFrame(columns=MARKET_COLUMNS)
+    if "observation_id" not in raw_frame:
+        raise ValueError("raw share observations must include observation_id")
+
+    raw_by_observation = raw_frame.drop_duplicates("observation_id", keep="last").set_index(
+        "observation_id"
+    )
+    source_rows = raw_by_observation.reindex(normalized["source_observation_id"].tolist())
+    if source_rows["symbol"].isna().any():
+        raise ValueError("normalized share observation is missing its raw source row")
+
+    def as_float(value: object):
+        if pd.isna(value):
+            return None
+        return float(value)
+
+    market_rows = pd.DataFrame(
+        {
+            "symbol": normalized["symbol"].tolist(),
+            "name": source_rows.get("name", pd.Series("", index=source_rows.index)).tolist(),
+            "open": source_rows["open"].map(_parse_optional_decimal).map(as_float).tolist(),
+            "high": normalized["high"].map(as_float).tolist(),
+            "low": normalized["low"].map(as_float).tolist(),
+            "close": normalized["close"].map(as_float).tolist(),
+            "volume": normalized["volume"].map(as_float).tolist(),
+            "date": normalized["session_date"].tolist(),
+        }
+    )
+    return market_rows.loc[:, MARKET_COLUMNS]
 
 
 def _insert_revisions_into_duckdb(

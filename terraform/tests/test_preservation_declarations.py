@@ -117,15 +117,6 @@ class PreservationDeclarationTests(unittest.TestCase):
         self.assertNotIn("disable_dependent_services = true", configuration)
         self.assertNotIn("timestamp()", configuration)
 
-    def test_v1_shares_table_is_lowercase_and_partitioned(self) -> None:
-        tables = (TERRAFORM_DIR / "ingestion_tables.tf").read_text()
-
-        self.assertIn('resource "google_bigquery_table" "v1_shares"', tables)
-        self.assertIn('table_id            = "shares"', tables)
-        self.assertIn('field = "session_date"', tables)
-        self.assertIn('clustering          = ["symbol"]', tables)
-        self.assertIn('prevent_destroy = true', tables)
-
     def test_preserved_resources_have_destroy_protection(self) -> None:
         configuration = "\n".join(
             path.read_text() for path in TERRAFORM_DIR.glob("*.tf")

@@ -258,6 +258,29 @@ def test_normalized_rows_match_immutable_share_revision_contract() -> None:
     assert normalized.loc[0, "source_id"] == "richbourse-shares"
 
 
+def test_verified_rows_project_to_the_canonical_lowercase_market_schema() -> None:
+    raw = pd.DataFrame([_row(name="Example issuer")])
+    normalized, _ = loader.prepare_normalized_rows(raw)
+
+    market_rows = loader.project_market_rows(raw, normalized)
+
+    assert loader.MARKET_TABLE == "shares"
+    assert loader.MARKET_KEYS == ("symbol", "date")
+    assert tuple(market_rows.columns) == loader.MARKET_COLUMNS
+    assert market_rows.to_dict("records") == [
+        {
+            "symbol": "ABC",
+            "name": "Example issuer",
+            "open": 1000.25,
+            "high": 1100.5,
+            "low": 900.0,
+            "close": 1050.75,
+            "volume": 12.0,
+            "date": datetime(2026, 9, 21).date(),
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "field",
     ["source_id", "source_revision_id", "known_at", "basis", "price_basis_ref"],
@@ -419,15 +442,14 @@ def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> No
     assert calls == [("archive", "data", "archive", "raw-observations.csv")]
 
 
-def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) -> None:
+def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monkeypatch) -> None:
     signature = inspect.signature(actual_helper.upsert_into_bigquery)
     signature.bind(
         pd.DataFrame(),
         "project",
         "stocks",
-        loader.REVISION_TABLE,
-        list(loader.REVISION_KEYS),
-        update_matched=False,
+        loader.MARKET_TABLE,
+        list(loader.MARKET_KEYS),
     )
 
     calls = []
@@ -454,7 +476,7 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
                 table,
                 tuple(primary_keys),
                 update_matched,
-                frame.loc[0, "validated_available_at"],
+                frame.to_dict("records"),
             )
         )
 
@@ -484,10 +506,21 @@ def test_cloud_load_uses_actual_helper_signature_and_revision_keys(monkeypatch) 
             1,
             "project",
             "stocks",
-            loader.REVISION_TABLE,
-            loader.REVISION_KEYS,
-            False,
-            None,
+            loader.MARKET_TABLE,
+            loader.MARKET_KEYS,
+            True,
+            [
+                {
+                    "symbol": "ABC",
+                    "name": "",
+                    "open": 1000.25,
+                    "high": 1100.5,
+                    "low": 900.0,
+                    "close": 1050.75,
+                    "volume": 12.0,
+                    "date": datetime(2026, 9, 21).date(),
+                }
+            ],
         ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
