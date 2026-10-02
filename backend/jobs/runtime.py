@@ -210,7 +210,10 @@ class BigQueryOutputCalculator(VersionedCalculator):
                 },
             ))
         existing_long_term = next((item for item in result if item.name == "long_term"), None)
-        if existing_long_term is None or existing_long_term.status == "unavailable":
+        # A development financial snapshot is authoritative for this adapter.
+        # Recompute even when an older publication contains an available but
+        # incomplete placeholder; otherwise stale missing-input rows persist.
+        if "financial_data" in snapshot.payload or existing_long_term is None or existing_long_term.status == "unavailable":
             result = [item for item in result if item.name != "long_term"]
             result.append(_development_long_term_output(snapshot, symbol))
         present = {item.name for item in result}
