@@ -82,6 +82,7 @@ def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkey
             }
         ],
     )
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
     first = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, 8, tzinfo=timezone.utc)
     )
@@ -98,8 +99,8 @@ def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkey
     assert observation["collected_at"] == "2026-09-22T08:00:00Z"
     assert observation["observation_id"] != retry.iloc[0]["observation_id"]
     assert observation["source_revision_id"] == retry.iloc[0]["source_revision_id"]
-    assert observation["source_id"] == "richbourse-shares"
-    assert observation["parser_version"] == "shares-parser-v1"
+    assert observation["source_id"] == "sikafinance-shares"
+    assert observation["parser_version"] == "shares-parser-v2"
     assert observation["basis"] == "actual"
     assert observation["price_basis_ref"] == "raw-v1"
 
@@ -120,6 +121,7 @@ def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> 
             }
         ],
     )
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
     row = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, tzinfo=timezone.utc)
     ).iloc[0]
@@ -145,6 +147,7 @@ def test_scraper_preserves_raw_malformed_grouping_as_invalid(monkeypatch) -> Non
             }
         ],
     )
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
     row = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, tzinfo=timezone.utc)
     ).iloc[0]
@@ -153,6 +156,51 @@ def test_scraper_preserves_raw_malformed_grouping_as_invalid(monkeypatch) -> Non
     assert row["parsed_open"] == ""
     assert row["numeric_parse_status"] == "invalid"
     assert row["numeric_parse_errors"] == "open"
+
+
+def test_official_closed_weekday_session_is_attached_to_sika_observations(monkeypatch) -> None:
+    monkeypatch.setattr(
+        scraper,
+        "scrape",
+        lambda _url: [
+            {
+                "symbol": "ABC",
+                "name": "Example",
+                "open": "1 000",
+                "high": "1 100",
+                "low": "900",
+                "volume": "12",
+                "close": "1 050",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        scraper,
+        "scrape_brvm_session",
+        lambda _url: (datetime(2026, 10, 2, tzinfo=timezone.utc).date(), "verified"),
+    )
+
+    row = scraper.scrape_brvm_shares(
+        "fixture://shares", collected_at=datetime(2026, 10, 2, 20, tzinfo=timezone.utc)
+    ).iloc[0]
+
+    assert row["session_date"] == "2026-10-02"
+    assert row["original_source_date"] == "2026-10-02"
+    assert row["session_date_status"] == "verified"
+
+
+def test_brvm_session_resolver_requires_closed_non_holiday_weekday() -> None:
+    closed_weekday = "Vendredi, 2 octobre, 2026 - 15:17\nSeance fermee\n01/01/2026"
+    assert scraper.resolve_brvm_session(closed_weekday) == (
+        datetime(2026, 10, 2, tzinfo=timezone.utc).date(),
+        "verified",
+    )
+
+    holiday = "Vendredi, 25 decembre, 2026 - 15:17\nSeance fermee\n25/12/2026"
+    assert scraper.resolve_brvm_session(holiday) == (None, "unknown")
+
+    open_weekday = "Vendredi, 2 octobre, 2026 - 10:17\nSeance ouverte\n01/01/2026"
+    assert scraper.resolve_brvm_session(open_weekday) == (None, "unknown")
 
 
 def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch) -> None:

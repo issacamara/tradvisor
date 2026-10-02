@@ -1,6 +1,7 @@
 url:
 #    shares: https://www.brvm.org/en/cours-actions/0
     shares: https://www.sikafinance.com/marches/aaz
+    brvm_session: https://www.brvm.org/fr/jours-feries
     bonds: https://www.brvm.org/en/cours-obligations/0
     capitalizations: https://www.brvm.org/en/capitalisations/0
     volumes: https://www.brvm.org/en/volumes/0
