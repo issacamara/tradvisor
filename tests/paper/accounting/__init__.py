@@ -1,2 +1,0 @@
-"""Focused accounting tests."""
-

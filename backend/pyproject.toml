@@ -23,7 +23,7 @@ firestore = []
 
 [tool.setuptools]
 package-dir = { backend = "." }
-packages = ["backend", "backend.admin", "backend.analysis", "backend.auth", "backend.commands", "backend.contracts", "backend.jobs", "backend.paper", "backend.publication", "backend.recovery", "backend.store"]
+packages = ["backend", "backend.admin", "backend.analysis", "backend.auth", "backend.commands", "backend.contracts", "backend.jobs", "backend.publication", "backend.recovery", "backend.store"]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]

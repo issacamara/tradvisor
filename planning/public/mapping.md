@@ -1,39 +1,42 @@
-<!-- Public derivative: operational identifiers and private inventory excluded. Normative behavior unchanged. -->
-
 # Tradvisor V1 - Source-To-Calculation Mapping
 
 **Version:** 0.5
 **Date:** 2026-09-20
 **Status:** PROPOSAL - evidence-based implementation mapping; not production coverage certification
-**References:** BRD v1.23 (companion baseline document), Architecture v1.0 (companion baseline document), API/data contract v0.13 (companion baseline document), Financial contract v1.1 (companion baseline document)
+**References:** [BRD v1.23](tradvisor_brd.md), [Architecture v0.38](tradvisor_architecture.md), [API/data contract v0.12](tradvisor_api_data_contract.md), [Financial contract v1.1](tradvisor_financial_contract.md)
 
 ## 1. Scope And Findings
 
-Map the five user-supplied tables to the approved Swing, paper-trading, Growth and dividend-research requirements. This document identifies fields to reuse, transformations to implement, meanings to confirm and unavailable inputs. It does not change calculation rules, lower history requirements, authorize production queries or introduce a data-quality service. Swing and Long-Term remain equal first-class V1 workflows; ordering the mapping by dependencies does not change their priority.
+Map the five user-supplied tables to the approved Swing, Growth and dividend-research requirements. This document identifies fields to reuse, transformations to implement, meanings to confirm and unavailable inputs. It does not change calculation rules, lower history requirements, authorize production queries or introduce a data-quality service. Swing and Long-Term remain equal first-class V1 workflows; ordering the mapping by dependencies does not change their priority.
 
 - The supplied `shares` schema contains the basic OHLC and volume inputs. The stakeholder confirms that `date` is intended as the trading date and `volume` counts individual shares traded. Targeted inspection shows the scraper assigns the runtime's current date rather than extracting/verifying the source session. Historical date correctness, zero-volume/trade-status semantics and sufficient uninterrupted history remain unconfirmed. The low-volume sample cannot certify actionable Swing coverage.
 - The supplied `financials` schema contains useful reported figures, but does not establish all required Growth inputs or five consecutive comparable years. Publish supported metrics separately; never reweight a partial score into a full score.
 - One year of dividend records supports dated research facts once their meaning is established. It does not establish complete trailing-12-month ordinary yield, multiyear consistency or sustainability. Full Dividend/Balanced scoring remains deferred beyond V1; acquiring older dividend years is not a release prerequisite.
-- Paper holdings, cash, fees, orders and exit state are new application-owned data, not missing columns to add to the market-price table. Reset/recovery state stays under the approved application contracts.
 
 ## 2. Evidence And Status Convention
 
-Private source samples and schema metadata informed this mapping but are not reproduced
-or linked publicly. They do not certify full history, source semantics or usable coverage.
-The intended price date is the trading date and volume counts individual shares. Source
-session attribution and zero-volume price meaning still require adapter verification.
-Financial scope, units, owner attribution and required additional fields remain unverified.
-A missing fiscal year must remain missing; only one dividend year is currently available.
+**Growth coverage policy (approved 2026-09-20):** Keep all catalog companies visible. Publish a full Growth score only with all required inputs/history; otherwise retain supported metrics and explicit missing-input explanations, with no low-score substitution or weight redistribution. Separate insufficient-evidence companies from complete-score rankings and preserve independent advisory guards. Pursue obtainable missing inputs across sectors, including banks and insurers, without industrial-ratio substitutes. Before launch, report total catalog coverage, complete scores, eligible current advice and partial/unavailable results by sector/category with blocking inputs, then obtain product-owner review of Long-Term usefulness. If coverage is insufficient, explicitly revisit scope with the stakeholder rather than silently launching a mostly unavailable workflow. No numeric minimum coverage or formula relaxation is approved. This is a release review, not a new in-app data-quality feature.
 
-Available means a field is present, not semantically verified. Confirm means evidence is
-needed. Derive means deterministic computation after prerequisites. Add means normalized
-metadata/state is needed. Unavailable means not evidenced. Deferred means outside V1.
+| Evidence | What it establishes | Limitation |
+|----------|---------------------|------------|
+| User-supplied table descriptions and attached [schema transcript](/Users/issacamara/.codex/attachments/77e42d46-85cf-4b59-abb9-97ad2c1dc2d9/pasted-text.txt) | Names and described columns of `brvm_companies`, `shares`, `financials`, `dividends`, `ratings` | Supplied metadata, not a live database inspection. Embedded conversational instructions and SQL were not executed or adopted. |
+| [financials.csv](/Users/issacamara/Downloads/financials.csv) | Four SHEC rows for 2021, 2022, 2023 and 2025; all collected on 2026-08-21; nine columns; no blank cells | One issuer only. 2024 absent from this sample, unconfirmed in the full source. No bank or insurer example. |
+| [shares_low.csv](/Users/issacamara/Downloads/shares_low.csv) | 1,187 rows, 24 symbols, date labels 2025-06-30 through 2026-09-18; volumes 0 through 99; 450 zero-volume rows; four excess rows over unique symbol/date keys; no blank cells | Apparently low-volume selection; the export filter is unconfirmed. Dates are labels, not verified exchange sessions. Four repeated keys do not establish a production-wide duplication problem. |
+| Stakeholder decisions | Only one year of dividend data available; additional years cannot currently be acquired; missing financial years must not be invented | No dividend/ratings/company CSV sample supplied. |
+| Previously reviewed official BRVM holiday and trading-hours pages, recorded in API contract section 8 | Approved calendar-source direction, including source-backed manual exceptions | Historical coverage remains verification work; completion cutoffs and calendar-correction behavior are specified in the approved integration baseline. No fresh external lookup performed for this mapping. |
 
-Preserve supported facts and metrics. Publish complete Growth scores only with all
-required inputs; never reweight partial totals or invent missing history. Report company
-and sector coverage and blocking inputs for product-owner acceptance before launch.
-Insufficient coverage requires explicit scope review, not a silent formula change.
+Sample counts were rechecked with a structured CSV parser on 2026-09-20. After the stakeholder identified the shares scraper, a targeted read of [scrape_shares.py](archive/legacy-ingestion/scripts/scrape_shares.py) inspected date assignment only; no broader ingestion audit, script execution, production query, source-report fetch, indicator run, score calculation or backtest was performed. All source files were read only.
 
+**Trading-date clarification (2026-09-20):** The stakeholder says `shares.date` represents the trading date and is calculated daily by the scraper (called `scrape_share.py` in the conversation; the local file is `scrape_shares.py`). Line 54 assigns `datetime.now().strftime('%Y-%m-%d')`, using the runtime's local calendar date without an explicit exchange timezone, source-session extraction or calendar check in that function. This establishes intended meaning but not verified session attribution. Same-day collection of finalized same-day observations could match; holiday/weekend runs, delayed source refreshes and retries after midnight can mislabel earlier observations. The surrounding scheduler and historical rows were not inspected, so actual misdating is not established. Proposed adapter behavior: bind observations to a verified source session, check against the approved exchange calendar, and retain collection time separately; do not silently relabel historical rows from the runtime date.
+
+Use these labels independently; a row can be both derivable and dependent on confirmation:
+
+- **Available:** supplied schema/CSV contains the named field. This does not certify its meaning or coverage.
+- **Confirm:** meaning, units, provenance or full-source coverage requires evidence.
+- **Derive:** deterministic calculation can be implemented once prerequisites are confirmed; not already computed here.
+- **Add:** required normalized metadata or application state must be produced during implementation.
+- **Unavailable:** not evidenced in the supplied schemas/samples; not a claim that it cannot be acquired elsewhere.
+- **Deferred:** outside approved V1 scoring scope, not a V1 acquisition blocker.
 
 ## 3. Source Fields And Meaning
 
@@ -60,9 +63,9 @@ Insufficient coverage requires explicit scope review, not a silent formula chang
 | No supplied turnover field | Actual traded value, XOF/session | Unavailable in supplied schema. Use the approved complete-window close-times-volume estimate when its prerequisites hold; do not require actual turnover acquisition for that fallback. |
 | No supplied trade-status/suspension fields | `traded`, `confirmed_no_trade`, `unknown`; current suspension evidence | Add from verified source semantics/evidence. Missing row is unknown, not zero volume or a closed exchange. |
 | No supplied collection/availability/revision fields | `collected_at`, `validated_available_at`, source revision and evidence | Add prospectively. Availability is first committed usable time for that revision, stable across retries. Do not fabricate historical platform-availability timestamps. |
-| No supplied adjustment/event fields | Comparable indicator series and paper-event handling | Unavailable: verified split/bonus factors and relevant price/share-basis events. Unresolved events block affected advice; adjustment factors never silently rewrite paper positions. |
+| No supplied adjustment/event fields | Comparable indicator series and analytical event handling | Unavailable: verified split/bonus factors and relevant price/share-basis events. Unresolved events block affected advice; adjustment factors never silently rewrite published analyses. |
 
-Source FLOAT64 columns do not establish exact money. Preserve source values and obtain verifiable decimal/precision semantics before execution normalization. Normalized monetary fields must satisfy the API contract; do not round unsupported execution-price precision merely to fit it. Technical indicators follow the financial contract's deterministic numerical convention, not the paper-ledger money representation.
+Source FLOAT64 columns do not establish exact money. Preserve source values and obtain verifiable decimal/precision semantics before execution normalization. Normalized monetary fields must satisfy the API contract; do not round unsupported execution-price precision merely to fit it. Technical indicators follow the financial contract's deterministic numerical convention, not an execution-ledger representation.
 
 ### 3.3 Financials
 
@@ -96,7 +99,7 @@ Source FLOAT64 columns do not establish exact money. Preserve source values and 
 | `ratings.collected_at` (TIMESTAMP) | Collection evidence | Available: not effective date or evidence of the historical publication date. |
 | No supplied agency/scale/source/effective-date fields | Interpretable downgrade context | Add when evidence exists; otherwise display original dated labels without declaring an ordinal downgrade. No numerical Growth contribution is introduced. |
 
-## 4. Swing And Paper Calculation Mapping
+## 4. Swing Calculation Mapping
 
 Stable mapping IDs below identify dependencies, not new BRD requirement IDs. The financial contract remains authoritative for formulas and boundary cases.
 
@@ -112,12 +115,13 @@ Stable mapping IDs below identify dependencies, not new BRD requirement IDs. The
 | PT-02 | Keep/Sell and exit explanations | Application position cost/quantity, opening session, highest genuine close since opening, latched activation, frozen policy; EMA/RSI and genuine current price | Add application state / Derive. Additional buys/partial sells follow approved state rules. Independently assessable exits such as duration can yield Sell despite missing price checks; incomplete checks cannot default to Keep. |
 | PT-03 | Cash, P&L and reservations | Application opening cash, explicit fee, accepted orders, actual executions and cash movements; latest valid valuation close | Add application-owned ledger/state. No market table contains these records. Incomplete valuation stays explicitly incomplete, not zero; exact money and proportional fee/cost rules unchanged. |
 
+There are 317 distinct date labels across the entire low-volume sample, not 317 verified sessions per issuer. A long calendar span or aggregate row count does not establish a 250-session uninterrupted input chain. Repeated keys require deterministic source-revision handling; do not average OHLC or use arbitrary first-row deduplication to produce a recommendation.
 
 ## 5. Long-Term Calculation Mapping
 
 | ID | Result | Inputs and transformation | Availability and missing-input behavior |
 |----|--------|---------------------------|-----------------------------------------|
-| LT-01 | Comparable history | Five consecutive completed annual periods with matched currency, scope, category and publication evidence; six equity dates for five average-equity denominators | Confirm / Add. Private samples do not certify five consecutive years. No interpolation or using four observations as five years. Full-source coverage remains unconfirmed. |
+| LT-01 | Comparable history | Five consecutive completed annual periods with matched currency, scope, category and publication evidence; six equity dates for five average-equity denominators | Confirm / Add. SHEC sample has four nonconsecutive years. No interpolation or using four observations as five years. Full-source coverage remains unconfirmed. |
 | LT-02 | Activity/earnings growth, 30 points | Verified revenue/PNB/premiums by category and ordinary-owner earnings; approved three-year endpoint CAGR and loss/recovery handling | Derive after semantic confirmation. Supported standalone endpoint metrics can be shown with their periods and limitations; they do not certify complete history or a full score. |
 | LT-03 | Profitability/consistency, 25 points | Latest and five-year ROE using average opening/closing matched equity; five-year positive earnings count | Derive only with LT-01 and matched income/equity. Missing opening equity is not replaced by closing equity; distinguish observed nonpositive equity from unavailable equity. |
 | LT-04 | Non-financial resilience, 20 points | Interest-bearing debt minus unrestricted cash over matched equity; current assets/current liabilities | Partial candidate inputs available, semantics unconfirmed; current assets/liabilities unavailable. An assessable debt metric does not fill the missing current-ratio contribution. |
@@ -159,8 +163,6 @@ These are proposed work items, not created issues or completed implementation. O
 | MAP-07 | Acquire/normalize capitalization and corporate-action evidence | Matching dated ordinary shares/capitalization and verified adjustment factors, or explicit unsupported status | MAP-02; source evidence not yet identified | Ingestion / Analytical Data |
 | MAP-08 | Normalize existing dividend year and rating history | Stable payment identities, confirmed amount/payment semantics and coverage; rating agency/scale/dates where available | MAP-01..02 | Ingestion |
 | MAP-09 | Implement Growth dimensions, guards and dividend facts | LT-01..10 coverage per issuer; supported metrics preserved, incomplete totals unavailable; LT-11 deferred | MAP-04,06..08 | Analysis Engine |
-| MAP-10 | Integrate market results with paper-state calculations | Genuine next-session execution, frozen fee/policy, independent holding advice and retry-stable availability fixtures | MAP-03..05; application contracts | Paper Trading / Application Store |
-
 Do not open a V1 task to acquire five years of dividends or fabricate missing 2024 financials. Additional actual-turnover ingestion is optional while the approved estimated-window method is usable. Missing mandatory Growth inputs remain visible implementation dependencies, not reasons to remove the Long-Term workspace.
 
 ## 8. Grouped Confirmation Questions
@@ -169,10 +171,10 @@ These questions concern unconfirmed source meanings, not decisions already appro
 
 | ID | Question and why it matters | Conservative treatment until answered | Validation owner |
 |----|----------------------------|--------------------------------------|------------------|
-| Q-SRC-01 | Partially resolved: `date` is intended to mean trading date, but the scraper assigns runtime date; `volume` is confirmed as individual shares traded. On 2026-09-20 the stakeholder stated they do not know whether zero-volume OHLC are carried prices. Transfer that question to implementation source verification, not another stakeholder decision. Export filter and verified source-session attribution remain unconfirmed. | Treat the private share sample as a non-certifying sample. Until source evidence resolves zero-volume observations, classify their trade/price status as unknown: no fresh traded close, paper execution, confirmed no-trade carry or modeled zero TR may be inferred from them alone. Apply the existing unknown-input behavior to affected calculations. Do not re-ask the intended date meaning, volume unit or unknown zero-volume convention, or assume historical dates are proven wrong. | Ingestion implementer; source evidence reviewed by financial-domain reviewer |
+| Q-SRC-01 | Partially resolved: `date` is intended to mean trading date, but the scraper assigns runtime date; `volume` is confirmed as individual shares traded. On 2026-09-20 the stakeholder stated they do not know whether zero-volume OHLC are carried prices. Transfer that question to implementation source verification, not another stakeholder decision. Export filter and verified source-session attribution remain unconfirmed. | Treat `shares_low.csv` as a non-certifying sample. Until source evidence resolves zero-volume observations, classify their trade/price status as unknown: no fresh traded close, confirmed no-trade carry or modeled zero TR may be inferred from them alone. Apply the existing unknown-input behavior to affected calculations. Do not re-ask the intended date meaning, volume unit or unknown zero-volume convention, or assume historical dates are proven wrong. | Ingestion implementer; source evidence reviewed by financial-domain reviewer |
 | Q-SRC-02 | Implementation verification: establish financial currency/scale/scope and debt/cash/owner attribution, plus dividend per-share/total, gross/net and actual-paid meaning from source evidence. Identify company categories, shares/capitalization and report dates rather than assuming those fields exist. The approved coverage policy does not require the stakeholder to confirm accounting semantics from memory. | Preserve supported metrics/facts; dependent normalized metrics, yields, full scores and advice remain unavailable wherever a required meaning/input is unresolved. Review measured coverage before launch; do not silently weaken the scorecard. | Ingestion implementer with financial-domain reviewer; product owner reviews launch coverage |
 
-The existing uncertainty about A potentially missing fiscal year remains recorded; it is not being asked again. Additional dividend years are known unavailable and are not requested. Source facts may be settled by documentation or future adapter tests rather than requiring the stakeholder to know every accounting field.
+The existing uncertainty about SHEC 2024 remains recorded; it is not being asked again. Additional dividend years are known unavailable and are not requested. Source facts may be settled by documentation or future adapter tests rather than requiring the stakeholder to know every accounting field.
 
 Zero-volume verification belongs to MAP-04: compare original source records and available dated exchange documentation to establish what the displayed OHLC represent, then encode evidenced behavior in adapter fixtures. Repeated equal prices alone do not prove carry-forward. This is a bounded ingestion verification task, not a new data-quality feature. Until resolved, retain source values with unknown status and withhold only dependent outputs; independently assessable holding-duration exits remain governed by the financial contract.
 

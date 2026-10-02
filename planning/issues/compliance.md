@@ -5,7 +5,7 @@ Approved public baseline: https://github.com/issacamara/tradvisor/issues/1
 - [Architecture part 1](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766885054), [Architecture part 2](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899249), [Architecture part 3](https://github.com/issacamara/tradvisor/issues/1#issuecomment-5766899584): sections/trace 9,11; BRD-C-02,ARCH-ASM-08
 
 ## Scope
-Have product owner obtain applicable legal/privacy/disclaimer and retention review for private advisory/paper use; record only public-safe conclusions.
+Have product owner obtain applicable legal/privacy/disclaimer and retention review for private advisory research use; record only public-safe conclusions.
 
 Owned files/modules (new paths are proposed boundaries, not claims that code exists):
 - `docs/validation/compliance.md`

@@ -15,12 +15,8 @@ import pytest
 from pydantic import BaseModel
 
 from backend.store.firestore import CursorError, FirestoreRestStore, SnapshotExpired
-from backend.contracts.paper import PortfolioControl
 from backend.store.repositories import (
     DocumentKey,
-    GenerationConflict,
-    OwnerContext,
-    PaperRepositories,
     VersionedDocument,
 )
 from backend.store.transactions import Transaction
@@ -45,20 +41,6 @@ class TimestampRecord(BaseModel):
 
 
 TEST_CURSOR_SECRET = "local-test-cursor-secret"
-
-
-def _control(generation: str | None) -> PortfolioControl:
-    return PortfolioControl.model_validate(
-        {
-            "owner_uid": "verified-user",
-            "active_generation": generation,
-            "configured_fee_rate_pct": None,
-            "state_version": 0,
-            "preference_version": 0,
-            "recovery_id": "recovery-1",
-            "updated_at": datetime.now(timezone.utc),
-        }
-    )
 
 
 class _LocalFirestoreState:
@@ -114,9 +96,7 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                     if path.startswith(f"{parent}/{collection_id}/")
                 ]
                 candidates = [
-                    document
-                    for document in candidates
-                    if self._matches_filters(document, query.get("where"))
+                    document for document in candidates if self._matches_filters(document, query.get("where"))
                 ]
                 for ordering in reversed(query.get("orderBy", [])):
                     field = str(ordering["field"]["fieldPath"])
@@ -130,11 +110,10 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
                         self._field_value({"fields": {"value": value}}, "value")
                         for value in start_at["values"]
                     ]
-                    orderings = query.get("orderBy", [])
                     candidates = [
                         document
                         for document in candidates
-                        if self._is_after(document, start_values, orderings)
+                        if self._is_after(document, start_values, query.get("orderBy", []))
                     ]
                 candidates = candidates[: int(query["limit"])]
             self._respond_list(200, [{"document": document} for document in candidates])
@@ -147,13 +126,11 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
             self._respond(404, {})
             return
         document_path = unquote(path.split("/documents/", 1)[1])
-        params = parse_qs(query)
-        transaction = params.get("transaction", [None])[0]
+        transaction = parse_qs(query).get("transaction", [None])[0]
         with self.state.lock:
             stored = self.state.documents.get(document_path)
             if transaction is not None:
-                reads = self.state.transactions[transaction]
-                reads.setdefault(document_path, 0 if stored is None else stored[0])
+                self.state.transactions[transaction].setdefault(document_path, 0 if stored is None else stored[0])
             if stored is None:
                 self._respond(404, {})
                 return
@@ -193,14 +170,11 @@ class _FirestoreEmulatorHandler(BaseHTTPRequestHandler):
         return str(next(iter(value.values())))
 
     @classmethod
-    def _matches_filters(
-        cls, document: dict[str, object], where: dict[str, object] | None
-    ) -> bool:
+    def _matches_filters(cls, document: dict[str, object], where: dict[str, object] | None) -> bool:
         if where is None:
             return True
         composite = cast(dict[str, object], where["compositeFilter"])
-        filters = cast(list[dict[str, object]], composite["filters"])
-        for item in filters:
+        for item in cast(list[dict[str, object]], composite["filters"]):
             field_filter = cast(dict[str, object], item["fieldFilter"])
             field = str(cast(dict[str, object], field_filter["field"])["fieldPath"])
             actual = cls._field_value(document, field)
@@ -244,151 +218,6 @@ def firestore_emulator() -> Iterator[tuple[str, _LocalFirestoreState]]:
         thread.join(timeout=5)
         server.server_close()
 
-
-def test_firestore_rest_adapter_retries_reset_write_race(
-    firestore_emulator: tuple[str, _LocalFirestoreState],
-) -> None:
-    emulator_host, state = firestore_emulator
-    first_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db",
-        cursor_secret=TEST_CURSOR_SECRET,
-    )
-    reset_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db",
-        cursor_secret=TEST_CURSOR_SECRET,
-    )
-    owner = OwnerContext(uid=OpaqueIdentifier("verified-user"))
-    first = PaperRepositories(first_store, owner)
-    reset = PaperRepositories(reset_store, owner)
-    control_key = first.control_key()
-    generation_key = first.generation_key(OpaqueIdentifier("g1"))
-
-    first_store.run(
-        lambda transaction: first.write_in_transaction(
-            transaction,
-            key=control_key,
-            record=_control("g1"),
-            schema_version=1,
-            expected_state_version=None,
-        ),
-        max_attempts=3,
-    )
-    attempts = 0
-
-    def stale_write(transaction: Transaction) -> None:
-        nonlocal attempts
-        attempts += 1
-        first.write_in_transaction(
-            transaction,
-            key=generation_key,
-            record=Record(generation="g1", value=1),
-            schema_version=1,
-            expected_state_version=None,
-        )
-        if attempts == 1:
-            reset.transact(
-                lambda reset_transaction: reset.write_in_transaction(
-                    reset_transaction,
-                    key=control_key,
-                    record=_control("g2"),
-                    schema_version=1,
-                    expected_state_version=0,
-                )
-            )
-
-    with pytest.raises(GenerationConflict, match="not the active"):
-        first.transact(stale_write)
-
-    assert attempts == 2
-    assert first_store.get(generation_key) is None
-    assert state.documents["paper_portfolios/verified-user"][1]["name"] == (
-        "projects/local-project/databases/local-db/documents/paper_portfolios/verified-user"
-    )
-
-
-def test_firestore_rest_adapter_queries_indexed_fields_and_preserves_order(
-    firestore_emulator: tuple[str, _LocalFirestoreState],
-) -> None:
-    emulator_host, state = firestore_emulator
-    store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db",
-        cursor_secret=TEST_CURSOR_SECRET,
-    )
-    collection = "paper_portfolios/verified-user/generations/g1/orders"
-    documents = (
-        ("order-a", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        ("order-b", "g1", datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        ("order-c", "g1", datetime(2025, 12, 1, tzinfo=timezone.utc)),
-        ("order-d", "g1", datetime(2025, 11, 1, tzinfo=timezone.utc)),
-    )
-
-    def seed(transaction: Transaction) -> None:
-        for order_id, generation, accepted_at in documents:
-            store.put_in_transaction(
-                transaction,
-                VersionedDocument(
-                    key=DocumentKey(collection, order_id),
-                    schema_version=1,
-                    state_version=0,
-                    record=HistoryRecord(
-                        generation=generation,
-                        status="pending",
-                        accepted_at=accepted_at,
-                        order_id=order_id,
-                    ),
-                ),
-            )
-
-    store.run(seed, max_attempts=1)
-    page = store.page(
-        collection,
-        filters=(("generation", "==", "g1"), ("status", "==", "pending")),
-        order_by=(("accepted_at", "desc"), ("order_id", "desc")),
-        limit=2,
-        cursor=None,
-    )
-
-    assert [HistoryRecord.model_validate(item.model_dump()).order_id for item in page.items] == [
-        "order-b",
-        "order-a",
-    ]
-    assert page.next_cursor is not None
-    assert page.keys == (
-        DocumentKey(collection, "order-b"),
-        DocumentKey(collection, "order-a"),
-    )
-    continuation = store.page(
-        collection,
-        filters=(("generation", "==", "g1"), ("status", "==", "pending")),
-        order_by=(("accepted_at", "desc"), ("order_id", "desc")),
-        limit=2,
-        cursor=page.next_cursor,
-    )
-    assert [HistoryRecord.model_validate(item.model_dump()).order_id for item in continuation.items] == [
-        "order-c",
-        "order-d",
-    ]
-    assert continuation.next_cursor is None
-    query = state.query_requests[0]
-    assert query["parent"] == (
-        "projects/local-project/databases/local-db/documents/"
-        "paper_portfolios/verified-user/generations/g1"
-    )
-    structured = cast(dict[str, Any], query["structuredQuery"])
-    assert structured["where"]["compositeFilter"]["filters"][0]["fieldFilter"]["field"] == {
-        "fieldPath": "generation"
-    }
-    assert structured["where"]["compositeFilter"]["filters"][1]["fieldFilter"]["field"] == {
-        "fieldPath": "status"
-    }
-    assert structured["limit"] == 3
-    assert structured["orderBy"] == [
-        {"field": {"fieldPath": "accepted_at"}, "direction": "DESCENDING"},
-        {"field": {"fieldPath": "order_id"}, "direction": "DESCENDING"},
-    ]
-    continuation_query = state.query_requests[1]["structuredQuery"]
-    assert continuation_query["startAt"]["before"] is False
-    assert len(continuation_query["startAt"]["values"]) == 2
 
 
 def test_firestore_rest_adapter_publication_name_cursor_uses_reference_value(
@@ -445,11 +274,7 @@ def test_firestore_rest_adapter_rejects_cursor_after_state_change(
         host=emulator_host, project_id="local-project", database_id="local-db",
         cursor_secret=TEST_CURSOR_SECRET,
     )
-    reset_store = FirestoreRestStore(
-        host=emulator_host, project_id="local-project", database_id="local-db",
-        cursor_secret=TEST_CURSOR_SECRET,
-    )
-    collection = "paper_portfolios/verified-user/generations/g1/orders"
+    collection = "analysis_batches/b1/results"
 
     def seed(transaction: Transaction) -> None:
         for order_id, value in (("a", 1), ("b", 2)):
@@ -473,18 +298,6 @@ def test_firestore_rest_adapter_rejects_cursor_after_state_change(
         cursor_context=("g1", 0),
     )
     assert first.next_cursor is not None
-    reset_store.run(
-        lambda transaction: reset_store.put_in_transaction(
-            transaction,
-            VersionedDocument(
-                key=DocumentKey("paper_portfolios", "verified-user"),
-                schema_version=1,
-                state_version=1,
-                record=_control("g1"),
-            ),
-        ),
-        max_attempts=1,
-    )
     with pytest.raises(CursorError, match="malformed"):
         store.page(
             collection,
@@ -503,7 +316,7 @@ def test_firestore_rest_adapter_rejects_malformed_cursor(
     store = FirestoreRestStore(host=emulator_host, cursor_secret=TEST_CURSOR_SECRET)
     with pytest.raises(CursorError, match="malformed"):
         store.page(
-            "paper_portfolios/u/generations/g1/orders",
+            "analysis_batches/b1/results",
             filters=(("generation", "==", "g1"),),
             order_by=(("accepted_at", "desc"), ("order_id", "desc")),
             limit=2,

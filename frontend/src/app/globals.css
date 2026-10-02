@@ -112,25 +112,6 @@ button, a, input, select { font: inherit; }
 .long-term-detail { padding-bottom: 16px; }
 .growth-chart { height: 210px; margin: 0 18px 8px; }
 .long-term-detail .evidence-note { margin-top: 18px; }
-.paper-heading { margin-bottom: 23px; }
-.paper-commands { margin-bottom: 22px; padding: 17px 18px !important; border: 1px solid #2d3737 !important; border-radius: 6px; background: #121b1c; }
-.paper-commands h2 { font-size: 16px; }
-.paper-commands form label { color: #c8d7d0; }
-.paper-commands input:not([type="checkbox"]), .paper-commands select { min-height: 36px; border-color: #354645; border-radius: 4px; background: #0d1516; color: #edf4ef; }
-.paper-commands input[type="checkbox"] { accent-color: #45c88a; width: 16px; height: 16px; }
-.paper-commands button[type="submit"] { min-height: 36px; border-radius: 4px; cursor: pointer; }
-.paper-commands button[type="submit"]:hover:not(:disabled) { background: #234235; }
-.paper-commands button:disabled { opacity: .55; cursor: not-allowed; }
-.paper-report { padding: 0; }
-.paper-report > header h2 { font-size: 16px; }
-.paper-report > section:nth-of-type(1) { padding: 14px 0; background: #111b1b; }
-.paper-report > section:nth-of-type(1) > div { padding-left: 16px; border-left: 1px solid #354645; }
-.paper-report > section:nth-of-type(1) dd { font-size: 17px; font-variant-numeric: tabular-nums; }
-.paper-report > section:nth-of-type(2) > div, .paper-report > section:nth-of-type(2) > aside { min-width: 0; border: 1px solid #2d3737; border-radius: 6px; background: #121b1c; padding: 16px; }
-.paper-report table { font-variant-numeric: tabular-nums; }
-.paper-report th { color: #aab9b5; }
-.paper-report td { color: #d8e5df; }
-.paper-report [role="tab"][aria-selected="true"] { border-color: #45c88a; color: #edf4ef; }
 @media (max-width: 980px) { .long-term-grid { grid-template-columns: 1fr; } }
 @media (max-width: 1080px) { .research-grid { grid-template-columns: 1fr; } .table-scroll { max-height: 370px; } }
 @media (max-width: 650px) {
@@ -155,6 +136,4 @@ button, a, input, select { font: inherit; }
   .detail-heading { padding: 13px; }
   .chart-workspace { padding: 13px 13px 0; }
   .chart-canvas, .chart-empty { height: 230px; }
-  .paper-commands { padding: 14px !important; }
-  .paper-report > section:nth-of-type(1) dd { font-size: 14px; overflow-wrap: anywhere; }
 }

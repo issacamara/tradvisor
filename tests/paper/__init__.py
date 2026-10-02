@@ -1,2 +1,0 @@
-"""Paper-trading test package."""
-

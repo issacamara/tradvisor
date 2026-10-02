@@ -105,7 +105,7 @@ class _FakeQuery:
 
 
 def test_sdk_transactional_read_consumes_snapshot_iterator() -> None:
-    key = DocumentKey("paper_portfolios/u/generations/g1/orders", "order-1")
+    key = DocumentKey("analysis_batches/b1/results", "result-1")
     transaction = _FakeTransaction(
         (
             _Snapshot(
@@ -132,7 +132,7 @@ def test_sdk_transactional_read_consumes_snapshot_iterator() -> None:
 
 
 def test_sdk_transactional_read_returns_none_for_empty_snapshot_iterator() -> None:
-    key = DocumentKey("paper_portfolios/u/generations/g1/orders", "missing")
+    key = DocumentKey("analysis_batches/b1/results", "missing")
     transaction = _FakeTransaction(())
     store = FirestoreSdkStore(
         project_id="local-project", cursor_secret="local-test-cursor-secret", client=_FakeClient()
@@ -142,8 +142,8 @@ def test_sdk_transactional_read_returns_none_for_empty_snapshot_iterator() -> No
 
 
 def test_sdk_fake_multi_record_transaction_reads_before_writes() -> None:
-    first_key = DocumentKey("paper_portfolios/u/generations/g1/orders", "order-1")
-    second_key = DocumentKey("paper_portfolios/u/generations/g1/positions", "ABC")
+    first_key = DocumentKey("analysis_batches/b1/results", "result-1")
+    second_key = DocumentKey("analysis_batches/b1/metadata", "coverage")
     snapshot = _Snapshot(
         {
             "_schema_version": 1,

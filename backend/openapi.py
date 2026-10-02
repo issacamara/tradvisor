@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from copy import deepcopy
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
@@ -23,38 +22,13 @@ from backend.contracts.analysis import (
     Provenance,
     ReasonCode,
 )
-from backend.contracts.envelopes import (
-    ApiError,
-    CommandMetadata,
-    ContractModel,
-    ErrorEnvelope,
-    ResponseEnvelope,
-    ResponseMeta,
-)
-from backend.contracts.paper import CashMovement, PaperExecution, PaperOrder, PaperPosition, PortfolioSummary
+from backend.contracts.envelopes import ApiError, ContractModel, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.routes import (
-    CashMovementListResource,
-    CashMovementListRequest,
-    CommandAcknowledgement,
-    CreatePaperOrderRequest,
-    CreatePaperOrderResource,
-    ExecutionListResource,
-    ExecutionListRequest,
     MeResource,
-    OrderListRequest,
-    OrderListResource,
     PageRequest,
-    PAPER_ROUTES,
-    PatchPreferencesRequest,
-    PortfolioResource,
-    ResetPortfolioRequest,
-    ResetPortfolioResource,
-    SetupPortfolioRequest,
-    SetupPortfolioResource,
-    RouteContract,
     RouteErrorCode,
 )
-from backend.contracts.scalars import NonNegativeMoney, NonNegativeVersion, OpaqueIdentifier
+from backend.contracts.scalars import NonNegativeMoney, OpaqueIdentifier
 from backend.contracts.scalars import Score
 
 API_VERSION = "0.13"
@@ -82,23 +56,12 @@ class ReasonExplanation(ContractModel):
     message: Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
 
-class HoldingAdvice(ContractModel):
-    action: Literal["keep", "sell", "insufficient_data", "not_applicable"]
-    generation: OpaqueIdentifier | None
-    state_version: NonNegativeVersion | None
-    exit_policy_version: OpaqueIdentifier | None
-    evaluation_session: date | None
-    reasons: tuple[ReasonExplanation, ...]
-    unavailable_checks: tuple[ReasonExplanation, ...]
-
-
 class SwingRecommendation(ContractModel):
     symbol: OpaqueIdentifier
     entry_action: Literal["buy", "no_clear_signal", "insufficient_data"]
     buy_strength: ScoreMetric
     indicators: dict[Literal["ema20", "ema50", "rsi14", "atr14", "traded_value20"], NumericMetric]
     eligibility_guards: tuple[SwingGuard, ...]
-    holding_advice: HoldingAdvice | None
 
 
 class SwingRecommendationsData(ContractModel):
@@ -108,8 +71,6 @@ class SwingRecommendationsData(ContractModel):
     input_snapshot_id: OpaqueIdentifier
     rule_version: OpaqueIdentifier
     strategy_id: OpaqueIdentifier
-    generation: OpaqueIdentifier | None
-    state_version: NonNegativeVersion | None
     items: tuple[SwingRecommendation, ...]
     next_cursor: str | None
 
@@ -339,14 +300,8 @@ OPERATIONS: tuple[OpenAPIOperation, ...] = (
         response_model=MeResource,
     ),
     OpenAPIOperation(
-        operation_id="patchMePreferences",
-        summary="Update user preferences",
-        request_model=PatchPreferencesRequest,
-        response_model=CommandAcknowledgement,
-    ),
-    OpenAPIOperation(
         operation_id="getSwingRecommendations",
-        summary="Read shared Swing entry results and separate holding advice",
+        summary="Read shared Swing entry results and evidence",
         query_model=RecommendationQuery,
         response_model=SwingRecommendationsData,
         error_outcomes=ANALYTICAL_LIST_ERRORS,
@@ -374,50 +329,6 @@ OPERATIONS: tuple[OpenAPIOperation, ...] = (
         path_parameters=("symbol",),
         error_outcomes=STOCK_READ_ERRORS,
     ),
-    OpenAPIOperation(
-        operation_id="getPaperPortfolio",
-        summary="Read the active paper portfolio",
-        response_model=PortfolioResource,
-    ),
-    OpenAPIOperation(
-        operation_id="setupPaperPortfolio",
-        summary="Set up a paper portfolio",
-        request_model=SetupPortfolioRequest,
-        response_model=SetupPortfolioResource,
-        success_status=201,
-    ),
-    OpenAPIOperation(
-        operation_id="createPaperOrder",
-        summary="Create a manual recommendation-linked paper order",
-        request_model=CreatePaperOrderRequest,
-        response_model=CreatePaperOrderResource,
-        success_status=201,
-    ),
-    OpenAPIOperation(
-        operation_id="listPaperOrders",
-        summary="List bounded paper order history",
-        query_model=OrderListRequest,
-        response_model=OrderListResource,
-    ),
-    OpenAPIOperation(
-        operation_id="listPaperExecutions",
-        summary="List bounded paper execution history",
-        query_model=ExecutionListRequest,
-        response_model=ExecutionListResource,
-    ),
-    OpenAPIOperation(
-        operation_id="listPaperCashMovements",
-        summary="List bounded paper cash ledger",
-        query_model=CashMovementListRequest,
-        response_model=CashMovementListResource,
-    ),
-    OpenAPIOperation(
-        operation_id="resetPaperPortfolio",
-        summary="Reset the active paper portfolio",
-        request_model=ResetPortfolioRequest,
-        response_model=ResetPortfolioResource,
-        success_status=200,
-    ),
 )
 
 
@@ -426,26 +337,8 @@ def _components() -> dict[str, object]:
         "ApiError": ApiError,
         "ErrorEnvelope": ErrorEnvelope,
         "ResponseMeta": ResponseMeta,
-        "CommandMetadata": CommandMetadata,
         "MeResource": MeResource,
-        "PortfolioResource": PortfolioResource,
-        "PortfolioSummary": PortfolioSummary,
-        "PaperPosition": PaperPosition,
-        "PaperOrder": PaperOrder,
-        "PaperExecution": PaperExecution,
-        "CashMovement": CashMovement,
         "PageRequest": PageRequest,
-        "OrderListRequest": OrderListRequest,
-        "ExecutionListRequest": ExecutionListRequest,
-        "CashMovementListRequest": CashMovementListRequest,
-        "CommandAcknowledgement": CommandAcknowledgement,
-        "SetupPortfolioRequest": SetupPortfolioRequest,
-        "SetupPortfolioResource": SetupPortfolioResource,
-        "CreatePaperOrderRequest": CreatePaperOrderRequest,
-        "CreatePaperOrderResource": CreatePaperOrderResource,
-        "ResetPortfolioRequest": ResetPortfolioRequest,
-        "ResetPortfolioResource": ResetPortfolioResource,
-        "PatchPreferencesRequest": PatchPreferencesRequest,
         "SwingRecommendation": SwingRecommendation,
         "SwingRecommendationsData": SwingRecommendationsData,
         "LongTermRankedCompany": LongTermRankedCompany,
@@ -462,11 +355,7 @@ def _components() -> dict[str, object]:
         "ChartQuery": ChartQuery,
     }
     schemas: dict[str, object] = {}
-    optional_default_fields = {
-        "CommandMetadata": {"expected_generation", "expected_state_version"},
-        "PatchPreferencesRequest": {"objective", "fee_rate_pct"},
-        "CreatePaperOrderRequest": {"acknowledge_keep_override"},
-    }
+    optional_default_fields: dict[str, set[str]] = {}
     for name, model in models.items():
         schema = model.model_json_schema(mode="serialization", ref_template="#/components/schemas/{model}")
         definitions = schema.pop("$defs", {})
@@ -481,33 +370,6 @@ def _components() -> dict[str, object]:
         for definition_name, definition in definitions.items():
             schemas.setdefault(definition_name, definition)
         schemas[f"{operation.response_model.__name__}Response"] = schema
-    # Keep the contract model intact while exposing idempotency as the v0.13 HTTP header.
-    command_body = cast(dict[str, Any], deepcopy(schemas["CommandMetadata"]))
-    command_properties = command_body["properties"]
-    if isinstance(command_properties, dict):
-        command_properties.pop("idempotency_key", None)
-        for name in ("expected_generation", "expected_state_version"):
-            property_schema = command_properties.get(name)
-            if isinstance(property_schema, dict) and "default" in property_schema:
-                property_schema["x-default"] = property_schema.pop("default")
-    command_required = command_body.get("required")
-    if isinstance(command_required, list):
-        command_body["required"] = [name for name in command_required if name != "idempotency_key"]
-    command_body["description"] = (
-        "Restore-safe command metadata. Idempotency-Key is carried in the HTTP header per API v0.13."
-    )
-    schemas["CommandMetadataBody"] = command_body
-    for request_name in (
-        "PatchPreferencesRequest",
-        "SetupPortfolioRequest",
-        "CreatePaperOrderRequest",
-        "ResetPortfolioRequest",
-    ):
-        request_schema = cast(dict[str, Any], schemas[request_name])
-        request_properties = request_schema.get("properties") if isinstance(request_schema, dict) else None
-        command_property = request_properties.get("command") if isinstance(request_properties, dict) else None
-        if isinstance(command_property, dict):
-            command_property["$ref"] = "#/components/schemas/CommandMetadataBody"
     for name, schema_value in schemas.items():
         if not isinstance(schema_value, dict):
             continue
@@ -598,10 +460,9 @@ def _operation(
     route: OpenAPIOperation,
     method: str,
     path: str,
-    route_contract: RouteContract | None,
 ) -> dict[str, object]:
     responses: dict[str, object] = {}
-    success_status = route_contract.success_status if route_contract is not None else route.success_status
+    success_status = route.success_status
     response_ref = f"#/components/schemas/{route.response_model.__name__}Response"
     responses[str(success_status)] = {
         "description": "Successful response",
@@ -609,12 +470,8 @@ def _operation(
         "content": {"application/json": {"schema": {"$ref": response_ref}}},
     }
     error_codes_by_status: dict[int, set[str]] = {}
-    if route_contract is not None:
-        for outcome in route_contract.error_outcomes:
-            error_codes_by_status.setdefault(outcome.status, set()).add(outcome.code)
-    else:
-        for status, code in route.error_outcomes:
-            error_codes_by_status.setdefault(status, set()).add(code)
+    for status, code in route.error_outcomes:
+        error_codes_by_status.setdefault(status, set()).add(code)
     for status, error_codes in sorted(error_codes_by_status.items()):
         responses[str(status)] = {
             "description": "API error",
@@ -644,15 +501,6 @@ def _operation(
         parameters = cast(list[dict[str, object]], result.get("parameters", []))
         result["parameters"] = parameters + _query_parameters(route.query_model)
     if route.request_model is not None:
-        parameters = cast(list[dict[str, object]], result.get("parameters", []))
-        result["parameters"] = parameters + [
-            _parameter(
-                "Idempotency-Key",
-                {"type": "string", "pattern": r"^[0-9]{13}\.[0-9a-f]{32}$"},
-                location="header",
-                required=True,
-            )
-        ]
         result["requestBody"] = {
             "required": True,
             "description": "Command bodies are limited to 16 KiB.",
@@ -669,31 +517,18 @@ def _operation(
 def build_openapi() -> dict[str, object]:
     operations = {route.operation_id: route for route in OPERATIONS}
     paths: dict[str, dict[str, object]] = {}
-    route_contracts = {(route.method.lower(), route.path): route for route in PAPER_ROUTES}
     endpoint_map = (
         ("GET", "/v1/me", "getMe"),
-        ("PATCH", "/v1/me/preferences", "patchMePreferences"),
         ("GET", "/v1/swing/recommendations", "getSwingRecommendations"),
         ("GET", "/v1/long-term/rankings", "getLongTermRankings"),
         ("GET", "/v1/stocks/{symbol}", "getStock"),
         ("GET", "/v1/stocks/{symbol}/chart", "getStockChart"),
-        ("GET", "/v1/paper/portfolio", "getPaperPortfolio"),
-        ("POST", "/v1/paper/portfolio", "setupPaperPortfolio"),
-        ("POST", "/v1/paper/orders", "createPaperOrder"),
-        ("GET", "/v1/paper/orders", "listPaperOrders"),
-        ("GET", "/v1/paper/executions", "listPaperExecutions"),
-        ("GET", "/v1/paper/cash-movements", "listPaperCashMovements"),
-        ("POST", "/v1/paper/reset", "resetPaperPortfolio"),
     )
     for method, path, operation_id in endpoint_map:
         route = operations[operation_id]
-        route_contract = route_contracts.get((method.lower(), path))
-        paths.setdefault(path, {})[method.lower()] = _operation(route, method, path, route_contract)
-    if len(endpoint_map) != 13 or len({operation_id for _, _, operation_id in endpoint_map}) != 13:
-        raise RuntimeError("API v0.13 operation inventory must contain 13 unique operations")
-    declared_paper_routes = {(method.lower(), path) for method, path, _ in endpoint_map} & set(route_contracts)
-    if declared_paper_routes != set(route_contracts):
-        raise RuntimeError("OpenAPI operations do not cover the frozen paper route inventory")
+        paths.setdefault(path, {})[method.lower()] = _operation(route, method, path)
+    if len(endpoint_map) != 5 or len({operation_id for _, _, operation_id in endpoint_map}) != 5:
+        raise RuntimeError("API v0.13 operation inventory must contain 5 unique operations")
     return {
         "openapi": "3.1.0",
         "info": {

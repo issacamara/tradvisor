@@ -7,12 +7,11 @@
 
 ## 1. Scope And Findings
 
-Map the five user-supplied tables to the approved Swing, paper-trading, Growth and dividend-research requirements. This document identifies fields to reuse, transformations to implement, meanings to confirm and unavailable inputs. It does not change calculation rules, lower history requirements, authorize production queries or introduce a data-quality service. Swing and Long-Term remain equal first-class V1 workflows; ordering the mapping by dependencies does not change their priority.
+Map the five user-supplied tables to the approved Swing, Growth and dividend-research requirements. This document identifies fields to reuse, transformations to implement, meanings to confirm and unavailable inputs. It does not change calculation rules, lower history requirements, authorize production queries or introduce a data-quality service. Swing and Long-Term remain equal first-class V1 workflows; ordering the mapping by dependencies does not change their priority.
 
 - The supplied `shares` schema contains the basic OHLC and volume inputs. The stakeholder confirms that `date` is intended as the trading date and `volume` counts individual shares traded. Targeted inspection shows the scraper assigns the runtime's current date rather than extracting/verifying the source session. Historical date correctness, zero-volume/trade-status semantics and sufficient uninterrupted history remain unconfirmed. The low-volume sample cannot certify actionable Swing coverage.
 - The supplied `financials` schema contains useful reported figures, but does not establish all required Growth inputs or five consecutive comparable years. Publish supported metrics separately; never reweight a partial score into a full score.
 - One year of dividend records supports dated research facts once their meaning is established. It does not establish complete trailing-12-month ordinary yield, multiyear consistency or sustainability. Full Dividend/Balanced scoring remains deferred beyond V1; acquiring older dividend years is not a release prerequisite.
-- Paper holdings, cash, fees, orders and exit state are new application-owned data, not missing columns to add to the market-price table. Reset/recovery state stays under the approved application contracts.
 
 ## 2. Evidence And Status Convention
 
@@ -64,9 +63,9 @@ Use these labels independently; a row can be both derivable and dependent on con
 | No supplied turnover field | Actual traded value, XOF/session | Unavailable in supplied schema. Use the approved complete-window close-times-volume estimate when its prerequisites hold; do not require actual turnover acquisition for that fallback. |
 | No supplied trade-status/suspension fields | `traded`, `confirmed_no_trade`, `unknown`; current suspension evidence | Add from verified source semantics/evidence. Missing row is unknown, not zero volume or a closed exchange. |
 | No supplied collection/availability/revision fields | `collected_at`, `validated_available_at`, source revision and evidence | Add prospectively. Availability is first committed usable time for that revision, stable across retries. Do not fabricate historical platform-availability timestamps. |
-| No supplied adjustment/event fields | Comparable indicator series and paper-event handling | Unavailable: verified split/bonus factors and relevant price/share-basis events. Unresolved events block affected advice; adjustment factors never silently rewrite paper positions. |
+| No supplied adjustment/event fields | Comparable indicator series and analytical event handling | Unavailable: verified split/bonus factors and relevant price/share-basis events. Unresolved events block affected advice; adjustment factors never silently rewrite published analyses. |
 
-Source FLOAT64 columns do not establish exact money. Preserve source values and obtain verifiable decimal/precision semantics before execution normalization. Normalized monetary fields must satisfy the API contract; do not round unsupported execution-price precision merely to fit it. Technical indicators follow the financial contract's deterministic numerical convention, not the paper-ledger money representation.
+Source FLOAT64 columns do not establish exact money. Preserve source values and obtain verifiable decimal/precision semantics before execution normalization. Normalized monetary fields must satisfy the API contract; do not round unsupported execution-price precision merely to fit it. Technical indicators follow the financial contract's deterministic numerical convention, not an execution-ledger representation.
 
 ### 3.3 Financials
 
@@ -100,7 +99,7 @@ Source FLOAT64 columns do not establish exact money. Preserve source values and 
 | `ratings.collected_at` (TIMESTAMP) | Collection evidence | Available: not effective date or evidence of the historical publication date. |
 | No supplied agency/scale/source/effective-date fields | Interpretable downgrade context | Add when evidence exists; otherwise display original dated labels without declaring an ordinal downgrade. No numerical Growth contribution is introduced. |
 
-## 4. Swing And Paper Calculation Mapping
+## 4. Swing Calculation Mapping
 
 Stable mapping IDs below identify dependencies, not new BRD requirement IDs. The financial contract remains authoritative for formulas and boundary cases.
 
@@ -164,8 +163,6 @@ These are proposed work items, not created issues or completed implementation. O
 | MAP-07 | Acquire/normalize capitalization and corporate-action evidence | Matching dated ordinary shares/capitalization and verified adjustment factors, or explicit unsupported status | MAP-02; source evidence not yet identified | Ingestion / Analytical Data |
 | MAP-08 | Normalize existing dividend year and rating history | Stable payment identities, confirmed amount/payment semantics and coverage; rating agency/scale/dates where available | MAP-01..02 | Ingestion |
 | MAP-09 | Implement Growth dimensions, guards and dividend facts | LT-01..10 coverage per issuer; supported metrics preserved, incomplete totals unavailable; LT-11 deferred | MAP-04,06..08 | Analysis Engine |
-| MAP-10 | Integrate market results with paper-state calculations | Genuine next-session execution, frozen fee/policy, independent holding advice and retry-stable availability fixtures | MAP-03..05; application contracts | Paper Trading / Application Store |
-
 Do not open a V1 task to acquire five years of dividends or fabricate missing 2024 financials. Additional actual-turnover ingestion is optional while the approved estimated-window method is usable. Missing mandatory Growth inputs remain visible implementation dependencies, not reasons to remove the Long-Term workspace.
 
 ## 8. Grouped Confirmation Questions
@@ -174,7 +171,7 @@ These questions concern unconfirmed source meanings, not decisions already appro
 
 | ID | Question and why it matters | Conservative treatment until answered | Validation owner |
 |----|----------------------------|--------------------------------------|------------------|
-| Q-SRC-01 | Partially resolved: `date` is intended to mean trading date, but the scraper assigns runtime date; `volume` is confirmed as individual shares traded. On 2026-09-20 the stakeholder stated they do not know whether zero-volume OHLC are carried prices. Transfer that question to implementation source verification, not another stakeholder decision. Export filter and verified source-session attribution remain unconfirmed. | Treat `shares_low.csv` as a non-certifying sample. Until source evidence resolves zero-volume observations, classify their trade/price status as unknown: no fresh traded close, paper execution, confirmed no-trade carry or modeled zero TR may be inferred from them alone. Apply the existing unknown-input behavior to affected calculations. Do not re-ask the intended date meaning, volume unit or unknown zero-volume convention, or assume historical dates are proven wrong. | Ingestion implementer; source evidence reviewed by financial-domain reviewer |
+| Q-SRC-01 | Partially resolved: `date` is intended to mean trading date, but the scraper assigns runtime date; `volume` is confirmed as individual shares traded. On 2026-09-20 the stakeholder stated they do not know whether zero-volume OHLC are carried prices. Transfer that question to implementation source verification, not another stakeholder decision. Export filter and verified source-session attribution remain unconfirmed. | Treat `shares_low.csv` as a non-certifying sample. Until source evidence resolves zero-volume observations, classify their trade/price status as unknown: no fresh traded close, confirmed no-trade carry or modeled zero TR may be inferred from them alone. Apply the existing unknown-input behavior to affected calculations. Do not re-ask the intended date meaning, volume unit or unknown zero-volume convention, or assume historical dates are proven wrong. | Ingestion implementer; source evidence reviewed by financial-domain reviewer |
 | Q-SRC-02 | Implementation verification: establish financial currency/scale/scope and debt/cash/owner attribution, plus dividend per-share/total, gross/net and actual-paid meaning from source evidence. Identify company categories, shares/capitalization and report dates rather than assuming those fields exist. The approved coverage policy does not require the stakeholder to confirm accounting semantics from memory. | Preserve supported metrics/facts; dependent normalized metrics, yields, full scores and advice remain unavailable wherever a required meaning/input is unresolved. Review measured coverage before launch; do not silently weaken the scorecard. | Ingestion implementer with financial-domain reviewer; product owner reviews launch coverage |
 
 The existing uncertainty about SHEC 2024 remains recorded; it is not being asked again. Additional dividend years are known unavailable and are not requested. Source facts may be settled by documentation or future adapter tests rather than requiring the stakeholder to know every accounting field.

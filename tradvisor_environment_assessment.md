@@ -91,9 +91,9 @@ No infrastructure files were modified during this assessment. Existing dirty ing
 4. Use project-local runtime identities, bucket/dataset references, secrets, callback URLs and authentication settings. Verify workflow and application dependencies, not just top-level project flags. No production write permissions for development identities.
 5. Preserve development-only resources and data. No removal is approved by this document. Do not replace the legacy `tradvisor` service in place as a shortcut for deploying V1.
 6. Match functional behavior and schemas, not production data volume, user records, historical artifacts or spending. Development schedule activation and capacity may deliberately differ.
-7. Deploy V1 frontend, API, analytical publishing, paper-trading store and recovery controls as additions to the approved architecture. Confirm existing resource names and Firebase setup first. Preserve scale-to-zero compute and bounded development processing.
+7. Deploy V1 frontend, API, analytical publishing, and analytical recovery controls as additions to the approved architecture. Confirm existing resource names and Firebase setup first. Preserve scale-to-zero compute and bounded development processing.
 8. Review the eventual infrastructure plan for project targeting, IAM changes, replacements, deletions, runtime changes and cost. This document is not authorization to apply that plan.
-9. Rollback uses prior versioned application artifacts and compatible schemas. It must not restore production data into development, destroy the development dataset, replay paper orders or bypass the approved recovery contract.
+9. Rollback uses prior versioned application artifacts and compatible schemas. It must not restore production data into development, destroy the development dataset, replay retired workflow records or bypass the approved recovery contract.
 
 ## 5. Remaining Verification Before Deployment
 

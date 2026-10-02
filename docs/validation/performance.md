@@ -2,7 +2,7 @@
 
 Wave 14 provides an offline, deterministic benchmark harness at `benchmarks/placement.py`. It compares the same exact decimal calculation in the Python and SQL-reference paths. It does not run paid BigQuery jobs, query production, seed data, or infer cloud cost from a local timer.
 
-The placement decision remains: calculate daily analytical indicators in the batch layer when inputs are ready, serve immutable results through bounded reads, and keep request-time paper mutations transactional and small. A live 25-user/five-concurrent load test and measured cloud cost require separately approved development execution.
+The placement decision remains: calculate daily analytical indicators in the batch layer when inputs are ready, serve immutable results through bounded reads, and keep interactive API reads bounded and read-only. A live 25-user/five-concurrent load test and measured cloud cost require separately approved development execution.
 
 ## Acceptance Rules
 

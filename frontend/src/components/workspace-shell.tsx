@@ -14,16 +14,14 @@ const views = [
   { id: "overview", label: "Overview", href: "/" },
   { id: "swing", label: "Swing", href: "/swing/" },
   { id: "long-term", label: "Long-Term", href: "/long-term/" },
-  { id: "paper", label: "Paper", href: "/paper/" },
 ] as const;
 
 type Workspace = (typeof views)[number]["id"];
 
 const copy: Record<Workspace, { title: string; description: string; status: string }> = {
-  overview: { title: "Investor workspace", description: "A static, local-data shell for daily research and manual paper trading.", status: "Local placeholders" },
+  overview: { title: "Investor workspace", description: "A static, local-data shell for daily investment research.", status: "Local placeholders" },
   swing: { title: "Swing research", description: "Market recommendations, indicator evidence, and readable chart context will appear here.", status: "No market data loaded" },
   "long-term": { title: "Long-Term research", description: "Growth ranking and dividend research will remain distinct, with coverage states shown directly.", status: "No research data loaded" },
-  paper: { title: "Paper trading", description: "Manual recommendation-linked orders and simulated positions will be available after protected API integration.", status: "No paper account loaded" },
 };
 
 function Sidebar({ workspace }: { workspace: Workspace }) {
@@ -54,5 +52,5 @@ export function WorkspaceShell({ workspace }: { workspace: Workspace }) {
 }
 
 function WorkspaceContent({ current }: { current: { title: string; description: string; status: string } }) {
-  return <section className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="mb-1 text-sm text-muted">Research workspace</p><h1 className="text-2xl font-bold">{current.title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{current.description}</p></div><Badge>{current.status}</Badge></div><ChartPlaceholder /><section aria-label="Workspace status" className="grid gap-3 sm:grid-cols-3">{[["Market state", "Awaiting published analysis"], ["Long-Term", "Awaiting ranked research"], ["Paper portfolio", "Awaiting protected account"]].map(([label, value]) => <div key={label} className="rounded-md border border-line bg-panel p-4"><p className="text-sm font-semibold">{label}</p><p className="mt-2 text-sm text-muted">{value}</p></div>)}</section><div className="flex items-center gap-2 text-sm text-muted"><PanelLeft size={16} aria-hidden="true" />Drag the desktop divider to resize the navigation pane.</div></section>;
+  return <section className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="mb-1 text-sm text-muted">Research workspace</p><h1 className="text-2xl font-bold">{current.title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{current.description}</p></div><Badge>{current.status}</Badge></div><ChartPlaceholder /><section aria-label="Workspace status" className="grid gap-3 sm:grid-cols-2">{[["Market state", "Awaiting published analysis"], ["Long-Term", "Awaiting ranked research"]].map(([label, value]) => <div key={label} className="rounded-md border border-line bg-panel p-4"><p className="text-sm font-semibold">{label}</p><p className="mt-2 text-sm text-muted">{value}</p></div>)}</section><div className="flex items-center gap-2 text-sm text-muted"><PanelLeft size={16} aria-hidden="true" />Drag the desktop divider to resize the navigation pane.</div></section>;
 }
