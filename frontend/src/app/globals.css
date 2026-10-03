@@ -111,6 +111,11 @@ button, a, input, select { font: inherit; }
 .coverage-complete { color: #85e7ad; }
 .long-term-detail { padding-bottom: 16px; }
 .growth-chart { height: 210px; margin: 0 18px 8px; }
+.annual-chart { margin: 0 18px 8px; border: 1px solid #2d3737; background: #111918; }
+.annual-chart svg { display: block; width: 100%; height: 220px; }
+.annual-chart-legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 12px 10px; color: #aab9b5; font-size: 11px; }
+.annual-chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.annual-chart-legend i { width: 8px; height: 8px; border-radius: 50%; }
 .long-term-detail .evidence-note { margin-top: 18px; }
 @media (max-width: 980px) { .long-term-grid { grid-template-columns: 1fr; } }
 @media (max-width: 1080px) { .research-grid { grid-template-columns: 1fr; } .table-scroll { max-height: 370px; } }

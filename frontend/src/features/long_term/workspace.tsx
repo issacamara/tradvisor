@@ -2,18 +2,37 @@
 
 import { useEffect, useState } from "react";
 import type { components } from "@/api/generated/schema";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Company = components["schemas"]["LongTermRankedCompany"];
 type Objective = "growth" | "dividend";
 const label = (value: string) => value.replaceAll("_", " ");
 const metricText = (metric: components["schemas"]["ScoreMetric"]) => metric.value === null ? label(metric.status) : `${metric.value.toFixed(1)} / 100`;
-const growthDimensions = [
-  ["Revenue", "activity_growth"],
-  ["Earnings", "earnings_growth"],
-  ["Valuation", "earnings_book_valuation"],
-  ["Profitability", "profitability"],
-] as const;
+function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimensions"] }) {
+  if (!data.length) return <p className="chart-empty">No annual financial observations are available.</p>;
+  const width = 760;
+  const height = 220;
+  const padding = { top: 16, right: 20, bottom: 28, left: 20 };
+  const series = [
+    { key: "revenue", label: "Revenue", color: "#4b9bc0" },
+    { key: "earnings", label: "Earnings", color: "#45c88a" },
+    { key: "profitability", label: "Profitability (%)", color: "#f2d795" },
+  ] as const;
+  const values = series.flatMap(({ key }) => data.map((row) => row[key]).filter((value): value is number => value !== null));
+  const max = Math.max(...values, 1);
+  const x = (index: number) => padding.left + (index * (width - padding.left - padding.right)) / Math.max(data.length - 1, 1);
+  const y = (value: number) => height - padding.bottom - (value / max) * (height - padding.top - padding.bottom);
+  return <div className="annual-chart" aria-label="Annual Revenue, Earnings, and Profitability chart">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img">
+      <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="#303a38" />
+      {data.map((row, index) => <text key={row.fiscal_year} x={x(index)} y={height - 8} textAnchor="middle" fill="#aab9b5" fontSize="11">{row.fiscal_year}</text>)}
+      {series.map(({ key, color }) => {
+        const points = data.map((row, index) => row[key] === null ? null : `${x(index)},${y(row[key])}`).filter((point): point is string => point !== null).join(" ");
+        return <polyline key={key} points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />;
+      })}
+    </svg>
+    <div className="annual-chart-legend">{series.map(({ key, label, color }) => <span key={key}><i style={{ backgroundColor: color }} />{label}</span>)}</div>
+  </div>;
+}
 
 export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", objective: controlledObjective, onObjectiveChange }: { items?: Company[]; publishedAt?: string; objective?: Objective; onObjectiveChange?: (objective: Objective) => void }) {
   const [localObjective, setLocalObjective] = useState<Objective>("growth");
@@ -24,10 +43,6 @@ export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", obj
   const objective = controlledObjective ?? localObjective;
   const setObjective = (next: Objective) => { setLocalObjective(next); onObjectiveChange?.(next); };
   const selectedCompany = items.find((company) => company.symbol === selected) ?? items[0];
-  const chartData = growthDimensions.map(([name, key]) => {
-    const metric = selectedCompany?.growth.dimension_contributions[key];
-    return { name, points: metric?.value ?? null, status: metric?.status ?? "unavailable" };
-  });
   const annualData = selectedCompany?.growth.annual_dimensions ?? [];
   const shownItems = items;
 
@@ -47,8 +62,8 @@ export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", obj
         <div className="detail-heading"><div><p className="eyebrow">COMPANY EVIDENCE</p><h2>{selectedCompany?.symbol ?? "Select a company"}</h2></div></div>
         {selectedCompany ? <div className="long-term-detail">
           {objective === "growth" ? <>
-            <div className="growth-chart" aria-label="Annual Long-Term research dimensions"><ResponsiveContainer width="100%" height="100%"><LineChart data={annualData} margin={{ left: 12, right: 12 }}><CartesianGrid stroke="#303a38" vertical={false} /><XAxis dataKey="fiscal_year" tick={{ fill: "#aab9b5", fontSize: 11 }} /><YAxis tick={{ fill: "#aab9b5", fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="revenue" name="Revenue" stroke="#4b9bc0" connectNulls={false} /><Line type="monotone" dataKey="earnings" name="Earnings" stroke="#45c88a" connectNulls={false} /><Line type="monotone" dataKey="profitability" name="Profitability (%)" stroke="#f2d795" connectNulls={false} /></LineChart></ResponsiveContainer></div>
-            <h3>Annual dimensions</h3><ul className="evidence-list">{chartData.filter((row) => row.name !== "Valuation").map((row) => <li key={row.name}><span>{row.name}</span><span>{row.points === null ? "Unavailable" : row.points.toFixed(1)}</span></li>)}<li><span>Valuation</span><span>Unavailable</span></li></ul>
+            <AnnualDimensionChart data={annualData} />
+            <h3>Annual dimensions</h3><ul className="evidence-list">{annualData.map((row) => <li key={row.fiscal_year}><span>{row.fiscal_year}</span><span>Revenue {row.revenue?.toLocaleString() ?? "—"} · Earnings {row.earnings?.toLocaleString() ?? "—"} · Profitability {row.profitability?.toFixed(1) ?? "—"}%</span></li>)}<li><span>Valuation</span><span>Unavailable</span></li></ul>
           </> : <>
             <div className="evidence-summary"><div><span>Dividend score</span><strong>{metricText(selectedCompany.dividend_research.dividend_score)}</strong></div><div><span>Recorded payments</span><strong>{selectedCompany.dividend_research.payments.length}</strong></div></div>
             <h3>Payment facts</h3><ul className="evidence-list">{selectedCompany.dividend_research.payments.map((payment) => <li key={payment.dividend_id}><span>{payment.payment_date ?? "Date unavailable"} · {label(payment.dividend_type)} · {label(payment.payment_status)}</span><span>{payment.gross_amount_per_share?.amount ?? "—"} XOF/share</span></li>)}</ul>
