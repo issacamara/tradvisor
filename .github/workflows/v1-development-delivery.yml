@@ -98,6 +98,10 @@ jobs:
         if: inputs.action != 'frontend'
         working-directory: terraform
         run: terraform init -backend-config="bucket=dev-tradvisor-tfstate" -backend-config="prefix=state/dev"
+      - name: Import existing development shares table
+        if: inputs.action == 'import'
+        working-directory: terraform
+        run: terraform import google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
