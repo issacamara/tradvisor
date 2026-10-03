@@ -232,6 +232,22 @@ def _development_long_term_output(
         "reason_codes": [reason],
     }
     dimensions = {}
+    annual_dimensions = [
+        {
+            "fiscal_year": int(row["fiscal_year"]),
+            "revenue": float(row["revenue"]) if row.get("revenue") is not None else None,
+            "earnings": float(row["net_income"]) if row.get("net_income") is not None else None,
+            "profitability": (
+                float(Decimal(str(row["net_income"])) / Decimal(str(row["total_equity"])) * Decimal("100"))
+                if row.get("net_income") is not None and row.get("total_equity") not in (None, 0)
+                else None
+            ),
+        }
+        for row in sorted(
+            (item for item in snapshot.payload.get("financial_data", ()) if isinstance(item, Mapping) and item.get("symbol") == symbol),
+            key=lambda item: int(item["fiscal_year"]),
+        )
+    ]
     if core is not None:
         for name, term in (("earnings_growth", core.earnings_growth), ("profitability", core.profitability)):
             if term.status == "assessable":
@@ -284,6 +300,7 @@ def _development_long_term_output(
             "growth_score": {**score, "status": score_status, "value": score_value, "reason_codes": score_reasons},
             "overall_score": {**score, "status": score_status, "value": score_value, "reason_codes": score_reasons},
             "dimension_contributions": dimensions,
+            "annual_dimensions": annual_dimensions,
             "advisory_state": "insufficient_evidence" if not dimensions else "low_score",
                 "reasons": [{"code": reason, "message": "Three consecutive comparable annual reports are not available."}],
         },

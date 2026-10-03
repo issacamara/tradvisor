@@ -210,10 +210,18 @@ export interface components {
             dimension_contributions: {
                 [key: string]: components["schemas"]["ScoreMetric"];
             };
+            annual_dimensions: components["schemas"]["GrowthAnnualDimension"][];
             growth_score: components["schemas"]["ScoreMetric"];
             overall_score: components["schemas"]["ScoreMetric"];
             /** Reasons */
             reasons: components["schemas"]["ReasonExplanation"][];
+        };
+        /** GrowthAnnualDimension */
+        GrowthAnnualDimension: {
+            earnings: number | null;
+            fiscal_year: number;
+            profitability: number | null;
+            revenue: number | null;
         };
         /**
          * LongTermObjectiveState

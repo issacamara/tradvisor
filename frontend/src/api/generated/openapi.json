@@ -389,6 +389,14 @@
             "title": "Advisory State",
             "type": "string"
           },
+          "annual_dimensions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GrowthAnnualDimension"
+            },
+            "title": "Annual Dimensions",
+            "type": "array"
+          },
           "dimension_contributions": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ScoreMetric"
@@ -418,6 +426,56 @@
           "reasons"
         ],
         "title": "GrowthAnalysis",
+        "type": "object"
+      },
+      "GrowthAnnualDimension": {
+        "additionalProperties": false,
+        "properties": {
+          "earnings": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earnings"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "profitability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitability"
+          },
+          "revenue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "revenue",
+          "earnings",
+          "profitability"
+        ],
+        "title": "GrowthAnnualDimension",
         "type": "object"
       },
       "LongTermObjectiveState": {

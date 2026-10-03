@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { components } from "@/api/generated/schema";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Company = components["schemas"]["LongTermRankedCompany"];
 type Objective = "growth" | "dividend";
@@ -28,6 +28,7 @@ export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", obj
     const metric = selectedCompany?.growth.dimension_contributions[key];
     return { name, points: metric?.value ?? null, status: metric?.status ?? "unavailable" };
   });
+  const annualData = selectedCompany?.growth.annual_dimensions ?? [];
   const shownItems = items;
 
   return <main className="workspace-page">
@@ -46,8 +47,8 @@ export function LongTermWorkspace({ items = [], publishedAt = "Unavailable", obj
         <div className="detail-heading"><div><p className="eyebrow">COMPANY EVIDENCE</p><h2>{selectedCompany?.symbol ?? "Select a company"}</h2></div></div>
         {selectedCompany ? <div className="long-term-detail">
           {objective === "growth" ? <>
-            <div className="growth-chart" aria-label="Long-Term research dimensions"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} layout="vertical" margin={{ left: 12, right: 12 }}><CartesianGrid stroke="#303a38" horizontal={false} /><XAxis type="number" domain={[0, "dataMax"]} hide /><YAxis type="category" dataKey="name" width={105} tick={{ fill: "#aab9b5", fontSize: 11 }} /><Tooltip formatter={(value: unknown) => typeof value === "number" ? value.toFixed(1) : "Unavailable"} /><Bar dataKey="points" fill="#4b9bc0" /></BarChart></ResponsiveContainer></div>
-            <h3>Research dimensions</h3><ul className="evidence-list">{chartData.map((row) => <li key={row.name}><span>{row.name}</span><span>{row.points === null ? "Unavailable" : row.points.toFixed(1)}</span></li>)}</ul>
+            <div className="growth-chart" aria-label="Annual Long-Term research dimensions"><ResponsiveContainer width="100%" height="100%"><LineChart data={annualData} margin={{ left: 12, right: 12 }}><CartesianGrid stroke="#303a38" vertical={false} /><XAxis dataKey="fiscal_year" tick={{ fill: "#aab9b5", fontSize: 11 }} /><YAxis tick={{ fill: "#aab9b5", fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="revenue" name="Revenue" stroke="#4b9bc0" connectNulls={false} /><Line type="monotone" dataKey="earnings" name="Earnings" stroke="#45c88a" connectNulls={false} /><Line type="monotone" dataKey="profitability" name="Profitability (%)" stroke="#f2d795" connectNulls={false} /></LineChart></ResponsiveContainer></div>
+            <h3>Annual dimensions</h3><ul className="evidence-list">{chartData.filter((row) => row.name !== "Valuation").map((row) => <li key={row.name}><span>{row.name}</span><span>{row.points === null ? "Unavailable" : row.points.toFixed(1)}</span></li>)}<li><span>Valuation</span><span>Unavailable</span></li></ul>
           </> : <>
             <div className="evidence-summary"><div><span>Dividend score</span><strong>{metricText(selectedCompany.dividend_research.dividend_score)}</strong></div><div><span>Recorded payments</span><strong>{selectedCompany.dividend_research.payments.length}</strong></div></div>
             <h3>Payment facts</h3><ul className="evidence-list">{selectedCompany.dividend_research.payments.map((payment) => <li key={payment.dividend_id}><span>{payment.payment_date ?? "Date unavailable"} · {label(payment.dividend_type)} · {label(payment.payment_status)}</span><span>{payment.gross_amount_per_share?.amount ?? "—"} XOF/share</span></li>)}</ul>

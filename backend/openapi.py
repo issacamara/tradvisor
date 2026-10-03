@@ -56,6 +56,13 @@ class ReasonExplanation(ContractModel):
     message: Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
 
+class GrowthAnnualDimension(ContractModel):
+    fiscal_year: int
+    revenue: float | None
+    earnings: float | None
+    profitability: float | None
+
+
 class SwingRecommendation(ContractModel):
     symbol: OpaqueIdentifier
     entry_action: Literal["buy", "no_clear_signal", "insufficient_data"]
@@ -79,6 +86,7 @@ class GrowthAnalysis(ContractModel):
     growth_score: ScoreMetric
     overall_score: ScoreMetric
     dimension_contributions: dict[str, ScoreMetric]
+    annual_dimensions: tuple[GrowthAnnualDimension, ...] = ()
     advisory_state: Literal["candidate", "watchlist", "low_score", "review_required", "insufficient_evidence"]
     reasons: tuple[ReasonExplanation, ...]
 
