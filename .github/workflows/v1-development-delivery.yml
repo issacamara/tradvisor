@@ -102,11 +102,18 @@ jobs:
         if: inputs.action == 'import'
         working-directory: terraform
         run: |
-          terraform import google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
-          terraform import google_bigquery_table.brvm_companies projects/dev-tradvisor/datasets/stocks/tables/brvm_companies
-          terraform import google_bigquery_table.dividends projects/dev-tradvisor/datasets/stocks/tables/dividends
-          terraform import google_bigquery_table.financials projects/dev-tradvisor/datasets/stocks/tables/financials
-          terraform import google_bigquery_table.ratings projects/dev-tradvisor/datasets/stocks/tables/ratings
+          import_if_absent() {
+            address="$1"
+            resource_id="$2"
+            if ! terraform state list | grep -Fxq "$address"; then
+              terraform import "$address" "$resource_id"
+            fi
+          }
+          import_if_absent google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
+          import_if_absent google_bigquery_table.brvm_companies projects/dev-tradvisor/datasets/stocks/tables/brvm_companies
+          import_if_absent google_bigquery_table.dividends projects/dev-tradvisor/datasets/stocks/tables/dividends
+          import_if_absent google_bigquery_table.financials projects/dev-tradvisor/datasets/stocks/tables/financials
+          import_if_absent google_bigquery_table.ratings projects/dev-tradvisor/datasets/stocks/tables/ratings
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
