@@ -75,10 +75,9 @@ def _output(stock: ServingStock, name: str) -> ServingOutput:
 
 def _payload(stock: ServingStock, name: str, model: type[T]) -> T:
     try:
-        # Firestore returns the stored JSON envelope as ordinary mappings and
-        # lists; deserialize through JSON so strict contract models can restore
-        # tuple, date, and datetime fields at the API boundary.
-        return model.model_validate_json(json.dumps(_output(stock, name).value))
+        # Firestore materializes tuples as lists and timestamps as datetimes.
+        # Normalize those SDK values through JSON before strict validation.
+        return model.model_validate_json(json.dumps(_output(stock, name).value, default=str))
     except (AnalysisNotReady, TypeError, ValueError) as error:
         raise AnalysisNotReady from error
 
