@@ -1,0 +1,130 @@
+name: Production delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Production action; apply requires production environment approval"
+        required: true
+        type: choice
+        options: [plan, apply, frontend]
+      api_image:
+        description: "Immutable API image URI, preferably the digest promoted from development"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  delivery:
+    if: github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ (inputs.action == 'apply' || inputs.action == 'frontend') && 'production-apply' || 'production-plan' }}
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+      TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+      TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        if: inputs.action != 'frontend'
+
+      - name: Authenticate to Google Cloud with workload identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.PROD_SERVICE_ACCOUNT }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build static frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || { echo "Production Firebase API key is unavailable" >&2; exit 1; }
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL" || { echo "Production API URL is unavailable" >&2; exit 1; }
+          npm ci
+          npm run build
+
+      - name: Validate production delivery inputs
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          test -n "$API_IMAGE" || { echo "api_image is required for production Terraform delivery" >&2; exit 1; }
+          case "$API_IMAGE" in
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*) ;;
+            *) echo "api_image must target the production Artifact Registry" >&2; exit 1;;
+          esac
+
+      - name: Validate production delivery context
+        if: inputs.action != 'frontend'
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          DEPLOY_ENV: production
+          ALLOWED_BRANCH: production
+          EXPECTED_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          EXPECTED_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+          EXPECTED_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          DEPLOY_ACTION: ${{ inputs.action }}
+        run: bash scripts/deployment/guard.sh
+
+      - name: Initialize Terraform backend
+        if: inputs.action != 'frontend'
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX"
+
+      - name: Plan production changes
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: terraform plan -out=tfplan
+
+      - name: Apply approved production plan
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: terraform apply -auto-approve
+
+      - name: Deploy static frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        run: npx -y firebase-tools@latest deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
