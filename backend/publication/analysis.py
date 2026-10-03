@@ -165,7 +165,7 @@ class AnalyticalPublisher:
         page = self._store.page(
             ACTIVE_PUBLICATION_COLLECTION,
             filters=(),
-            order_by=(("effective_session", "desc"), ("revision", "desc"), ("batch_id", "desc")),
+            order_by=(("effective_session", "desc"),),
             limit=MAX_PAGE_SIZE,
             cursor=None,
         )
