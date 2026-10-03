@@ -15,19 +15,21 @@ function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimens
   const series = [
     { key: "revenue", label: "Revenue", color: "#4b9bc0" },
     { key: "earnings", label: "Earnings", color: "#45c88a" },
-    { key: "profitability", label: "Profitability (%)", color: "#f2d795" },
   ] as const;
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const baseline = height - padding.bottom;
   const currencyMax = Math.max(...data.flatMap((row) => [row.revenue ?? 0, row.earnings ?? 0]), 1);
-  const profitabilityMax = Math.max(...data.map((row) => row.profitability ?? 0), 1);
-  const seriesMax = { revenue: currencyMax, earnings: currencyMax, profitability: profitabilityMax };
+  const seriesMax = { revenue: currencyMax, earnings: currencyMax };
   const groupWidth = chartWidth / data.length;
   const barWidth = Math.min(26, (groupWidth * 0.78) / series.length);
   const x = (index: number, seriesIndex: number) => padding.left + index * groupWidth + (groupWidth - barWidth * series.length) / 2 + seriesIndex * barWidth;
   const barHeight = (key: typeof series[number]["key"], value: number) => (value / seriesMax[key]) * chartHeight;
-  return <div className="annual-chart" aria-label="Annual Revenue, Earnings, and Profitability bar chart">
+  const growth = (index: number, key: typeof series[number]["key"]) => {
+    if (index === 0 || data[index - 1][key] === null || data[index][key] === null || data[index - 1][key] === 0) return null;
+    return ((data[index][key]! - data[index - 1][key]!) / Math.abs(data[index - 1][key]!)) * 100;
+  };
+  return <div className="annual-chart" aria-label="Annual Revenue and Earnings bar chart">
     <svg viewBox={`0 0 ${width} ${height}`} role="img">
       <line x1={padding.left} x2={width - padding.right} y1={baseline} y2={baseline} stroke="#303a38" />
       {data.map((row, index) => <text key={row.fiscal_year} x={padding.left + index * groupWidth + groupWidth / 2} y={height - 8} textAnchor="middle" fill="#aab9b5" fontSize="11">{row.fiscal_year}</text>)}
@@ -35,7 +37,12 @@ function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimens
         const value = row[key];
         if (value === null) return null;
         const h = barHeight(key, value);
-        return <rect key={`${row.fiscal_year}-${key}`} x={x(index, seriesIndex)} y={baseline - h} width={barWidth - 2} height={h} rx="2" fill={color}><title>{`${row.fiscal_year} ${key}: ${value}`}</title></rect>;
+        const change = growth(index, key);
+        const changeColor = change === null ? "#aab9b5" : change >= 0 ? "#45c88a" : "#ef7777";
+        return <g key={`${row.fiscal_year}-${key}`}>
+          <rect x={x(index, seriesIndex)} y={baseline - h} width={barWidth - 2} height={h} rx="2" fill={color}><title>{`${row.fiscal_year} ${key}: ${value}`}</title></rect>
+          <text x={x(index, seriesIndex) + (barWidth - 2) / 2} y={Math.max(padding.top + 10, baseline - h - 5)} textAnchor="middle" fill={changeColor} fontSize="10" fontWeight="600">{change === null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`}</text>
+        </g>;
       }))}
     </svg>
     <div className="annual-chart-legend">{series.map(({ key, label, color }) => <span key={key}><i style={{ backgroundColor: color }} />{label}</span>)}</div>
