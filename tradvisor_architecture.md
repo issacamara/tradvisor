@@ -48,7 +48,7 @@ The static Next.js application uses authenticated client requests to the Cloud R
 
 ## Analytical Rules
 
-Swing uses EMA 20/50, Wilder RSI 14, Wilder ATR 14, and a 20-session traded-value liquidity window. A Buy requires an unrounded strength of at least 70, median traded value of at least 5,000,000 XOF, trading in at least 18 of the latest 20 exchange sessions, and all published structural guards. A result that cannot be established is explicitly `insufficient_data`; it is never inferred as Buy or Sell.
+Swing uses EMA 20/50, Wilder RSI 14, and Wilder ATR 14. A Buy requires an unrounded strength of at least 70. Liquidity, current-trade, and structural guards are published as explanatory evidence and do not veto a qualifying score. A result that cannot be established is explicitly `insufficient_data`; it is never inferred as Buy or Sell.
 
 Long-Term V1 publishes Growth scores when required financial inputs are available. Dividend payments and conditional historical yield remain research facts; Dividend and Balanced composite scores are deferred. Every result identifies its batch, effective date, rule version, calculation status, and evidence references.
 

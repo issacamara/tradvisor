@@ -119,7 +119,7 @@ def test_display_rounding_cannot_promote_score_to_buy() -> None:
 
 
 @pytest.mark.parametrize(("fast", "slow", "previous_fast"), [(100, 100, 99), (101, 100, 101), (101, 100, 102)])
-def test_flat_or_falling_ema_blocks_buy_even_with_score_eighty(
+def test_score_seventy_or_more_is_buy_even_with_failed_structural_guard(
     fast: float, slow: float, previous_fast: float
 ) -> None:
     result = evaluate_swing(strategy_input(
@@ -128,17 +128,17 @@ def test_flat_or_falling_ema_blocks_buy_even_with_score_eighty(
     ))
 
     assert result.score is not None and result.score.total == Decimal("80")
-    assert result.decision == "not_buy"
+    assert result.decision == "buy"
     assert any(guard.status == "fail" for guard in result.guards)
 
 
-def test_extension_at_three_atr_blocks_buy_despite_score_seventy() -> None:
+def test_extension_at_three_atr_does_not_override_score_seventy() -> None:
     result = evaluate_swing(strategy_input(
         fast=100, slow=99, previous_fast=99, rsi=65, atr=1, close="103"
     ))
 
     assert result.score is not None and result.score.total == Decimal("70")
-    assert result.decision == "not_buy"
+    assert result.decision == "buy"
     guard = next(guard for guard in result.guards if guard.code == "extension_below_three_atr")
     assert guard.status == "fail"
     assert guard.reason_codes == ("extension_at_or_above_three_atr",)
@@ -158,7 +158,7 @@ def test_independent_guards_keep_non_buy_distinct_from_sell(
         liquidity=liquidity, current_trade=current_trade,
     ))
 
-    assert result.decision in {"not_buy", "unavailable"}
+    assert result.decision == "buy"
     assert expected_reason in result.reason_codes
 
 

@@ -314,13 +314,8 @@ def evaluate_swing(
     reason_codes = list(reason for guard in guards for reason in guard.reason_codes)
     if total < config.buy_minimum:
         reason_codes.append("score_below_buy_threshold")
-    statuses = {guard.status for guard in guards}
     decision: SwingDecision
-    if "fail" in statuses:
-        decision = "not_buy"
-    elif "unknown" in statuses:
-        decision = "unavailable"
-    elif total >= config.buy_minimum:
+    if total >= config.buy_minimum:
         decision = "buy"
     else:
         decision = "not_buy"
