@@ -17,18 +17,24 @@ function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimens
     { key: "earnings", label: "Earnings", color: "#45c88a" },
     { key: "profitability", label: "Profitability (%)", color: "#f2d795" },
   ] as const;
-  const values = series.flatMap(({ key }) => data.map((row) => row[key]).filter((value): value is number => value !== null));
-  const max = Math.max(...values, 1);
-  const x = (index: number) => padding.left + (index * (width - padding.left - padding.right)) / Math.max(data.length - 1, 1);
-  const y = (value: number) => height - padding.bottom - (value / max) * (height - padding.top - padding.bottom);
-  return <div className="annual-chart" aria-label="Annual Revenue, Earnings, and Profitability chart">
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const baseline = height - padding.bottom;
+  const seriesMax = Object.fromEntries(series.map(({ key }) => [key, Math.max(...data.map((row) => row[key] ?? 0), 1)])) as Record<typeof series[number]["key"], number>;
+  const groupWidth = chartWidth / data.length;
+  const barWidth = Math.min(26, (groupWidth * 0.78) / series.length);
+  const x = (index: number, seriesIndex: number) => padding.left + index * groupWidth + (groupWidth - barWidth * series.length) / 2 + seriesIndex * barWidth;
+  const barHeight = (key: typeof series[number]["key"], value: number) => (value / seriesMax[key]) * chartHeight;
+  return <div className="annual-chart" aria-label="Annual Revenue, Earnings, and Profitability bar chart">
     <svg viewBox={`0 0 ${width} ${height}`} role="img">
-      <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="#303a38" />
-      {data.map((row, index) => <text key={row.fiscal_year} x={x(index)} y={height - 8} textAnchor="middle" fill="#aab9b5" fontSize="11">{row.fiscal_year}</text>)}
-      {series.map(({ key, color }) => {
-        const points = data.map((row, index) => row[key] === null ? null : `${x(index)},${y(row[key])}`).filter((point): point is string => point !== null).join(" ");
-        return <polyline key={key} points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />;
-      })}
+      <line x1={padding.left} x2={width - padding.right} y1={baseline} y2={baseline} stroke="#303a38" />
+      {data.map((row, index) => <text key={row.fiscal_year} x={padding.left + index * groupWidth + groupWidth / 2} y={height - 8} textAnchor="middle" fill="#aab9b5" fontSize="11">{row.fiscal_year}</text>)}
+      {data.flatMap((row, index) => series.map(({ key, color }, seriesIndex) => {
+        const value = row[key];
+        if (value === null) return null;
+        const h = barHeight(key, value);
+        return <rect key={`${row.fiscal_year}-${key}`} x={x(index, seriesIndex)} y={baseline - h} width={barWidth - 2} height={h} rx="2" fill={color}><title>{`${row.fiscal_year} ${key}: ${value}`}</title></rect>;
+      }))}
     </svg>
     <div className="annual-chart-legend">{series.map(({ key, label, color }) => <span key={key}><i style={{ backgroundColor: color }} />{label}</span>)}</div>
   </div>;
