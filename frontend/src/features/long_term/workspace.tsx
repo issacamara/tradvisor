@@ -20,7 +20,9 @@ function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimens
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const baseline = height - padding.bottom;
-  const seriesMax = Object.fromEntries(series.map(({ key }) => [key, Math.max(...data.map((row) => row[key] ?? 0), 1)])) as Record<typeof series[number]["key"], number>;
+  const currencyMax = Math.max(...data.flatMap((row) => [row.revenue ?? 0, row.earnings ?? 0]), 1);
+  const profitabilityMax = Math.max(...data.map((row) => row.profitability ?? 0), 1);
+  const seriesMax = { revenue: currencyMax, earnings: currencyMax, profitability: profitabilityMax };
   const groupWidth = chartWidth / data.length;
   const barWidth = Math.min(26, (groupWidth * 0.78) / series.length);
   const x = (index: number, seriesIndex: number) => padding.left + index * groupWidth + (groupWidth - barWidth * series.length) / 2 + seriesIndex * barWidth;
