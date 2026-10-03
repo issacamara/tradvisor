@@ -43,44 +43,25 @@ class ActivePublicationReader(Protocol):
     def active_publication(self) -> Any | None: ...
 
 
-class BigQuerySnapshotReader(AnalyticalSnapshotReader):
-    """Read exactly one immutable JSON snapshot from a BigQuery table."""
+class BigQuerySharesReader(AnalyticalSnapshotReader):
+    """Build a bounded publication input directly from managed source tables."""
 
-    def __init__(self, client: QueryClient, table: str, active_publication: Callable[[], Any | None] | None = None) -> None:
-        if not table or "`" in table or ";" in table:
-            raise ValueError("snapshot table must be a plain project.dataset.table identifier")
+    def __init__(self, client: QueryClient, market_table: str, financial_table: str, active_publication: Callable[[], Any | None] | None = None) -> None:
+        if any(not table or "`" in table or ";" in table for table in (market_table, financial_table)):
+            raise ValueError("source tables must be plain project.dataset.table identifiers")
         self._client = client
-        self._table = table
+        self._market_table = market_table
+        self._financial_table = financial_table
         self._active_publication = active_publication
 
     def read(self, snapshot_name: str) -> AnalyticalInputSnapshot | None:
         from google.cloud import bigquery  # type: ignore[import-untyped]
 
-        query = (
-            f"SELECT snapshot_json FROM `{self._table}` "
-            "WHERE snapshot_name = @snapshot_name "
-            "AND publication_status = 'published' "
-            "ORDER BY published_at DESC LIMIT 1"
-        )
-        config = bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter("snapshot_name", "STRING", snapshot_name)]
-        )
-        rows = list(self._client.query(query, job_config=config).result())
-        if not rows:
-            return None
-        if len(rows) != 1:
-            raise ValueError("BigQuery snapshot lookup returned more than one row")
-        raw = rows[0]["snapshot_json"]
-        payload = json.loads(raw) if isinstance(raw, str) else raw
-        if not isinstance(payload, Mapping):
-            raise ValueError("snapshot_json must be a JSON object")
+        del snapshot_name
         # The analytical snapshot currently contains indicators only. Enrich it
         # with a bounded market-data window so the serving copy can expose the
         # close-price chart and provide enough history for the V1 calculations.
-        market_table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
-        for name, value in (("market data", market_table),):
-            if not value or "`" in value or ";" in value:
-                raise ValueError(f"{name} table must be a plain project.dataset.table identifier")
+        market_table = self._market_table
         market_days = required_market_days(20, 50, 14, 14)
         market_rows = list(self._client.query(
             "SELECT symbol, date, open, high, low, close, volume "
@@ -101,10 +82,8 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             if row["date"] is not None
         ]
         financial_data: list[dict[str, Any]] = []
-        financial_table = os.environ.get("FINANCIALS_TABLE", "").strip()
+        financial_table = self._financial_table
         if financial_table:
-            if "`" in financial_table or ";" in financial_table or any(char.isspace() for char in financial_table):
-                raise ValueError("financials table must be a plain project.dataset.table identifier")
             financial_rows = list(self._client.query(
                 "SELECT symbol, fiscal_year, revenue, net_income, total_equity, collected_at, document_link "
                 f"FROM `{financial_table}` ORDER BY symbol, fiscal_year",
@@ -124,43 +103,43 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             json.dumps({"market": market_data, "financial": financial_data}, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
         symbols = tuple(sorted({item["symbol"] for item in market_data}))
-        effective_session = max((date.fromisoformat(item["session_date"]) for item in market_data), default=date.fromisoformat(str(payload["effective_session"])))
-        enriched_payload = dict(cast(Mapping[str, Any], payload.get("payload", {})))
+        if not market_data:
+            return None
+        effective_session = max(date.fromisoformat(item["session_date"]) for item in market_data)
+        enriched_payload: dict[str, Any] = {}
         enriched_payload["market_data"] = market_data
         if financial_table:
             enriched_payload["financial_data"] = financial_data
         expected_output_names = tuple(
-            dict.fromkeys((*map(str, payload["expected_output_names"]), "chart", "swing", "long_term"))
+            ("chart", "swing", "long_term")
         )
         active = self._active_publication() if self._active_publication is not None else None
-        revision = int(payload.get("revision", 1))
-        supersedes_batch_id = payload.get("supersedes_batch_id")
+        revision = 1
+        supersedes_batch_id = None
         if active is not None and active.effective_session == effective_session.isoformat():
             revision = max(revision, int(active.revision) + 1)
             supersedes_batch_id = str(active.batch_id)
         return AnalyticalInputSnapshot(
-            name=str(payload["name"]),
-            catalog_id=str(payload["catalog_id"]),
+            name="shares-latest",
+            catalog_id="dev-tradvisor-stocks",
             effective_session=effective_session,
             # The chart is derived from the bounded shares window as well as
             # the named analytical snapshot. Include both in the immutable
             # batch identity so changed market data cannot collide with an
             # earlier partially published batch.
-            input_snapshot_id=f"{payload['input_snapshot_id']}:market-{market_data_fingerprint}",
-            rule_version=str(payload["rule_version"]),
-            expected_symbols=symbols or tuple(str(item) for item in payload["expected_symbols"]),
+            input_snapshot_id=f"shares:{effective_session}:market-{market_data_fingerprint}",
+            rule_version="swing-v1",
+            expected_symbols=symbols,
             expected_output_names=expected_output_names,
             payload=enriched_payload,
-            inputs_ready=bool(payload.get("inputs_ready", True)),
-            pending_inputs=tuple(str(item) for item in payload.get("pending_inputs", ())),
+            inputs_ready=True,
+            pending_inputs=(),
             revision=revision,
             supersedes_batch_id=supersedes_batch_id,
             published_at=(
-                None
-                if payload.get("published_at") is None
-                else datetime.fromisoformat(str(payload["published_at"]))
+                datetime.now(timezone.utc)
             ),
-            strategy_id=payload.get("strategy_id"),
+            strategy_id="trend_confirmation",
         )
 
 
@@ -515,22 +494,22 @@ def _money(value: object) -> dict[str, str] | None:
 
 def build_worker() -> DailyAnalyticalWorker:
     project_id = _required("GOOGLE_CLOUD_PROJECT")
-    table = _required("ANALYTICAL_SNAPSHOT_TABLE")
+    market_table = _required("MARKET_DATA_TABLE")
+    financial_table = _required("FINANCIALS_TABLE")
     secret = _required("FIRESTORE_CURSOR_SECRET")
     from google.cloud import bigquery
 
     store = FirestoreSdkStore(project_id=project_id, cursor_secret=secret)
     publisher = AnalyticalPublisher(store)
     return DailyAnalyticalWorker(
-        snapshots=BigQuerySnapshotReader(bigquery.Client(project=project_id), table, publisher.active_publication),
+        snapshots=BigQuerySharesReader(bigquery.Client(project=project_id), market_table, financial_table, publisher.active_publication),
         calculator=BigQueryOutputCalculator(),
         publisher=publisher,
     )
 
 
 def run_from_environment() -> None:
-    snapshot_name = _required("ANALYTICAL_SNAPSHOT_NAME")
-    result = build_worker().run(snapshot_name)
+    result = build_worker().run("shares-latest")
     print(json.dumps({"run_id": result.run_id, "status": result.status, "batch_id": result.batch_id}))
 
 

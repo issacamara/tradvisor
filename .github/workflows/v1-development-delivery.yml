@@ -101,7 +101,12 @@ jobs:
       - name: Import existing development shares table
         if: inputs.action == 'import'
         working-directory: terraform
-        run: terraform import google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
+        run: |
+          terraform import google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
+          terraform import google_bigquery_table.brvm_companies projects/dev-tradvisor/datasets/stocks/tables/brvm_companies
+          terraform import google_bigquery_table.dividends projects/dev-tradvisor/datasets/stocks/tables/dividends
+          terraform import google_bigquery_table.financials projects/dev-tradvisor/datasets/stocks/tables/financials
+          terraform import google_bigquery_table.ratings projects/dev-tradvisor/datasets/stocks/tables/ratings
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
@@ -114,8 +119,6 @@ jobs:
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
-          TF_VAR_v1_analytical_snapshot_table: dev-tradvisor.stocks.analytical_snapshots
-          TF_VAR_v1_analytical_snapshot_name: shares-baseline-2025-07-18
           TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
         run: terraform plan -out=tfplan
       - name: Apply reviewed development plan
@@ -130,8 +133,6 @@ jobs:
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
-          TF_VAR_v1_analytical_snapshot_table: dev-tradvisor.stocks.analytical_snapshots
-          TF_VAR_v1_analytical_snapshot_name: shares-baseline-2025-07-18
           TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
         run: terraform apply -auto-approve
       - name: Deploy static frontend

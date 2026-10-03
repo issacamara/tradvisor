@@ -238,16 +238,6 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         command = length(var.v1_batch_command) > 0 ? var.v1_batch_command : ["python", "-m", "backend.commands.daily_publication"]
 
         env {
-          name  = "ANALYTICAL_SNAPSHOT_TABLE"
-          value = var.v1_analytical_snapshot_table
-        }
-
-        env {
-          name  = "ANALYTICAL_SNAPSHOT_NAME"
-          value = var.v1_analytical_snapshot_name
-        }
-
-        env {
           name  = "MARKET_DATA_TABLE"
           value = "${var.project_id}.stocks.shares"
         }
@@ -288,10 +278,6 @@ resource "google_cloud_run_v2_job" "v1_batch" {
       error_message = "Set an approved development batch image and command before enabling V1 jobs."
     }
 
-    precondition {
-      condition     = length(trimspace(var.v1_analytical_snapshot_table)) > 0 && length(trimspace(var.v1_analytical_snapshot_name)) > 0
-      error_message = "Set the approved development analytical snapshot table and name before enabling V1 jobs."
-    }
   }
 
   depends_on = [google_project_iam_member.v1_runtime_firestore]

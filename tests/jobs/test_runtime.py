@@ -10,7 +10,7 @@ from backend.analysis.batch import CalculationOutput
 from backend.analysis.batch import StockCalculation
 from backend.analysis.batch import build_analytical_batch
 from backend.jobs.daily import AnalyticalInputSnapshot
-from backend.jobs.runtime import BigQueryOutputCalculator, BigQuerySnapshotReader
+from backend.jobs.runtime import BigQueryOutputCalculator, BigQuerySharesReader
 from backend.openapi import LongTermRankedCompany, SwingRecommendation
 
 
@@ -247,4 +247,4 @@ def test_precomputed_long_term_output_is_preserved() -> None:
 
 def test_snapshot_reader_rejects_identifier_injection() -> None:
     with pytest.raises(ValueError, match="plain project.dataset.table"):
-        BigQuerySnapshotReader(object(), "dev.dataset.table; DROP TABLE x")
+        BigQuerySharesReader(object(), "dev.dataset.table; DROP TABLE x", "dev.dataset.financials")
