@@ -5,6 +5,11 @@ GitHub Environment configuration. The current delivery workflow targets
 `development` from branch `V1`; production delivery must use a protected
 production environment and a separately approved production branch or tag.
 
+The environment-to-project mapping is:
+
+- `development` -> `dev-tradvisor`
+- `production` -> `prod-tradvisor`
+
 ## Required environment values
 
 Each GitHub Environment must define these variables:
