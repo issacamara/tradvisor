@@ -106,7 +106,7 @@ resource "google_cloud_run_v2_service" "v1_api" {
 
       env {
         name  = "TRADVISOR_CORS_ORIGINS"
-        value = var.project_id == "dev-tradvisor" ? "https://dev-tradvisor.web.app" : ""
+        value = var.project_id == "dev-tradvisor" ? "https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com" : ""
       }
 
       env {
