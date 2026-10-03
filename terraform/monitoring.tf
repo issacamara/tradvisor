@@ -1,5 +1,5 @@
 locals {
-  v1_monitoring_enabled = var.configure_v1_monitoring && var.project_id == "dev-tradvisor"
+  v1_monitoring_enabled = var.configure_v1_monitoring && contains(["development", "production"], var.environment)
 }
 
 resource "google_logging_project_bucket_config" "v1_application" {

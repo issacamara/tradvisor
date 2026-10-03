@@ -106,7 +106,7 @@ resource "google_cloud_run_v2_service" "v1_api" {
 
       env {
         name  = "TRADVISOR_CORS_ORIGINS"
-        value = var.project_id == "dev-tradvisor" ? "https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com" : ""
+        value = var.v1_cors_origins
       }
 
       env {
@@ -132,13 +132,13 @@ resource "google_cloud_run_v2_service" "v1_api" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = var.project_id == "dev-tradvisor"
-      error_message = "V1 runtime configuration is restricted to the development project."
+      condition     = contains(["development", "production"], var.environment)
+      error_message = "V1 runtime configuration requires a supported deployment environment."
     }
 
     precondition {
       condition     = length(trimspace(var.v1_api_image)) > 0
-      error_message = "Set an approved development API image before enabling the V1 runtime."
+      error_message = "Set an approved API image before enabling the V1 runtime."
     }
   }
 
@@ -207,13 +207,13 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = var.project_id == "dev-tradvisor"
-      error_message = "Workflow dispatcher configuration is restricted to the development project."
+      condition     = contains(["development", "production"], var.environment)
+      error_message = "Workflow dispatcher configuration requires a supported deployment environment."
     }
 
     precondition {
       condition     = length(trimspace(var.v1_api_image)) > 0
-      error_message = "Set an approved development API image before enabling the workflow dispatcher."
+      error_message = "Set an approved API image before enabling the workflow dispatcher."
     }
   }
 }
@@ -269,13 +269,13 @@ resource "google_cloud_run_v2_job" "v1_batch" {
     prevent_destroy = true
 
     precondition {
-      condition     = var.project_id == "dev-tradvisor"
-      error_message = "V1 batch jobs are restricted to the development project."
+      condition     = contains(["development", "production"], var.environment)
+      error_message = "V1 batch jobs require a supported deployment environment."
     }
 
     precondition {
       condition     = length(trimspace(var.v1_batch_image)) > 0 && length(var.v1_batch_command) > 0
-      error_message = "Set an approved development batch image and command before enabling V1 jobs."
+      error_message = "Set an approved batch image and command before enabling V1 jobs."
     }
 
   }

@@ -4,6 +4,17 @@ variable "project_id" {
   default     = "dev-tradvisor"
   #   default     = "sbx-31371-uw1yf3stmtx5c52rawmo"
 }
+
+variable "environment" {
+  description = "Deployment environment represented by this Terraform state"
+  type        = string
+  default     = "development"
+
+  validation {
+    condition     = contains(["development", "production"], var.environment)
+    error_message = "environment must be development or production."
+  }
+}
 variable "region" {
   description = "Region of the project"
   type        = string
@@ -201,6 +212,12 @@ variable "v1_api_service_name" {
   description = "Development-only Cloud Run API service name"
   type        = string
   default     = "tradvisor-v1-api"
+}
+
+variable "v1_cors_origins" {
+  description = "Comma-separated browser origins allowed to call the V1 API"
+  type        = string
+  default     = "https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com"
 }
 
 variable "v1_api_image" {

@@ -21,6 +21,12 @@ jobs:
   delivery:
     if: github.ref_name == 'V1'
     runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'dev-tradvisor-tfstate' }}
+      TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/dev' }}
+      TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
     environment:
       name: ${{ (inputs.action == 'apply' || inputs.action == 'frontend') && 'development-apply' || 'development-plan' }}
     steps:
@@ -42,7 +48,7 @@ jobs:
         working-directory: frontend
         env:
           NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_TRADVISOR_API_URL: https://tradvisor-v1-api-evatyq2akq-lm.a.run.app
+          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
         run: |
           test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || { echo "Development Firebase API key is unavailable" >&2; exit 1; }
           npm ci
@@ -53,8 +59,8 @@ jobs:
           API_IMAGE: ${{ inputs.api_image }}
         run: |
           BUILD_ID="$(gcloud builds submit backend \
-            --project=dev-tradvisor \
-            --region=europe-central2 \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
             --tag="$API_IMAGE" \
             --async \
             --format='value(id)' \
@@ -62,8 +68,8 @@ jobs:
           test -n "$BUILD_ID"
           while :; do
             STATUS="$(gcloud builds describe "$BUILD_ID" \
-              --project=dev-tradvisor \
-              --region=europe-central2 \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
               --format='value(status)')"
             case "$STATUS" in
               SUCCESS) break ;;
@@ -81,23 +87,26 @@ jobs:
         run: |
           test -n "$API_IMAGE" || { echo "api_image is required for delivery" >&2; exit 1; }
           case "$API_IMAGE" in
-            europe-central2-docker.pkg.dev/dev-tradvisor/*) ;;
-            *) echo "api_image must target dev-tradvisor Artifact Registry in europe-central2" >&2; exit 1;;
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*) ;;
+            *) echo "api_image must target the configured environment Artifact Registry" >&2; exit 1;;
           esac
       - name: Validate delivery context
         if: inputs.action != 'frontend'
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
-          TF_VAR_project_id: dev-tradvisor
-          TF_STATE_BUCKET: dev-tradvisor-tfstate
-          TF_STATE_PREFIX: state/dev
+          DEPLOY_ENV: development
+          ALLOWED_BRANCH: V1
+          EXPECTED_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          EXPECTED_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'dev-tradvisor-tfstate' }}
+          EXPECTED_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/dev' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           DEPLOY_ACTION: ${{ inputs.action }}
           API_IMAGE: ${{ inputs.api_image }}
         run: bash scripts/deployment/guard.sh
       - name: Initialize Terraform backend
         if: inputs.action != 'frontend'
         working-directory: terraform
-        run: terraform init -backend-config="bucket=dev-tradvisor-tfstate" -backend-config="prefix=state/dev"
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX"
       - name: Import existing development shares table
         if: inputs.action == 'import'
         working-directory: terraform
@@ -109,24 +118,26 @@ jobs:
               terraform import "$address" "$resource_id"
             fi
           }
-          import_if_absent google_bigquery_table.shares projects/dev-tradvisor/datasets/stocks/tables/shares
-          import_if_absent google_bigquery_table.brvm_companies projects/dev-tradvisor/datasets/stocks/tables/brvm_companies
-          import_if_absent google_bigquery_table.dividends projects/dev-tradvisor/datasets/stocks/tables/dividends
-          import_if_absent google_bigquery_table.financials projects/dev-tradvisor/datasets/stocks/tables/financials
-          import_if_absent google_bigquery_table.ratings projects/dev-tradvisor/datasets/stocks/tables/ratings
+          import_if_absent google_bigquery_table.shares "projects/$TF_VAR_project_id/datasets/stocks/tables/shares"
+          import_if_absent google_bigquery_table.brvm_companies "projects/$TF_VAR_project_id/datasets/stocks/tables/brvm_companies"
+          import_if_absent google_bigquery_table.dividends "projects/$TF_VAR_project_id/datasets/stocks/tables/dividends"
+          import_if_absent google_bigquery_table.financials "projects/$TF_VAR_project_id/datasets/stocks/tables/financials"
+          import_if_absent google_bigquery_table.ratings "projects/$TF_VAR_project_id/datasets/stocks/tables/ratings"
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
         env:
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_environment: development
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_schedules: "false"
           TF_VAR_manage_legacy_workflows: "false"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
-          TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: terraform plan -out=tfplan
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
@@ -134,14 +145,16 @@ jobs:
         env:
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_environment: development
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_schedules: "false"
           TF_VAR_manage_legacy_workflows: "false"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
-          TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: terraform apply -auto-approve
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
-        run: npx -y firebase-tools@latest deploy --only hosting --project dev-tradvisor --non-interactive
+        run: npx -y firebase-tools@latest deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive

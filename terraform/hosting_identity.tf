@@ -37,8 +37,8 @@ resource "google_identity_platform_config" "v1_development" {
 
   lifecycle {
     precondition {
-      condition     = var.project_id == "dev-tradvisor"
-      error_message = "V1 identity configuration is restricted to the configured development project."
+      condition     = contains(["development", "production"], var.environment)
+      error_message = "V1 identity configuration requires a supported deployment environment."
     }
 
     precondition {
