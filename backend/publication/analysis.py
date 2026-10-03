@@ -162,21 +162,26 @@ class AnalyticalPublisher:
         return self._promote(batch)
 
     def active_publication(self) -> ActivePublication | None:
-        page = self._store.page(
-            ACTIVE_PUBLICATION_COLLECTION,
-            filters=(),
-            order_by=(("effective_session", "desc"),),
-            limit=MAX_PAGE_SIZE,
-            cursor=None,
-        )
-        if not page.items:
-            return None
         publications: list[ActivePublication] = []
-        for item in page.items:
-            try:
-                publications.append(ActivePublication.model_validate(item.model_dump(mode="python")))
-            except (TypeError, ValueError) as error:
-                raise PublicationError("active publication pointer is malformed") from error
+        cursor: str | None = None
+        while True:
+            page = self._store.page(
+                ACTIVE_PUBLICATION_COLLECTION,
+                filters=(),
+                order_by=(("__name__", "asc"),),
+                limit=MAX_PAGE_SIZE,
+                cursor=cursor,
+            )
+            for item in page.items:
+                try:
+                    publications.append(ActivePublication.model_validate(item.model_dump(mode="python")))
+                except (TypeError, ValueError) as error:
+                    raise PublicationError("active publication pointer is malformed") from error
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        if not publications:
+            return None
         return max(publications, key=lambda item: (item.effective_session, item.revision, item.batch_id))
 
     def read_batch(
