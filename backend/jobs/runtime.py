@@ -24,6 +24,7 @@ from backend.analysis.swing import CurrentTradeGate, SwingStrategyInput, evaluat
 from backend.analysis.growth_core import GrowthInput, calculate_growth_core
 from backend.contracts.analysis import NormalizedFinancial, Provenance, Revision
 from backend.contracts.scalars import NonNegativeMoney, SignedMoney
+from backend.analysis.warmup import required_market_days
 from backend.jobs.daily import (
     AnalyticalInputSnapshot,
     AnalyticalSnapshotReader,
@@ -77,22 +78,15 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
         # with a bounded market-data window so the serving copy can expose the
         # close-price chart and provide enough history for the V1 calculations.
         market_table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
-        analytical_table = os.environ.get("ANALYTICAL_MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares_analytical").strip()
-        for name, value in (("market data", market_table), ("analytical market data", analytical_table)):
+        for name, value in (("market data", market_table),):
             if not value or "`" in value or ";" in value:
                 raise ValueError(f"{name} table must be a plain project.dataset.table identifier")
-        self._client.query(
-            "CREATE OR REPLACE TABLE `" + analytical_table + "` "
-            "PARTITION BY date CLUSTER BY symbol AS "
-            "SELECT symbol, name, open, high, low, close, volume, date "
-            "FROM `" + market_table + "` "
-            "WHERE date IS NOT NULL AND date >= DATE_SUB((SELECT MAX(date) FROM `" + market_table + "`), INTERVAL 400 DAY)",
-            job_config=bigquery.QueryJobConfig(),
-        ).result()
+        market_days = required_market_days(20, 50, 14, 14)
         market_rows = list(self._client.query(
             "SELECT symbol, date, open, high, low, close, volume "
-            f"FROM `{analytical_table}` "
+            f"FROM `{market_table}` "
             "WHERE date IS NOT NULL "
+            f"AND date >= DATE_SUB((SELECT MAX(date) FROM `{market_table}`), INTERVAL {market_days} DAY) "
             "ORDER BY symbol, date",
             job_config=bigquery.QueryJobConfig(),
         ).result())
@@ -376,7 +370,7 @@ def _development_swing_output(
                 true_range = max(high - low, abs(high - previous_close), abs(low - previous_close))
             true_range_state = "observed"
         sessions.append(SessionInput(
-            session_id=f"dev-shares:{symbol}:{session_date.isoformat()}",
+            session_id=session_date.isoformat(),
             session_date=session_date, session_index=index,
             price_basis_ref=evidence, close_micros=close,
             close_state="traded" if close is not None else "unknown",
@@ -442,11 +436,61 @@ def _development_swing_output(
         "buy_strength": score or {"status": "missing_inputs", "value": None, "unit": "points", "reason_codes": list(strategy.reason_codes or ("analysis_unavailable",))},
         "indicators": points,
         "eligibility_guards": [
-            {"code": guard.code, "status": guard.status, "observed": None, "threshold": None, "evidence_refs": [evidence]}
-            for guard in strategy.guards
+            {
+                "code": guard.code,
+                "status": guard.status,
+                "observed": observed,
+                "threshold": threshold,
+                "evidence_refs": [evidence],
+            }
+            for guard, observed, threshold in _swing_guard_values(
+                strategy.guards,
+                median=median,
+                traded_sessions=len(turnovers),
+                close=current.close_micros,
+                ema20=_latest_value(ema20.points),
+                ema50=_latest_value(ema50.points),
+                previous_ema20=_previous_value(ema20.points),
+                extension_ratio=(
+                    None
+                    if current.close_micros is None or _latest_value(ema20.points) is None or _latest_value(atr14.points) in (None, 0)
+                    else float((Decimal(current.close_micros) / Decimal(1_000_000) - Decimal(str(_latest_value(ema20.points)))) / Decimal(str(_latest_value(atr14.points))))
+                ),
+            )
         ],
     }
     return CalculationOutput(name="swing", status="available", value=value)
+
+
+def _latest_value(points: Any) -> float | None:
+    point = points[-1] if points else None
+    return None if point is None or point.value is None else float(point.value)
+
+
+def _previous_value(points: Any) -> float | None:
+    point = points[-2] if len(points) > 1 else None
+    return None if point is None or point.value is None else float(point.value)
+
+
+def _swing_guard_values(
+    guards: Any,
+    *, median: Decimal | None,
+    traded_sessions: int,
+    close: int | None,
+    ema20: float | None,
+    ema50: float | None,
+    previous_ema20: float | None,
+    extension_ratio: float | None,
+) -> list[tuple[Any, float | None, float | None]]:
+    values = {
+        "liquidity_eligibility": (None if median is None else float(median), 5_000_000.0),
+        "current_trade_eligibility": (1.0 if close is not None else 0.0, 1.0),
+        "ema20_above_ema50": (ema20, ema50),
+        "close_at_or_above_ema20": (None if close is None else close / 1_000_000, ema20),
+        "ema20_rising_over_five_sessions": (ema20, previous_ema20),
+        "extension_below_three_atr": (extension_ratio, 3.0),
+    }
+    return [(guard, *values.get(guard.code, (None, None))) for guard in guards]
 
 
 def _micros(value: object) -> int | None:

@@ -28,6 +28,34 @@ resource "google_bigquery_dataset" "stocks" {
   }
 }
 
+resource "google_bigquery_table" "shares" {
+  dataset_id          = "stocks"
+  table_id            = "shares"
+  deletion_protection = true
+
+  time_partitioning {
+    type  = "DAY"
+    field = "date"
+  }
+
+  clustering = ["symbol"]
+
+  schema = jsonencode([
+    { name = "symbol", type = "STRING", mode = "NULLABLE" },
+    { name = "name", type = "STRING", mode = "NULLABLE" },
+    { name = "open", type = "FLOAT", mode = "NULLABLE" },
+    { name = "high", type = "FLOAT", mode = "NULLABLE" },
+    { name = "low", type = "FLOAT", mode = "NULLABLE" },
+    { name = "close", type = "FLOAT", mode = "NULLABLE" },
+    { name = "volume", type = "FLOAT", mode = "NULLABLE" },
+    { name = "date", type = "DATE", mode = "NULLABLE" },
+  ])
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "google_project_service" "apis" {
   project                    = var.project_id
   for_each                   = var.manage_legacy_project_services ? toset(var.apis) : toset([])

@@ -49,6 +49,10 @@ No numerical adoption, return, accuracy, or delivery-date target has been confir
 
 The available information identifies five BigQuery source tables:
 
+**Market-data storage decision (approved 2026-10-03):** `stocks.shares` is the single V1 OHLCV market-data table. It is declared and lifecycle-protected in Terraform, partitioned by trading `date`, and clustered by `symbol`. V1 does not use a separate `stocks.shares_analytical` table. The daily publication reads the required recent history directly from `stocks.shares`, calculates EMA20, EMA50, RSI14, ATR14, and liquidity, and writes the resulting recommendation evidence to the immutable Firestore analytical serving copy.
+
+**Financial-data storage decision (approved 2026-10-03):** `stocks.financials` is the canonical V1 financial source table. V1 does not require a separate `stocks.financials_analytical` table; Long-Term calculations read the required financial history from `stocks.financials` and publish their results in the immutable Firestore serving copy.
+
 - `brvm_companies`
 - `shares`
 - `dividends`
@@ -127,7 +131,7 @@ Review fixtures must include a flat/falling EMA20 with theoretical contributions
 
 The RSI curve remains the active evaluation candidate; compare a gentler high-RSI penalty offline because RSI and extension may penalize the same move. This does not introduce a second live V1 strategy. ATR also normalizes both EMA contributions, so it influences up to 70 points; components are coupled, not independent evidence. Historical evaluation must examine subsequent returns, drawdowns, turnover, and results, including denominator sensitivity, including denominator sensitivity. Initialization/warm-up and evidence-status labels are defined in section 6.6 and the financial calculation contract; no separate probability-like confidence score is introduced.
 
-Periods refer to exchange trading sessions, not calendar days or only sessions on which the stock traded. The 20-session liquidity median includes confirmed zero-turnover sessions, never substitutes zero for missing observations, and is accompanied by the count of sessions with trading. The adopted financial calculation contract specifies verified no-trade versus unknown observations, separate analytical inputs, exact recursive seeds and 250-session warm-up; windows never silently compress time. Low ATR does not override the liquidity gate. Historical holdout evaluation with fees and execution limitations is separate from calculation unit tests.
+Periods refer to dated trading observations, not calendar days. For the V1 development path, the minimum history is `max(100, slow_ema_period + 1, rsi_period + 1, atr_period + 1)`, which is 100 observations with the current configuration. If an indicator period changes, the required observation window changes accordingly. The 20-session liquidity median includes confirmed zero-turnover sessions, never substitutes zero for missing observations, and is accompanied by the count of sessions with trading. Low ATR does not override the liquidity gate. Historical holdout evaluation with fees and execution limitations is separate from calculation unit tests.
 
 Later app versions may replace this strategy, including with pullback or weighted-score approaches, without rewriting historical recommendations. Preserve the strategy identity, rule/configuration version, input reference, and original evidence for each result. V1 requires one active strategy, not user-selectable strategies or simultaneous evaluation of multiple strategies.
 
@@ -205,7 +209,7 @@ On 2026-09-19 the stakeholder authorized applying financial-analysis-expert reco
 | Dividend, 100 points | Paid ordinary regularity 25; maintenance 10 and growth 5; annual payout coverage 20/10/10; trailing ordinary yield 20, capped at 8% yield |
 | Long-Term advice | Unrounded >=70 candidate, 50 to <70 watchlist, <50 low score; independent financial, freshness and dividend-sustainability guards. Not personalized Sell advice |
 | Sector and input validity | Explicit bank PNB, insurer gross written premium and industrial revenue mappings; source-required share basis, ordinary-owner claims, capital coverage and paid-dividend attribution; no missing-input reweighting |
-| Swing initialization | SMA-seeded EMA20/50; Wilder RSI14/ATR14 from 14 changes/TR values; explicit flat RSI=50; 250 uninterrupted session closes before actionable calculation |
+| Swing initialization | SMA-seeded EMA20/50; Wilder RSI14/ATR14 from 14 changes/TR values; `max(100, slow_ema_period + 1, rsi_period + 1, atr_period + 1)` dated observations before actionable calculation (100 with current periods); explicit flat RSI=50 |
 | Non-trading sessions | Confirmed no-trade sessions carry analytical close and explicitly model zero TR without inventing OHLC candles; unknown observations interrupt dependent recursion. Show the modeled basis and its volatility limitation |
 | Liquidity basis | Complete actual 20-session turnover window preferred; complete, consistently labeled close-times-volume window permitted as fallback. Original 5m XOF and 18/20 thresholds retained |
 | Additional Swing guard | A confirmed current-session trade/close and no active suspension are also required for Buy; no-current-trade is not automatic Sell |

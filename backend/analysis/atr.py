@@ -7,10 +7,10 @@ from hashlib import sha256
 from typing import Literal
 
 from backend.analysis.inputs import AnalyticalInputSnapshot, SessionInput, TrueRangeState
+from backend.analysis.warmup import required_indicator_observations
 from backend.contracts.scalars import OpaqueIdentifier
 
 ATR_PERIOD = 14
-WARM_UP_SESSIONS = 250
 AtrStatus = Literal["warming_up", "assessable", "missing_inputs"]
 
 
@@ -142,7 +142,8 @@ def calculate_atr14(
                 average = ((ATR_PERIOD - 1) * average + true_range) / ATR_PERIOD
                 value = average
 
-        status: AtrStatus = "assessable" if session_count >= WARM_UP_SESSIONS else "warming_up"
+        required_observations = required_indicator_observations(ATR_PERIOD)
+        status: AtrStatus = "assessable" if session_count >= required_observations else "warming_up"
         reasons = ("modeled_zero_range",) if state == "modeled_zero_range" else ()
         points.append(
             AtrPoint(

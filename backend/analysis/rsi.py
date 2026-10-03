@@ -7,10 +7,10 @@ from hashlib import sha256
 from typing import Literal
 
 from backend.analysis.inputs import AnalyticalInputSnapshot, CloseState, SessionInput
+from backend.analysis.warmup import required_indicator_observations
 from backend.contracts.scalars import OpaqueIdentifier
 
 RSI_PERIOD = 14
-WARM_UP_SESSIONS = 250
 RsiStatus = Literal["warming_up", "assessable", "missing_inputs"]
 
 
@@ -116,7 +116,8 @@ def calculate_rsi14(
                 average_loss = ((RSI_PERIOD - 1) * average_loss + loss) / RSI_PERIOD
                 value = _rsi(average_gain, average_loss)
         previous = close
-        status: RsiStatus = "assessable" if count >= WARM_UP_SESSIONS else "warming_up"
+        required_observations = required_indicator_observations(RSI_PERIOD)
+        status: RsiStatus = "assessable" if count >= required_observations else "warming_up"
         points.append(RsiPoint(item.session_id, item.session_index, value, status, segment, item.close_state))
         if value is not None and average_gain is not None and average_loss is not None:
             checkpoints.append(RsiCheckpoint(snapshot.snapshot_id, rule_version, item.session_index, segment, count, close, average_gain, average_loss, _fingerprint(snapshot.sessions, item.session_index)))

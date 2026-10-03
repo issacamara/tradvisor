@@ -253,11 +253,6 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         }
 
         env {
-          name  = "ANALYTICAL_MARKET_DATA_TABLE"
-          value = "${var.project_id}.stocks.shares_analytical"
-        }
-
-        env {
           name  = "ANALYTICAL_FINANCIALS_TABLE"
           value = var.v1_analytical_financials_table
         }

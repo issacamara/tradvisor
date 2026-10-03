@@ -80,11 +80,11 @@ def test_carried_close_counts_and_unknown_close_starts_a_fresh_segment() -> None
     assert series.points[41].close_segment == 2
 
 
-def test_maturity_is_session_based_at_250_not_249() -> None:
+def test_maturity_uses_the_v1_minimum_of_100_observations() -> None:
     series = calculate_ema(snapshot([100] * 250), period=20, rule_version="ema-v1")
 
-    assert series.points[248].status == "warming_up"
-    assert series.points[249].status == "assessable"
+    assert series.points[98].status == "warming_up"
+    assert series.points[99].status == "assessable"
     assert series.points[249].value == 100.0
 
 

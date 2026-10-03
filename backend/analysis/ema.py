@@ -7,10 +7,10 @@ from hashlib import sha256
 from typing import Literal
 
 from backend.analysis.inputs import AnalyticalInputSnapshot, CloseState, SessionInput
+from backend.analysis.warmup import required_indicator_observations
 from backend.contracts.scalars import OpaqueIdentifier
 
 EMA_PERIODS = (20, 50)
-WARM_UP_SESSIONS = 250
 EmaStatus = Literal["warming_up", "assessable", "missing_inputs"]
 
 
@@ -140,7 +140,8 @@ def calculate_ema(
             previous_ema = multiplier * close + (1.0 - multiplier) * previous_ema
 
         value = previous_ema if close_count >= period else None
-        status: EmaStatus = "assessable" if close_count >= WARM_UP_SESSIONS else "warming_up"
+        required_observations = required_indicator_observations(period)
+        status: EmaStatus = "assessable" if close_count >= required_observations else "warming_up"
         points.append(
             EmaPoint(
                 session_id=session.session_id,

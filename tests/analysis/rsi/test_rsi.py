@@ -54,8 +54,8 @@ def test_carried_close_counts_and_unknown_interrupts_segment() -> None:
 def test_maturity_and_checkpoint_correction_fence() -> None:
     original = snapshot(list(range(1, 251)))
     full = calculate_rsi14(original, rule_version="rsi-v1")
-    assert full.points[248].status == "warming_up"
-    assert full.points[249].status == "assessable"
+    assert full.points[98].status == "warming_up"
+    assert full.points[99].status == "assessable"
     anchor = full.checkpoints[5]
     corrected = list(range(1, 251)); corrected[-1] = 999
     suffix = calculate_rsi14(snapshot(corrected, snapshot_id="corrected"), rule_version="rsi-v1", checkpoint=anchor)

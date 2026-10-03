@@ -150,10 +150,10 @@ def test_basis_change_restarts_instead_of_smoothing() -> None:
     assert series.points[-1].valid_true_range_count == 14
 
 
-def test_maturity_requires_250_sessions_and_zero_atr_is_valid_but_not_denominator() -> None:
+def test_maturity_uses_100_observations_and_zero_atr_is_valid_but_not_denominator() -> None:
     flat = calculate_atr14(snapshot([None] + [0] * 249), rule_version="atr-v1")
-    assert flat.points[248].status == "warming_up"
-    assert flat.points[249].status == "assessable"
+    assert flat.points[98].status == "warming_up"
+    assert flat.points[99].status == "assessable"
     assert flat.points[249].value is not None
     assert flat.points[249].value == 0.0
 
