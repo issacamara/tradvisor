@@ -101,10 +101,10 @@ class BigQuerySnapshotReader(AnalyticalSnapshotReader):
             if row["date"] is not None
         ]
         financial_data: list[dict[str, Any]] = []
-        financial_table = os.environ.get("ANALYTICAL_FINANCIALS_TABLE", "").strip()
+        financial_table = os.environ.get("FINANCIALS_TABLE", "").strip()
         if financial_table:
             if "`" in financial_table or ";" in financial_table or any(char.isspace() for char in financial_table):
-                raise ValueError("analytical financials table must be a plain project.dataset.table identifier")
+                raise ValueError("financials table must be a plain project.dataset.table identifier")
             financial_rows = list(self._client.query(
                 "SELECT symbol, fiscal_year, revenue, net_income, total_equity, collected_at, document_link "
                 f"FROM `{financial_table}` ORDER BY symbol, fiscal_year",

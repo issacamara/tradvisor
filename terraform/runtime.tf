@@ -253,8 +253,8 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         }
 
         env {
-          name  = "ANALYTICAL_FINANCIALS_TABLE"
-          value = var.v1_analytical_financials_table
+          name  = "FINANCIALS_TABLE"
+          value = var.v1_financials_table
         }
 
         env {

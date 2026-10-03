@@ -113,7 +113,6 @@ jobs:
           TF_VAR_v1_analytical_snapshot_table: dev-tradvisor.stocks.analytical_snapshots
           TF_VAR_v1_analytical_snapshot_name: shares-baseline-2025-07-18
           TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
-          TF_VAR_v1_analytical_financials_table: dev-tradvisor.stocks.financials_analytical
         run: terraform plan -out=tfplan
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
@@ -130,7 +129,6 @@ jobs:
           TF_VAR_v1_analytical_snapshot_table: dev-tradvisor.stocks.analytical_snapshots
           TF_VAR_v1_analytical_snapshot_name: shares-baseline-2025-07-18
           TF_VAR_v1_financials_table: dev-tradvisor.stocks.financials
-          TF_VAR_v1_analytical_financials_table: dev-tradvisor.stocks.financials_analytical
         run: terraform apply -auto-approve
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
