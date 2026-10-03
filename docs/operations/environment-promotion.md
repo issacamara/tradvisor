@@ -10,6 +10,12 @@ The environment-to-project mapping is:
 - `development` -> `dev-tradvisor`
 - `production` -> `prod-tradvisor`
 
+The production delivery contract is:
+
+- Branch: `production`
+- Terraform state bucket: `prod-tradvisor-tfstate`
+- Terraform state prefix: `state/prod`
+
 ## Required environment values
 
 Each GitHub Environment must define these variables:
