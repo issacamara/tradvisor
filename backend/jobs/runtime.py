@@ -217,9 +217,11 @@ def _development_long_term_output(
     score_status = "missing_inputs"
     score_value: float | None = None
     score_reasons = ["annual_financial_history_incomplete"]
-    if len(financials) == 3:
+    if len(financials) >= 3:
         try:
-            core = calculate_growth_core(GrowthInput(company_id=f"brvm:{symbol}", financials=financials))
+            core = calculate_growth_core(
+                GrowthInput(company_id=f"brvm:{symbol}", financials=financials[-3:])
+            )
         except (TypeError, ValueError):
             core = None
     reason = "annual_financial_history_incomplete" if core is None else "growth_inputs_partial"
