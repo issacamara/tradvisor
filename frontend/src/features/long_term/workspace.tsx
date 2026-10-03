@@ -41,7 +41,7 @@ function AnnualDimensionChart({ data }: { data: Company["growth"]["annual_dimens
         const changeColor = change === null ? "#aab9b5" : change >= 0 ? "#45c88a" : "#ef7777";
         return <g key={`${row.fiscal_year}-${key}`}>
           <rect x={x(index, seriesIndex)} y={baseline - h} width={barWidth - 2} height={h} rx="2" fill={color}><title>{`${row.fiscal_year} ${key}: ${value}`}</title></rect>
-          <text x={x(index, seriesIndex) + (barWidth - 2) / 2} y={Math.max(padding.top + 10, baseline - h - 5)} textAnchor="middle" fill={changeColor} fontSize="10" fontWeight="600">{change === null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`}</text>
+          {change !== null && <text x={x(index, seriesIndex) + (barWidth - 2) / 2} y={Math.max(padding.top + 10, baseline - h - 5)} textAnchor="middle" fill={changeColor} fontSize="10" fontWeight="600">{`${change >= 0 ? "+" : ""}${change.toFixed(1)}%`}</text>}
         </g>;
       }))}
     </svg>
