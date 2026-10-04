@@ -110,6 +110,9 @@ jobs:
       - name: Import existing development shares table
         if: inputs.action == 'import' || inputs.action == 'apply'
         working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          TF_VAR_manage_legacy_workflows: "true"
         run: |
           import_if_absent() {
             address="$1"
