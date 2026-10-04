@@ -697,7 +697,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     assert artifact["result"] == result
 
 
-def test_empty_table_hands_initialization_through_canonical_pdf_loader(
+def test_missing_table_requires_explicit_initialization_workflow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     functions_framework = ModuleType("functions_framework")
@@ -720,14 +720,11 @@ def test_empty_table_hands_initialization_through_canonical_pdf_loader(
     helper.upsert_financial_report_current_and_revision = lambda *a, **k: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "helper", helper)
 
-    calls: list[tuple[str | None, str | None]] = []
-    init = ModuleType("scrape_financials_init")
-    init.scrape_financials_init = lambda url, key: calls.append((url, key)) or 1  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "scrape_financials_init", init)
     scraper = _load_module(SCRIPTS / "scrape_financials.py", "financial_pipeline_monthly")
+    monkeypatch.setattr(scraper, "get_existing_symbols_and_years", lambda: {})
 
-    assert scraper.scrape_financials("fixture://source", "fixture-key") == 1
-    assert calls == [("fixture://source", "fixture-key")]
+    with pytest.raises(RuntimeError, match="financials-init-wf"):
+        scraper.scrape_financials("fixture://source", "fixture-key")
 
 
 def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_rows(

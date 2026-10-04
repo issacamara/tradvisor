@@ -497,12 +497,14 @@ def scrape_financials(url, openrouter_api_key=None):
     table_exists_flag = table_exists('financials')
     existing_data = get_existing_symbols_and_years() if table_exists_flag else {}
     
-    # If table doesn't exist or is empty, auto-initialize with all historical data
-    if not table_exists_flag or not existing_data:
-        print("No existing data found. Auto-initializing with all available historical data...")
-        # Lazy import keeps initialization and provider work out of module import.
-        from scrape_financials_init import scrape_financials_init
-        return scrape_financials_init(url, openrouter_api_key)
+    # Initialization is a separate storage-first workflow. Do not fall back to
+    # it here: this recurring function is packaged without its initializer-only
+    # dependencies and must remain an incremental scraper.
+    if not table_exists_flag and not existing_data:
+        raise RuntimeError(
+            "stocks.financials is unavailable; run financials-init-wf before "
+            "the recurring financials-wf"
+        )
     
     print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs in database.")
     
