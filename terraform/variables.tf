@@ -144,6 +144,13 @@ variable "manage_legacy_project_services" {
   default     = false
 }
 
+variable "terraform_deployer_service_account" {
+  description = "Service account used by Terraform to manage development infrastructure"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "manage_legacy_bigquery_datasets" {
   description = "Whether Terraform owns pre-existing BigQuery datasets; enabling requires an explicitly approved ownership migration"
   type        = bool

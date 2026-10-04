@@ -38,6 +38,13 @@ resource "google_project_iam_member" "v1_runtime_firestore" {
   member  = "serviceAccount:${google_service_account.v1_runtime[0].email}"
 }
 
+resource "google_project_iam_member" "terraform_deployer_cloudtasks_admin" {
+  count   = var.manage_legacy_schedules && trimspace(var.terraform_deployer_service_account) != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtasks.admin"
+  member  = "serviceAccount:${var.terraform_deployer_service_account}"
+}
+
 resource "google_project_iam_member" "v1_runtime_bigquery_job_user" {
   count   = local.v1_runtime_identity_enabled ? 1 : 0
   project = var.project_id

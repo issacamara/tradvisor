@@ -136,6 +136,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -153,6 +154,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}

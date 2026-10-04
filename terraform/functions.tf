@@ -149,7 +149,7 @@ resource "google_cloud_tasks_queue" "workflow_writers" {
     prevent_destroy = true
   }
 
-  depends_on = [google_cloud_run_v2_service.workflow_dispatcher]
+  depends_on = [google_cloud_run_v2_service.workflow_dispatcher, google_project_iam_member.terraform_deployer_cloudtasks_admin]
 }
 
 
