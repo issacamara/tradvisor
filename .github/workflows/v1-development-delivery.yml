@@ -133,7 +133,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_schedules: "false"
-          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
@@ -149,7 +149,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_schedules: "false"
-          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
