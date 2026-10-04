@@ -62,7 +62,7 @@ locals {
   ]
   workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
   workflow_by_source   = { for stage in local.workflow_stages : stage.source => stage }
-  paused_schedule_keys = toset(["job6"])
+  paused_schedule_keys = toset([])
 }
 
 resource "google_workflows_workflow" "workflows" {
@@ -158,7 +158,7 @@ resource "google_cloud_scheduler_job" "jobs" {
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
   for_each    = var.manage_legacy_schedules ? var.jobs : {}
   name        = "${each.value.name}-job"
-  description = "Daily trigger for ${each.value.name}"
+  description = contains(["financials", "ratings"], each.value.name) ? "Monthly trigger for ${each.value.name}" : "Daily trigger for ${each.value.name}"
   schedule    = each.value.schedule
   time_zone   = "Africa/Bamako"
   project     = var.project_id
@@ -187,10 +187,7 @@ resource "google_cloud_scheduler_job" "jobs" {
 
   paused = contains(local.paused_schedule_keys, each.key)
 
-  # Existing jobs, including paused jobs, are preserved. Activation or
-  # replacement requires its own approved change.
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [description, schedule, time_zone, http_target, paused]
   }
 }
