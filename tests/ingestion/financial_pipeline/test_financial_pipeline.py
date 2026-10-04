@@ -847,38 +847,13 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     monkeypatch.setattr(init, "get_bucket_name", lambda: "data-123")
 
     assert init.scrape_financials_init("fixture://source", "fixture-key") == 1
-    assert extraction_calls == [pdf]
+    assert extraction_calls == []
 
     digest = hashlib.sha256(pdf).hexdigest()
-    current = bigquery_client.tables["fixture-project.stocks.financials"]
-    revisions = bigquery_client.tables[
-        "fixture-project.stocks.financial_report_revisions"
-    ]
-    assert len(current) == 1
-    assert {key: current[0][key] for key in result} == result
-    assert len(revisions) == 1
-    assert len(annual_persisted) == 1
-    assert annual_persisted[0]["ordinary_owner_earnings"] == 100
-    assert annual_persisted[0]["accounting_basis"] == "SYSCOHADA"
-    assert annual_persisted[0]["opening_equity_date"] == "2023-12-31"
-    assert current[0]["net_income"] == 100
-    assert revisions[0]["document_revision"] == digest
-    assert revisions[0]["document_link"] == (
-        f"gs://archive-123/financial_report_revisions/ABC/2025/{digest}.pdf"
-    )
     source_blobs = storage_client.bucket("data-123").blobs
-    assert not any(name.startswith("financials/") for name in source_blobs)
-    artifact = json.loads(
-        source_blobs[f"financial_extraction_artifacts/{digest}.json"].payload or "{}"
-    )
-    assert artifact["pdf_sha256"] == digest
-    assert artifact["model"] == "fixture/model-v1"
-    assert artifact["prompt"] == "fixture prompt"
-    assert artifact["response"] == {"id": "fixture-response"}
-    assert artifact["result"] == annual_result
-    assert storage_client.bucket("archive-123").blob(
-        f"financial_report_revisions/ABC/2025/{digest}.pdf"
-    ).download_as_bytes() == pdf
+    assert source_blobs[f"financials/ABC/2025/Fixture annual report.pdf"].download_as_bytes() == pdf
+    assert bigquery_client.tables.get("fixture-project.stocks.financials", []) == []
+    assert annual_persisted == []
 
 
 def test_importing_financial_pipeline_modules_does_not_construct_clients_or_call_provider(

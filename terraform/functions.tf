@@ -57,7 +57,7 @@ locals {
   workflow_stages = [
     { source = "shares", functions = ["scrape_shares", "insert_shares"], targets = ["stocks.shares"], writer_key = "stocks.shares" },
     { source = "dividends", functions = ["scrape_dividends", "insert_dividends"], targets = ["stocks.dividends"], writer_key = "stocks.dividends" },
-    { source = "financials", functions = ["scrape_financials", "insert_financials"], targets = ["stocks.financials"], writer_key = "stocks.financials" },
+    { source = "financials", functions = ["scrape_financials"], targets = ["stocks.financials"], writer_key = "stocks.financials" },
     { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"], writer_key = "stocks.ratings" },
   ]
   workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
@@ -85,6 +85,42 @@ main:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
 %{endfor~}
+EOF
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
+}
+
+# Initialization is an explicit storage-first operation. It is intentionally
+# separate from the recurring financials workflow so regular runs do not
+# extract the same reports twice.
+resource "google_workflows_workflow" "financials_initialization" {
+  depends_on      = [google_cloudfunctions2_function.functions, google_cloudfunctions2_function.initialization_functions, google_project_service.apis]
+  count           = var.manage_legacy_workflows ? 1 : 0
+  name            = "financials-init-wf"
+  region          = var.region
+  description     = "Download financial PDFs to Cloud Storage, then process them"
+  project         = var.project_id
+  service_account = google_service_account.tradvisor_sa.email
+  source_contents = <<EOF
+main:
+  steps:
+    - scrape_financials_init:
+        call: http.get
+        args:
+          url: ${google_cloudfunctions2_function.initialization_functions["scrape_financials_init"].service_config[0].uri}
+          auth:
+            type: OIDC
+            audience: ${google_cloudfunctions2_function.initialization_functions["scrape_financials_init"].service_config[0].uri}
+    - insert_financials:
+        call: http.get
+        args:
+          url: ${google_cloudfunctions2_function.functions["insert_financials"].service_config[0].uri}
+          auth:
+            type: OIDC
+            audience: ${google_cloudfunctions2_function.functions["insert_financials"].service_config[0].uri}
 EOF
 
   lifecycle {

@@ -339,7 +339,10 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
 def scrape_financials_init(url=None, openrouter_api_key=None):
     """Scrape annual financial statements from BRVM - INITIALIZATION (last 5 years).
     
-    Downloads PDF files to Cloud Storage for later processing by insert_financials function.
+    Downloads PDF files to Cloud Storage for later processing by insert_financials.
+
+    Extraction is deliberately not performed here. The initialization workflow
+    invokes insert_financials as a separate storage-processing step.
     """
     current_year = datetime.now().year
     max_year = current_year - 5  # Last 5 years
@@ -410,18 +413,10 @@ def scrape_financials_init(url=None, openrouter_api_key=None):
         
         gc.collect()
 
-    if openrouter_api_key:
-        from insert_financials import process_financial_pdfs
-
-        total_processed = process_financial_pdfs(openrouter_api_key)
-    else:
-        total_processed = 0
-    
     print(f"\nInitialization complete.")
     print(f"  Total PDFs downloaded: {total_downloaded}")
     print(f"  Total failures: {total_failed}")
-    print(f"  Total financial reports loaded: {total_processed}")
-    return total_processed if openrouter_api_key else total_downloaded
+    return total_downloaded
 
 
 @functions_framework.http
