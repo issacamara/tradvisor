@@ -62,7 +62,7 @@ locals {
   ]
   workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
   workflow_by_source   = { for stage in local.workflow_stages : stage.source => stage }
-  paused_schedule_keys = toset(["job5", "job6"])
+  paused_schedule_keys = toset(["job6"])
 }
 
 resource "google_workflows_workflow" "workflows" {
@@ -156,7 +156,10 @@ resource "google_cloud_tasks_queue" "workflow_writers" {
 resource "google_cloud_scheduler_job" "jobs" {
   depends_on = [google_cloud_tasks_queue.workflow_writers, google_workflows_workflow.workflows, google_project_service.apis]
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
-  for_each    = var.manage_legacy_schedules ? var.jobs : {}
+  for_each = var.manage_legacy_schedules ? {
+    for key, job in var.jobs : key => job
+    if contains(var.enabled_schedule_names, job.name)
+  } : {}
   name        = "${each.value.name}-job"
   description = "Daily trigger for ${each.value.name}"
   schedule    = each.value.schedule

@@ -138,6 +138,12 @@ variable "manage_legacy_schedules" {
   default     = false
 }
 
+variable "enabled_schedule_names" {
+  description = "Workflow schedule names Terraform may create and activate"
+  type        = set(string)
+  default     = ["financials"]
+}
+
 variable "manage_legacy_project_services" {
   description = "Whether Terraform owns pre-existing project service enablement; enabling requires an explicitly approved ownership migration"
   type        = bool
