@@ -156,10 +156,7 @@ resource "google_cloud_tasks_queue" "workflow_writers" {
 resource "google_cloud_scheduler_job" "jobs" {
   depends_on = [google_cloud_tasks_queue.workflow_writers, google_workflows_workflow.workflows, google_project_service.apis]
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
-  for_each = var.manage_legacy_schedules ? {
-    for key, job in var.jobs : key => job
-    if contains(var.enabled_schedule_names, job.name)
-  } : {}
+  for_each    = var.manage_legacy_schedules ? var.jobs : {}
   name        = "${each.value.name}-job"
   description = "Daily trigger for ${each.value.name}"
   schedule    = each.value.schedule
