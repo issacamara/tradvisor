@@ -2,7 +2,6 @@ from curl_cffi import requests
 import yaml
 import pandas as pd
 from helper import (
-    get_symbols_from_richbourse,
     save_dataframe_as_csv,
     table_exists,
     upsert_financial_report_current_and_revision,
@@ -46,6 +45,20 @@ def get_existing_symbols_and_years():
         } for row in results}
     except Exception:
         return {}
+
+
+def get_symbols_from_company_reference(project_id):
+    """Load the tracked BRVM symbols without scraping the provider dropdown."""
+    from google.cloud import bigquery
+
+    client = bigquery.Client(project=project_id)
+    query = f"""
+        SELECT symbol
+        FROM `{project_id}.stocks.brvm_companies`
+        WHERE symbol IS NOT NULL AND TRIM(symbol) != ''
+        ORDER BY symbol
+    """
+    return [row.symbol for row in client.query(query).result()]
 
 
 def extract_year_from_title(title):
@@ -508,9 +521,12 @@ def scrape_financials(url, openrouter_api_key=None):
     
     print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs in database.")
     
-    # Get all available symbols from RichBourse
-    all_symbols = get_symbols_from_richbourse(FINANCIALS_URL)
-    print(f"Found {len(all_symbols)} total symbols on RichBourse.")
+    # Use the managed company reference table. RichBourse's symbol dropdown
+    # is protected by anti-bot rules and is not needed for this workflow.
+    all_symbols = get_symbols_from_company_reference(project_id)
+    if not all_symbols:
+        raise RuntimeError("stocks.brvm_companies has no symbols to process")
+    print(f"Found {len(all_symbols)} total tracked symbols.")
     
     total_processed = 0
     

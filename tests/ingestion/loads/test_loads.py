@@ -556,7 +556,7 @@ def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch
         "get_existing_symbols_and_years",
         lambda: {("OTHER", 2024): {"announcement_date": "2025-01-01"}},
     )
-    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
     monkeypatch.setattr(
         scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
     )
@@ -622,7 +622,7 @@ def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
             "announcement_date": "2026-04-01", "document_link": source_url
         }},
     )
-    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
     monkeypatch.setattr(
         scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
     )

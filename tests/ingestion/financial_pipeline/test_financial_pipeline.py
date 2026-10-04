@@ -612,7 +612,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
         "url": "https://fixture.invalid/annual.pdf",
     }
     monkeypatch.setattr(scraper, "table_exists", lambda name: True)
-    monkeypatch.setattr(scraper, "get_symbols_from_richbourse", lambda url: ["ABC"])
+    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
     monkeypatch.setattr(
         scraper,
         "get_announcements_for_symbol",
@@ -722,6 +722,7 @@ def test_missing_table_requires_explicit_initialization_workflow(
 
     scraper = _load_module(SCRIPTS / "scrape_financials.py", "financial_pipeline_monthly")
     monkeypatch.setattr(scraper, "get_existing_symbols_and_years", lambda: {})
+    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: [])
 
     with pytest.raises(RuntimeError, match="financials-init-wf"):
         scraper.scrape_financials("fixture://source", "fixture-key")
