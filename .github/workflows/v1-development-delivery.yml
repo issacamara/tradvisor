@@ -126,11 +126,6 @@ jobs:
           import_if_absent google_bigquery_table.dividends "projects/$TF_VAR_project_id/datasets/stocks/tables/dividends"
           import_if_absent google_bigquery_table.financials "projects/$TF_VAR_project_id/datasets/stocks/tables/financials"
           import_if_absent google_bigquery_table.ratings "projects/$TF_VAR_project_id/datasets/stocks/tables/ratings"
-          import_if_absent 'google_workflows_workflow.workflows[0]' "projects/$TF_VAR_project_id/locations/$GCP_REGION/workflows/shares-wf"
-          import_if_absent 'google_workflows_workflow.workflows[1]' "projects/$TF_VAR_project_id/locations/$GCP_REGION/workflows/dividends-wf"
-          import_if_absent 'google_workflows_workflow.workflows[2]' "projects/$TF_VAR_project_id/locations/$GCP_REGION/workflows/financials-wf"
-          import_if_absent 'google_workflows_workflow.workflows[3]' "projects/$TF_VAR_project_id/locations/$GCP_REGION/workflows/ratings-wf"
-          import_if_absent 'google_workflows_workflow.financials_initialization[0]' "projects/$TF_VAR_project_id/locations/$GCP_REGION/workflows/financials-init-wf"
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
