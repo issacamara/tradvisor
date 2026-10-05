@@ -13,6 +13,8 @@ data-ingestion foundation for BRVM market data:
   Functions, Workflows, Scheduler jobs, BigQuery, IAM, and supporting services.
 - `tradvisor_brd.md`: V1 business requirements for Swing recommendations,
   Long-Term scoring.
+- `docs/operations/v1-scope.md`: canonical V1 product, API, delivery, and
+  data-lifecycle boundary.
 
 The previous Streamlit webapp has been removed so the next architecture pass can
 target the V1 BRD cleanly.
