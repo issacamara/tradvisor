@@ -2,6 +2,10 @@
 
 **Status:** Active V1 architecture
 
+The operational V1 boundary is summarized in
+[`docs/operations/v1-scope.md`](docs/operations/v1-scope.md). It is a
+companion to this architecture, not a separate product specification.
+
 ## Scope
 
 Tradvisor V1 is a read-only BRVM research application with two equal workflows:
