@@ -1,24 +1,12 @@
 from backend.contracts.analytical_storage import (
     ANNUAL_FINANCIAL_REVISIONS_V1,
     ANALYTICAL_SOURCE_TABLES,
-    SHARE_PRICE_REVISIONS_V1,
     TableSpec,
 )
 
 
-def test_share_revision_contract_is_additive_and_revision_keyed() -> None:
-    fields = {field.name: field for field in SHARE_PRICE_REVISIONS_V1.fields}
-
-    assert SHARE_PRICE_REVISIONS_V1.table_name == "share_price_revisions_v1"
-    assert SHARE_PRICE_REVISIONS_V1.immutable_key == (
-        "symbol",
-        "session_date",
-        "revision_id",
-    )
-    assert fields["session_date_status"].mode == "REQUIRED"
-    assert fields["trade_status"].mode == "REQUIRED"
-    assert {"source_observation_id", "source_revision_id", "collected_at", "known_at"} <= set(fields)
-    assert "financials" not in {table.table_name for table in (SHARE_PRICE_REVISIONS_V1,)}
+def test_active_catalog_contains_only_annual_financial_revisions() -> None:
+    assert ANALYTICAL_SOURCE_TABLES == (ANNUAL_FINANCIAL_REVISIONS_V1,)
 
 
 def test_annual_financial_contract_preserves_period_scope_and_source_revisions() -> None:

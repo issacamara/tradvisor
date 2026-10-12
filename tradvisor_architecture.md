@@ -32,7 +32,11 @@ The static Next.js application uses authenticated client requests to the Cloud R
 
 ## Data Flow
 
-1. Existing ingestion functions collect company, share, dividend, financial, and rating data into `dev-tradvisor.stocks`.
+### Cloud-only ingestion amendment
+
+The approved [v1.1 cloud-only ingestion amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6110931290) supersedes future V1 requirements for a separate share-price revision store and point-in-time share-correction replay. Completed #14 and #42 remain historical delivery records; this amendment does not delete or reclassify their delivered work.
+
+1. Existing ingestion functions retain incoming files and raw source evidence in GCS, then load company, share, dividend, financial, and rating data into `dev-tradvisor.stocks`. Canonical `shares` observations are keyed by symbol and date; corrections may update that row while retaining the history needed for charts and indicator warm-up. V1 does not persist a separate share-price revision store or provide point-in-time replay of share corrections.
 2. A daily analytical job reads only the necessary partitioned BigQuery history, calculates indicators and Long-Term inputs, and writes an immutable publication batch.
 3. The job validates the candidate batch and atomically updates `publication_state/current` only after all required serving documents are present.
 4. Firestore serves compact, read-optimized publication documents. BigQuery remains the analytical source of truth and is never queried by an interactive request.
@@ -42,8 +46,8 @@ The static Next.js application uses authenticated client requests to the Cloud R
 
 | Component | Responsibility |
 |---|---|
-| Ingestion | Reuse the BRVM/RichBourse collection functions; retain source metadata, session date, and ingestion outcome. |
-| BigQuery | Store canonical source tables and partitioned analytical inputs. |
+| Ingestion | Reuse the BRVM/RichBourse collection functions; retain incoming/raw source evidence in GCS plus source metadata, session date, and ingestion outcome. |
+| BigQuery | Store canonical source tables, including dated `shares` rows keyed by symbol/date, and partitioned analytical inputs. |
 | Analysis job | Calculate EMA20/EMA50, RSI14, ATR14, traded-value liquidity, Swing entry state/strength, and Long-Term Growth research. |
 | Firestore | Store immutable analytical batches and one active-publication pointer only. |
 | Cloud Run API | Authenticate requests and expose read-only analytical resources. |
