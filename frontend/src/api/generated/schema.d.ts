@@ -206,11 +206,15 @@ export interface components {
              * @enum {string}
              */
             advisory_state: "candidate" | "watchlist" | "low_score" | "review_required" | "insufficient_evidence";
+            /**
+             * Annual Dimensions
+             * @default []
+             */
+            annual_dimensions: components["schemas"]["GrowthAnnualDimension"][];
             /** Dimension Contributions */
             dimension_contributions: {
                 [key: string]: components["schemas"]["ScoreMetric"];
             };
-            annual_dimensions: components["schemas"]["GrowthAnnualDimension"][];
             growth_score: components["schemas"]["ScoreMetric"];
             overall_score: components["schemas"]["ScoreMetric"];
             /** Reasons */
@@ -218,9 +222,13 @@ export interface components {
         };
         /** GrowthAnnualDimension */
         GrowthAnnualDimension: {
+            /** Earnings */
             earnings: number | null;
+            /** Fiscal Year */
             fiscal_year: number;
+            /** Profitability */
             profitability: number | null;
+            /** Revenue */
             revenue: number | null;
         };
         /**
