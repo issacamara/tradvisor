@@ -26,7 +26,7 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert workflows == [
         ("shares", ["scrape_shares", "insert_shares"], ["stocks.shares"], "stocks.shares"),
         ("dividends", ["scrape_dividends", "insert_dividends"], ["stocks.dividends"], "stocks.dividends"),
-        ("financials", ["scrape_financials", "insert_financials"], ["stocks.financials"], "stocks.financials"),
+        ("financials", ["scrape_financials"], ["stocks.financials"], "stocks.financials"),
         ("ratings", ["scrape_ratings", "insert_ratings"], ["stocks.ratings"], "stocks.ratings"),
     ]
     target_owners = [target for _, _, targets, _ in workflows for target in targets]
@@ -60,9 +60,10 @@ def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -
     assert "except:" not in FUNCTIONS
 
 
-def test_only_new_source_schedules_are_paused() -> None:
+def test_configured_source_schedules_are_enabled_and_managed() -> None:
     assert 'job5 = { name = "financials", schedule = "0 20 1 * *" }' in VARIABLES
     assert 'job6 = { name = "ratings", schedule = "0 20 1 * *" }' in VARIABLES
-    assert 'paused_schedule_keys = toset(["job5", "job6"])' in FUNCTIONS
+    assert "paused_schedule_keys = toset([])" in FUNCTIONS
     assert "paused = contains(local.paused_schedule_keys, each.key)" in FUNCTIONS
-    assert "ignore_changes  = [description, schedule, time_zone, http_target, paused]" in FUNCTIONS
+    assert "prevent_destroy = true" in FUNCTIONS
+    assert "ignore_changes  = [description, schedule, time_zone, http_target, paused]" not in FUNCTIONS
