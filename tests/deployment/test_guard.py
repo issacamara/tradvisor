@@ -11,6 +11,13 @@ def test_development_delivery_is_manual_and_guarded() -> None:
     assert "DEV_WORKLOAD_IDENTITY_PROVIDER" in workflow
     assert "DEV_SERVICE_ACCOUNT" in workflow
     assert "github.ref_name == 'V1'" in workflow
-    assert "dev-tradvisor" in guard
-    assert "dev-tradvisor-tfstate" in guard
-    assert "state/dev" in guard
+    assert "EXPECTED_PROJECT_ID" in guard
+    assert "EXPECTED_STATE_BUCKET" in guard
+    assert "EXPECTED_STATE_PREFIX" in guard
+    assert '[[ "${TF_VAR_project_id}" == "${EXPECTED_PROJECT_ID}" ]]' in guard
+    assert '[[ "${TF_STATE_BUCKET}" == "${EXPECTED_STATE_BUCKET}" ]]' in guard
+    assert '[[ "${TF_STATE_PREFIX}" == "${EXPECTED_STATE_PREFIX}" ]]' in guard
+    assert "dev-tradvisor" in workflow
+    assert "dev-tradvisor-tfstate" in workflow
+    assert "state/dev" in workflow
+    assert "ALLOWED_BRANCH: V1" in workflow

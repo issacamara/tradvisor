@@ -59,8 +59,8 @@ ERROR_MESSAGES: Final = {
 
 @lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
-    from google.cloud import firestore
-    from google.cloud import storage  # type: ignore[attr-defined]
+    from google.cloud import firestore  # type: ignore[import-untyped]
+    from google.cloud import storage
     from backend.recovery.register import GcsStorageAdapter
 
     client = firestore.Client()
