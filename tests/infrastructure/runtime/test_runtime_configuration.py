@@ -17,7 +17,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
         self.runtime = (TERRAFORM / "runtime.tf").read_text()
         self.dockerfile = (ROOT / "backend/Dockerfile").read_text()
 
-    def test_runtime_is_opt_in_and_development_only(self) -> None:
+    def test_runtime_is_opt_in_and_environment_scoped(self) -> None:
         self.assertRegex(
             self.variables,
             r'variable "configure_v1_runtime"\s*\{[^}]*default\s*=\s*false',
@@ -28,7 +28,10 @@ class RuntimeConfigurationTests(unittest.TestCase):
         )
         self.assertIn("count               = local.v1_api_enabled ? 1 : 0", self.runtime)
         self.assertIn("count               = local.v1_runtime_enabled ? 1 : 0", self.runtime)
-        self.assertIn('condition     = var.project_id == "dev-tradvisor"', self.runtime)
+        self.assertIn(
+            'condition     = contains(["development", "production"], var.environment)',
+            self.runtime,
+        )
         self.assertNotIn("prod-tradvisor", self.runtime)
 
     def test_api_scales_to_zero_and_is_bounded(self) -> None:
