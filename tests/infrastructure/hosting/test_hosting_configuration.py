@@ -40,7 +40,7 @@ class HostingConfigurationTests(unittest.TestCase):
                 self.assertNotRegex(text, r"(?m)^\s*['\"]use server['\"]")
                 self.assertNotRegex(text, r"(?m)^\s*export\s+async\s+function\s+\w+Action")
 
-    def test_identity_configuration_is_opt_in_and_development_only(self) -> None:
+    def test_identity_configuration_is_opt_in_and_environment_scoped(self) -> None:
         identity = (ROOT / "terraform/hosting_identity.tf").read_text()
 
         self.assertRegex(
@@ -56,7 +56,11 @@ class HostingConfigurationTests(unittest.TestCase):
         self.assertIn("authorized_domains = var.v1_identity_authorized_domains", identity)
         self.assertIn('domain == "${var.project_id}.web.app"', identity)
         self.assertIn('domain == "${var.project_id}.firebaseapp.com"', identity)
-        self.assertIn('condition     = var.project_id == "dev-tradvisor"', identity)
+        self.assertIn(
+            'condition     = contains(["development", "production"], var.environment)',
+            identity,
+        )
+        self.assertIn("project            = var.project_id", identity)
         self.assertNotRegex(identity, r"https?://[^\s\"]+")
 
     def test_sign_in_configuration_does_not_grant_application_admission(self) -> None:
