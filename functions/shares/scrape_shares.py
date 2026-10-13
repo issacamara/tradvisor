@@ -290,60 +290,45 @@ def scrape_brvm_shares(
     return pd.DataFrame(observations)
 
 
-def _save_raw_observations(frame, collected_at: datetime) -> str:
-    """Write each scrape as a new object; a retry must never replace evidence."""
-    import pandas as pd
+def _require_cloud_runtime() -> None:
+    if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
+        raise RuntimeError("share ingestion requires K_SERVICE and FUNCTION_TARGET")
 
+
+def _save_raw_observations(frame, collected_at: datetime) -> str:
+    """Write each scrape as a new GCS object; a retry must never replace evidence."""
     if collected_at.tzinfo is None or collected_at.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
+    _require_cloud_runtime()
     stamp = collected_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%S%fZ")
     csv_text = frame.to_csv(index=False, sep="|")
-    cloud_runtime = os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")
+    from google.api_core.exceptions import PreconditionFailed
+    from google.auth import default
+    from google.cloud import storage
+    from helper import get_project_number
 
-    if cloud_runtime:
-        from google.api_core.exceptions import PreconditionFailed
-        from google.auth import default
-        from google.cloud import storage
-        from helper import get_project_number
-
-        credentials, project_id = default()
-        project_number = get_project_number(project_id)
-        bucket = storage.Client().bucket(f"data-{project_number}")
-        for suffix in range(1000):
-            suffix_text = "" if suffix == 0 else f"-{suffix}"
-            filename = f"shares-{stamp}{suffix_text}.csv"
-            try:
-                bucket.blob(filename).upload_from_string(
-                    csv_text, content_type="text/csv", if_generation_match=0
-                )
-            except PreconditionFailed:
-                continue
-            return f"File saved to GCS bucket '{bucket.name}' as '{filename}'.\n"
-        raise FileExistsError("could not allocate a unique share observation object")
-
-    data_directory = os.path.join(os.path.dirname(__file__), "..", "data")
+    _, project_id = default()
+    project_number = get_project_number(project_id)
+    bucket = storage.Client().bucket(f"data-{project_number}")
     for suffix in range(1000):
         suffix_text = "" if suffix == 0 else f"-{suffix}"
         filename = f"shares-{stamp}{suffix_text}.csv"
-        path = os.path.join(data_directory, filename)
         try:
-            with open(path, "x", encoding="utf-8", newline="") as raw_file:
-                raw_file.write(csv_text)
+            bucket.blob(filename).upload_from_string(
+                csv_text, content_type="text/csv", if_generation_match=0
+            )
         except FileExistsError:
             continue
-        except Exception:
-            try:
-                os.unlink(path)
-            except FileNotFoundError:
-                pass
-            raise
-        return f"File saved locally as '{filename}'.\n"
-    raise FileExistsError("could not allocate a unique share observation file")
+        except PreconditionFailed:
+            continue
+        return f"File saved to GCS bucket '{bucket.name}' as '{filename}'.\n"
+    raise FileExistsError("could not allocate a unique share observation object")
 
 
 def entry_point(request=None):
     import yaml
 
+    _require_cloud_runtime()
     with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
     collected_at = datetime.now(timezone.utc)
@@ -355,5 +340,5 @@ def entry_point(request=None):
     return _save_raw_observations(df, collected_at)
 
 
-if __name__ == "__main__" and not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
+if __name__ == "__main__":
     print(entry_point())

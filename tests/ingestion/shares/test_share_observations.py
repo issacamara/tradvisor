@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import inspect
 import importlib.util
-import sqlite3
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -202,14 +200,53 @@ def test_brvm_session_resolver_requires_closed_non_holiday_weekday() -> None:
     assert scraper.resolve_brvm_session(open_weekday) == (None, "unknown")
 
 
-def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch) -> None:
-    scripts = tmp_path / "scripts"
-    data = tmp_path / "data"
-    scripts.mkdir()
-    data.mkdir()
-    monkeypatch.setattr(scraper, "__file__", str(scripts / "scrape_shares.py"))
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+def test_same_day_scrapes_preserve_each_raw_gcs_evidence_object(monkeypatch) -> None:
+    stored = {}
+
+    class PreconditionFailed(Exception):
+        pass
+
+    class Blob:
+        def __init__(self, name):
+            self.name = name
+
+        def upload_from_string(self, payload, **kwargs):
+            assert kwargs == {"content_type": "text/csv", "if_generation_match": 0}
+            if self.name in stored:
+                raise PreconditionFailed()
+            stored[self.name] = payload
+
+    class Bucket:
+        name = "data-123"
+
+        def blob(self, name):
+            return Blob(name)
+
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google_cloud = ModuleType("google.cloud")
+    google_storage = ModuleType("google.cloud.storage")
+    google_storage.Client = lambda: SimpleNamespace(bucket=lambda _name: Bucket())
+    google_api_core = ModuleType("google.api_core")
+    google_exceptions = ModuleType("google.api_core.exceptions")
+    google_exceptions.PreconditionFailed = PreconditionFailed
+    google.auth = google_auth
+    google.cloud = google_cloud
+    google_cloud.storage = google_storage
+    google.api_core = google_api_core
+    google_api_core.exceptions = google_exceptions
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "123"
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", google_storage)
+    monkeypatch.setitem(sys.modules, "google.api_core", google_api_core)
+    monkeypatch.setitem(sys.modules, "google.api_core.exceptions", google_exceptions)
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    monkeypatch.setenv("K_SERVICE", "share-scraper")
+    monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
     collected_at = datetime(2026, 9, 22, 8, tzinfo=timezone.utc)
 
     first_result = scraper._save_raw_observations(
@@ -218,13 +255,13 @@ def test_same_day_scrapes_preserve_each_raw_evidence_file(tmp_path, monkeypatch)
     second_result = scraper._save_raw_observations(
         pd.DataFrame([{"symbol": "ABC", "close": "1 051,00"}]), collected_at
     )
-    files = sorted(data.glob("shares-2026-09-22*.csv"))
-    contents = {path.read_text() for path in files}
-
     assert first_result != second_result
-    assert len(files) == 2
-    assert any("1 050,75" in content for content in contents)
-    assert any("1 051,00" in content for content in contents)
+    assert sorted(stored) == [
+        "shares-2026-09-22T080000000000Z-1.csv",
+        "shares-2026-09-22T080000000000Z.csv",
+    ]
+    assert any("1 050,75" in content for content in stored.values())
+    assert any("1 051,00" in content for content in stored.values())
 
 
 def _row(**updates):
@@ -285,9 +322,7 @@ def test_unique_verified_traded_observation_normalizes_exactly() -> None:
     assert str(normalized.loc[0, "high"]) == "1100.50"
     assert normalized.loc[0, "volume"] == 12
     assert normalized.loc[0, "source_observation_id"] == "observation-1"
-    assert normalized.loc[0, "collected_at"] == "2026-09-22 08:00:00"
-    assert pd.isna(normalized.loc[0, "validated_available_at"])
-    assert len(normalized.loc[0, "revision_id"]) == 64
+    assert tuple(normalized.columns) == loader.NORMALIZED_COLUMNS
 
 
 def test_verified_rows_project_to_the_canonical_lowercase_market_schema() -> None:
@@ -326,7 +361,7 @@ def test_missing_contract_evidence_withholds_normalized_row(field: str) -> None:
     assert evidence["missing_contract_evidence"] == 1
 
 
-def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> None:
+def test_exact_retry_is_collapsed_and_changed_correction_projects_one_canonical_row() -> None:
     rows = pd.DataFrame(
         [
             _row(observation_id="revision-a", source_revision_id="source-a"),
@@ -341,42 +376,21 @@ def test_exact_retry_is_collapsed_but_changed_price_revision_is_retained() -> No
     assert evidence["exact_retry_duplicates"] == 1
     assert evidence["duplicate_or_revision_unknown"] == 0
     assert normalized[["symbol", "session_date"]].drop_duplicates().shape[0] == 1
-    assert normalized["revision_id"].nunique() == 2
     assert set(normalized["source_revision_id"]) == {"source-a", "source-b"}
     assert {str(value) for value in normalized["close"]} == {"1050.75", "1051.00"}
-
-
-def test_revision_identity_ignores_recollection_metadata_but_tracks_business_changes() -> None:
-    rows = pd.DataFrame(
-        [
-            _row(
-                observation_id="observation-first",
-                collected_at="2026-09-22T08:00:00Z",
-                known_at="2026-09-22T08:01:00Z",
-            ),
-            _row(
-                observation_id="observation-retry",
-                collected_at="2026-09-23T08:00:00Z",
-                known_at="2026-09-23T08:01:00Z",
-            ),
-            _row(
-                observation_id="observation-correction",
-                collected_at="2026-09-23T08:00:00Z",
-                known_at="2026-09-23T08:01:00Z",
-                close="1 051,00",
-            ),
-        ]
-    )
-
-    normalized, evidence = loader.prepare_normalized_rows(rows)
-
-    assert evidence["loadable"] == 2
-    assert evidence["exact_retry_duplicates"] == 1
-    assert normalized["revision_id"].nunique() == 2
-    assert set(normalized["source_observation_id"]) == {
-        "observation-first",
-        "observation-correction",
-    }
+    canonical = loader.project_market_rows(rows, normalized)
+    assert canonical.to_dict("records") == [
+        {
+            "symbol": "ABC",
+            "name": "",
+            "open": 1000.25,
+            "high": 1100.5,
+            "low": 900.0,
+            "close": 1051.0,
+            "volume": 12.0,
+            "date": datetime(2026, 9, 21).date(),
+        }
+    ]
 
 
 def test_untraceable_revision_is_withheld_without_inventing_evidence() -> None:
@@ -447,33 +461,6 @@ def test_close_only_observation_keeps_permitted_missing_candle_fields() -> None:
     assert pd.isna(normalized.loc[0, "low"])
 
 
-def test_raw_file_is_archived_when_no_observation_is_loadable(monkeypatch) -> None:
-    calls = []
-    helper = ModuleType("helper")
-    helper.get_project_number = lambda _project: "unused"
-    helper.move_csv_file = lambda *args: calls.append(("archive", *args))
-    helper.move_csv_file_gcp = lambda *_args: calls.append("gcs-archive")
-    helper.upsert_into_bigquery = lambda *_args: calls.append("bigquery")
-    monkeypatch.setitem(sys.modules, "helper", helper)
-    monkeypatch.setattr(
-        loader,
-        "_insert_revisions_into_duckdb",
-        lambda *_args: calls.append("duckdb"),
-    )
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-
-    evidence = loader._archive_after_optional_load(
-        {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"},
-        "raw-observations.csv",
-        pd.DataFrame([_row(session_date="", session_date_status="unknown")]),
-        "shares",
-    )
-
-    assert evidence["loadable"] == 0
-    assert calls == [("archive", "data", "archive", "raw-observations.csv")]
-
-
 def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monkeypatch) -> None:
     signature = inspect.signature(actual_helper.upsert_into_bigquery)
     signature.bind(
@@ -487,7 +474,6 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
     calls = []
     helper = ModuleType("helper")
     helper.get_project_number = lambda _project: "123"
-    helper.move_csv_file = lambda *_args: calls.append("local-archive")
     helper.move_csv_file_gcp = lambda *args: calls.append(("gcs-archive", *args))
 
     def upsert(
@@ -523,12 +509,9 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
     monkeypatch.setenv("K_SERVICE", "share-loader")
     monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
-    evidence = loader._archive_after_optional_load(
-        {},
+    evidence = loader._load_then_archive(
         SimpleNamespace(name="shares.csv"),
         pd.DataFrame([_row()]),
-        "shares",
-        commit_clock=lambda: pytest.fail("BigQuery path must not pre-write availability time"),
     )
 
     assert evidence["loadable"] == 1
@@ -564,7 +547,6 @@ def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) ->
     helper.get_project_number = lambda _project: "123"
     helper.upsert_into_bigquery = lambda *_args, **_kwargs: calls.append("upsert")
     helper.move_csv_file_gcp = lambda *args: calls.append(("archive", *args))
-    helper.move_csv_file = lambda *_args: None
     monkeypatch.setitem(sys.modules, "helper", helper)
     google = ModuleType("google")
     google_auth = ModuleType("google.auth")
@@ -575,9 +557,8 @@ def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) ->
     monkeypatch.setenv("K_SERVICE", "share-loader")
     monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
-    evidence = loader._archive_after_optional_load(
-        {}, SimpleNamespace(name="shares-incomplete.csv"),
-        pd.DataFrame([_row(original_source_date="")]), "shares",
+    evidence = loader._load_then_archive(
+        SimpleNamespace(name="shares-incomplete.csv"), pd.DataFrame([_row(original_source_date="")])
     )
 
     assert evidence["loadable"] == 0
@@ -585,102 +566,15 @@ def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) ->
     assert calls == [("archive", "data-123", "archive-123", "shares-incomplete.csv")]
 
 
-def test_write_boundary_deduplicates_concurrent_retries_and_keeps_revision(
-    tmp_path,
-) -> None:
-    original, _ = loader.prepare_normalized_rows(pd.DataFrame([_row()]))
-    changed, _ = loader.prepare_normalized_rows(
-        pd.DataFrame([_row(close="1 060,00", observation_id="observation-2")])
-    )
-    database = tmp_path / "share-revisions.db"
-
-    def connect(path):
-        return sqlite3.connect(path, timeout=10)
-
-    loader._insert_revisions_into_duckdb(
-        original, str(database), loader.REVISION_TABLE, connect=connect
-    )
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [
-            pool.submit(
-                loader._insert_revisions_into_duckdb,
-                changed,
-                str(database),
-                loader.REVISION_TABLE,
-                connect=connect,
-            )
-            for _ in range(2)
-        ]
-        for future in futures:
-            future.result()
-
-    with sqlite3.connect(database) as connection:
-        stored = connection.execute(
-            f"SELECT revision_id, close FROM {loader.REVISION_TABLE} ORDER BY close"
-        ).fetchall()
-
-    assert len(stored) == 2
-    assert len({revision_id for revision_id, _ in stored}) == 2
-    assert {str(close) for _, close in stored} == {"1050.75", "1060"}
-
-
-def test_write_boundary_preserves_first_commit_timestamp_on_identical_retry(tmp_path) -> None:
-    first, _ = loader.prepare_normalized_rows(
-        pd.DataFrame(
-            [
-                _row(
-                    observation_id="observation-first",
-                    collected_at="2026-09-22T08:00:00Z",
-                    known_at="2026-09-22T08:01:00Z",
-                )
-            ]
-        )
-    )
-    retry, _ = loader.prepare_normalized_rows(
-        pd.DataFrame(
-            [
-                _row(
-                    observation_id="observation-retry",
-                    collected_at="2026-09-23T08:00:00Z",
-                    known_at="2026-09-23T08:01:00Z",
-                )
-            ]
-        )
-    )
-    database = tmp_path / "share-revisions.db"
-
-    loader._insert_revisions_into_duckdb(
-        first,
-        str(database),
-        loader.REVISION_TABLE,
-        connect=sqlite3.connect,
-        commit_clock=lambda: datetime(2026, 9, 24, 12, tzinfo=timezone.utc),
-    )
-    loader._insert_revisions_into_duckdb(
-        retry,
-        str(database),
-        loader.REVISION_TABLE,
-        connect=sqlite3.connect,
-        commit_clock=lambda: datetime(2026, 9, 25, 12, tzinfo=timezone.utc),
-    )
-
-    with sqlite3.connect(database) as connection:
-        stored = connection.execute(
-            f"SELECT revision_id, validated_available_at FROM {loader.REVISION_TABLE}"
-        ).fetchall()
-
-    assert stored == [(first.loc[0, "revision_id"], "2026-09-24 12:00:00")]
-
-
-def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatch) -> None:
-    committed = set()
+def test_retry_after_archive_failure_does_not_duplicate_canonical_observations(monkeypatch) -> None:
+    canonical = {}
     archive_attempts = 0
     helper = ModuleType("helper")
-    helper.get_project_number = lambda _project: "unused"
-    helper.upsert_into_bigquery = lambda *_args: None
+    helper.get_project_number = lambda _project: "123"
 
-    def insert(frame, _database, _asset, **_kwargs):
-        committed.update(frame["revision_id"])
+    def upsert(frame, *_args):
+        for row in frame.to_dict("records"):
+            canonical[(row["symbol"], row["date"])] = row
 
     def archive(*_args):
         nonlocal archive_attempts
@@ -688,22 +582,78 @@ def test_retry_after_commit_and_archive_failure_does_not_append_again(monkeypatc
         if archive_attempts == 1:
             raise OSError("archive move failed after data commit")
 
-    helper.move_csv_file = archive
-    helper.move_csv_file_gcp = lambda *_args: None
+    helper.move_csv_file_gcp = archive
+    helper.upsert_into_bigquery = upsert
     monkeypatch.setitem(sys.modules, "helper", helper)
-    monkeypatch.setattr(loader, "_insert_revisions_into_duckdb", insert)
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-    config = {"duckdb": {"database": "unused"}, "csv_directory": "data", "archive": "archive"}
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setenv("K_SERVICE", "share-loader")
+    monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
     with pytest.raises(OSError, match="archive move failed"):
-        loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
-    retry = loader._archive_after_optional_load(config, "retry.csv", pd.DataFrame([_row()]), "shares")
+        loader._load_then_archive(SimpleNamespace(name="retry.csv"), pd.DataFrame([_row()]))
+    retry = loader._load_then_archive(SimpleNamespace(name="retry.csv"), pd.DataFrame([_row()]))
 
     assert retry["loadable"] == 1
     assert retry["duplicate_or_revision_unknown"] == 0
-    assert len(committed) == 1
+    assert len(canonical) == 1
     assert archive_attempts == 2
+
+
+def test_bigquery_failure_leaves_gcs_object_retryable(monkeypatch) -> None:
+    calls = []
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "123"
+
+    def upsert(*_args):
+        calls.append("upsert")
+        if len(calls) == 1:
+            raise RuntimeError("BigQuery unavailable")
+
+    helper.upsert_into_bigquery = upsert
+    helper.move_csv_file_gcp = lambda *_args: calls.append("archive")
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+    monkeypatch.setenv("K_SERVICE", "share-loader")
+    monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
+
+    with pytest.raises(RuntimeError, match="BigQuery unavailable"):
+        loader._load_then_archive(SimpleNamespace(name="retry.csv"), pd.DataFrame([_row()]))
+    loader._load_then_archive(SimpleNamespace(name="retry.csv"), pd.DataFrame([_row()]))
+
+    assert calls == ["upsert", "upsert", "archive"]
+
+
+@pytest.mark.parametrize("entry_point", [scraper.entry_point, loader.entry_point])
+def test_entrypoints_require_cloud_configuration_without_local_storage(monkeypatch, tmp_path, entry_point) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+
+    with pytest.raises(RuntimeError, match="requires K_SERVICE and FUNCTION_TARGET"):
+        entry_point()
+
+    assert not list(tmp_path.iterdir())
+
+
+def test_importing_share_modules_has_no_storage_side_effects(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+
+    _load_script("side_effect_free_scraper", "scrape_shares.py")
+    _load_script("side_effect_free_loader", "insert_shares.py")
+
+    assert not list(tmp_path.iterdir())
 
 
 def test_load_requires_explicit_session_and_source_columns() -> None:
