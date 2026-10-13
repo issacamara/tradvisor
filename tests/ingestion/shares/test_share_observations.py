@@ -11,7 +11,6 @@ from types import ModuleType, SimpleNamespace
 
 import pandas as pd
 import pytest
-from backend.contracts.analytical_storage import SHARE_PRICE_REVISIONS_V1
 
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "shares"
@@ -289,21 +288,6 @@ def test_unique_verified_traded_observation_normalizes_exactly() -> None:
     assert normalized.loc[0, "collected_at"] == "2026-09-22 08:00:00"
     assert pd.isna(normalized.loc[0, "validated_available_at"])
     assert len(normalized.loc[0, "revision_id"]) == 64
-
-
-def test_normalized_rows_match_immutable_share_revision_contract() -> None:
-    normalized, _ = loader.prepare_normalized_rows(pd.DataFrame([_row()]))
-
-    assert loader.REVISION_TABLE == SHARE_PRICE_REVISIONS_V1.table_name
-    assert loader.REVISION_KEYS == SHARE_PRICE_REVISIONS_V1.immutable_key
-    assert tuple(normalized.columns) == tuple(
-        field.name for field in SHARE_PRICE_REVISIONS_V1.fields
-    )
-    assert normalized.loc[0, "session_date"].isoformat() == "2026-09-21"
-    assert normalized.loc[0, "original_source_date"].isoformat() == "2026-09-21"
-    assert normalized.loc[0, "basis"] == "actual"
-    assert normalized.loc[0, "price_basis_ref"] == "raw-v1"
-    assert normalized.loc[0, "source_id"] == "richbourse-shares"
 
 
 def test_verified_rows_project_to_the_canonical_lowercase_market_schema() -> None:

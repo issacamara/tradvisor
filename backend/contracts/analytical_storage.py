@@ -1,4 +1,4 @@
-"""Additive logical BigQuery table contracts for immutable source revisions.
+"""Logical BigQuery contracts for annual financial source revisions.
 
 These catalogs describe a proposed repository contract. They do not assert that
 any BigQuery table exists or that a deployment location/schema has been verified.
@@ -53,35 +53,6 @@ _SOURCE_REVISION_FIELDS = (
 )
 
 
-SHARE_PRICE_REVISIONS_V1 = TableSpec(
-    table_name="share_price_revisions_v1",
-    version=1,
-    fields=(
-        FieldSpec("symbol", "STRING", "REQUIRED"),
-        FieldSpec("session_date", "DATE", "REQUIRED"),
-        FieldSpec("revision_id", "STRING", "REQUIRED"),
-        *_SOURCE_REVISION_FIELDS[:3],
-        FieldSpec("session_date_status", "STRING", "REQUIRED"),
-        FieldSpec("trade_status", "STRING", "REQUIRED"),
-        FieldSpec("close", "NUMERIC"),
-        FieldSpec("high", "NUMERIC"),
-        FieldSpec("low", "NUMERIC"),
-        FieldSpec("volume", "INT64"),
-        FieldSpec("basis", "STRING", "REQUIRED"),
-        FieldSpec("original_source_date", "DATE", "REQUIRED"),
-        FieldSpec("price_basis_ref", "STRING", "REQUIRED"),
-        FieldSpec("validated_available_at", "TIMESTAMP"),
-        FieldSpec("actual_xof_turnover", "NUMERIC"),
-        FieldSpec("liquidity_basis", "STRING"),
-        FieldSpec("suspension_status", "STRING", "REQUIRED"),
-        FieldSpec("reason_codes", "STRING", "REPEATED"),
-        *_SOURCE_REVISION_FIELDS[4:],
-    ),
-    immutable_key=("symbol", "session_date", "revision_id"),
-    partition_candidates=("session_date", "collected_at"),
-)
-
-
 ANNUAL_FINANCIAL_REVISIONS_V1 = TableSpec(
     table_name="annual_financial_revisions_v1",
     version=1,
@@ -122,6 +93,5 @@ ANNUAL_FINANCIAL_REVISIONS_V1 = TableSpec(
 
 
 ANALYTICAL_SOURCE_TABLES = (
-    SHARE_PRICE_REVISIONS_V1,
     ANNUAL_FINANCIAL_REVISIONS_V1,
 )
