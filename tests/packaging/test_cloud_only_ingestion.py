@@ -89,15 +89,22 @@ def _install_cloud_fakes(monkeypatch: pytest.MonkeyPatch, project_id: str | None
     storage.Client = lambda **_kwargs: SimpleNamespace()  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **_kwargs: SimpleNamespace()  # type: ignore[attr-defined]
+    api_core = ModuleType("google.api_core")
+    exceptions = ModuleType("google.api_core.exceptions")
+    exceptions.PreconditionFailed = type("PreconditionFailed", (Exception,), {})  # type: ignore[attr-defined]
     google.auth = auth  # type: ignore[attr-defined]
     google.cloud = cloud  # type: ignore[attr-defined]
+    google.api_core = api_core  # type: ignore[attr-defined]
     cloud.storage = storage  # type: ignore[attr-defined]
     cloud.bigquery = bigquery  # type: ignore[attr-defined]
+    api_core.exceptions = exceptions  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.auth", auth)
     monkeypatch.setitem(sys.modules, "google.cloud", cloud)
     monkeypatch.setitem(sys.modules, "google.cloud.storage", storage)
     monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
+    monkeypatch.setitem(sys.modules, "google.api_core", api_core)
+    monkeypatch.setitem(sys.modules, "google.api_core.exceptions", exceptions)
 
 
 def _build_artifact(tmp_path: Path, artifact_kind: str, name: str) -> Path:
@@ -166,21 +173,7 @@ def test_declared_artifacts_build_and_import_with_cloud_fakes(tmp_path: Path, mo
     assert "duckdb" not in requirements
 
 
-def test_cloud_only_artifacts_reject_missing_adc_project_without_local_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _install_cloud_fakes(monkeypatch, project_id=None)
-    package = _build_artifact(tmp_path, "managed", "insert_ratings")
-    monkeypatch.chdir(package)
-    helper = _load_helper(package)
-
-    before = {path.relative_to(package) for path in package.rglob("*")}
-    with pytest.raises(RuntimeError, match="application-default project"):
-        helper.load_files(None, "ratings")
-    assert {path.relative_to(package) for path in package.rglob("*")} == before
-
-
-def test_share_artifact_entrypoints_run_with_cloud_fakes_without_marker_variables(
+def test_share_scraper_artifact_runs_against_fake_gcs_without_marker_variables(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_cloud_fakes(monkeypatch)
@@ -193,16 +186,45 @@ def test_share_artifact_entrypoints_run_with_cloud_fakes_without_marker_variable
     scraper_package = _build_artifact(tmp_path / "scraper", "managed", "scrape_shares")
     monkeypatch.chdir(scraper_package)
     scraper = _import_artifact(monkeypatch, scraper_package, "cloud_fake_scraper")
+    helper = _load_helper(scraper_package)
+    helper.get_project_number = lambda _project_id: "123"  # type: ignore[attr-defined]
+    uploaded: dict[str, str] = {}
+
+    class Blob:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def upload_from_string(self, content: str, **kwargs: object) -> None:
+            assert kwargs == {"content_type": "text/csv", "if_generation_match": 0}
+            uploaded[self.name] = content
+
+    bucket = SimpleNamespace(name="data-123", blob=Blob)
+    storage = sys.modules["google.cloud.storage"]
+    storage.Client = lambda **_kwargs: SimpleNamespace(bucket=lambda _name: bucket)  # type: ignore[attr-defined]
     monkeypatch.setattr(scraper, "scrape_brvm_shares", lambda *_args, **_kwargs: pd.DataFrame())
-    monkeypatch.setattr(scraper, "_save_raw_observations", lambda *_args: "saved")
-    assert scraper.entry_point() == "saved"
+    assert "data-123" in scraper.entry_point()
+    assert len(uploaded) == 1
+    assert next(iter(uploaded)).startswith("shares-")
+
+
+def test_share_loader_artifact_rejects_missing_adc_project_without_local_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_cloud_fakes(monkeypatch, project_id=None)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
+    yaml = ModuleType("yaml")
+    yaml.safe_load = lambda _stream: {"url": {"shares": "fixture://shares"}}  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "yaml", yaml)
 
     loader_package = _build_artifact(tmp_path / "loader", "managed", "insert_shares")
     monkeypatch.chdir(loader_package)
     loader = _import_artifact(monkeypatch, loader_package, "cloud_fake_loader")
-    helper = _load_helper(loader_package)
-    helper.load_files = lambda *_args: []  # type: ignore[attr-defined]
-    assert loader.entry_point() == "Share observations archived; only verified rows were loaded.\n"
+    _load_helper(loader_package)
+    before = {path.relative_to(loader_package) for path in loader_package.rglob("*")}
+    with pytest.raises(RuntimeError, match="application-default project"):
+        loader.entry_point()
+    assert {path.relative_to(loader_package) for path in loader_package.rglob("*")} == before
 
 
 def test_cloud_references_are_documented_without_secrets_or_local_storage() -> None:
