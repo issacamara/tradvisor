@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import os
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
@@ -196,11 +195,6 @@ def _normalize_collected_at(value: object) -> str:
     return instant.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _require_cloud_runtime() -> None:
-    if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
-        raise RuntimeError("share ingestion requires K_SERVICE and FUNCTION_TARGET")
-
-
 def _load_then_archive(
     file,
     raw_frame: pd.DataFrame,
@@ -211,7 +205,6 @@ def _load_then_archive(
         upsert_into_bigquery,
     )
 
-    _require_cloud_runtime()
     normalized, evidence = prepare_normalized_rows(raw_frame)
     market_rows = project_market_rows(raw_frame, normalized)
     from google.auth import default
@@ -269,7 +262,6 @@ def process_share_files(files: Iterable[object]) -> list[dict[str, int]]:
     import pandas as pd
 
     evidence = []
-    _require_cloud_runtime()
     for file in files:
         raw_frame = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
         evidence.append(_load_then_archive(file, raw_frame))
@@ -277,7 +269,6 @@ def process_share_files(files: Iterable[object]) -> list[dict[str, int]]:
 
 
 def entry_point(request=None):
-    _require_cloud_runtime()
     import yaml
     from helper import load_files
 

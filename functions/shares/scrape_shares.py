@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import os
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -290,16 +289,10 @@ def scrape_brvm_shares(
     return pd.DataFrame(observations)
 
 
-def _require_cloud_runtime() -> None:
-    if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
-        raise RuntimeError("share ingestion requires K_SERVICE and FUNCTION_TARGET")
-
-
 def _save_raw_observations(frame, collected_at: datetime) -> str:
     """Write each scrape as a new GCS object; a retry must never replace evidence."""
     if collected_at.tzinfo is None or collected_at.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
-    _require_cloud_runtime()
     stamp = collected_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%S%fZ")
     csv_text = frame.to_csv(index=False, sep="|")
     from google.api_core.exceptions import PreconditionFailed
@@ -328,7 +321,6 @@ def _save_raw_observations(frame, collected_at: datetime) -> str:
 def entry_point(request=None):
     import yaml
 
-    _require_cloud_runtime()
     with open("config.yml", "r") as file:
         config = yaml.safe_load(file)
     collected_at = datetime.now(timezone.utc)
