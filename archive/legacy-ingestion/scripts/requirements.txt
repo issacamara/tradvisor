@@ -7,7 +7,6 @@ numpy==1.26.3
 pandas==2.2.2
 PyYAML==6.0.2
 curl-cffi==0.7.2
-duckdb==1.1.0
 pyarrow==17.0.0
 google-generativeai==0.8.3
 pdfplumber==0.11.4

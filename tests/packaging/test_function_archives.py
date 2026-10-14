@@ -80,6 +80,17 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     assert (FUNCTION_ROOTS["scrape_shares"] / "scrape_shares.py").is_file()
 
 
+def test_archive_inputs_exclude_duckdb_and_persistent_local_paths() -> None:
+    requirements = (SCRIPTS / "requirements.txt").read_text().lower()
+    config = (SCRIPTS / "config.yml").read_text()
+
+    assert "duckdb" not in requirements
+    assert "duckdb:" not in config
+    assert "csv_directory:" not in config
+    assert "archive: processed_data" not in config
+    assert "/users/" not in config.lower()
+
+
 def test_packaging_keeps_credentials_as_references_and_resources_preserved() -> None:
     buckets = (TERRAFORM / "buckets.tf").read_text()
     functions = (TERRAFORM / "functions.tf").read_text()

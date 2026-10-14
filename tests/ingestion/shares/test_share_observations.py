@@ -633,16 +633,11 @@ def test_bigquery_failure_leaves_gcs_object_retryable(monkeypatch) -> None:
     assert calls == ["upsert", "upsert", "archive"]
 
 
-@pytest.mark.parametrize("entry_point", [scraper.entry_point, loader.entry_point])
-def test_entrypoints_require_cloud_configuration_without_local_storage(monkeypatch, tmp_path, entry_point) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-
-    with pytest.raises(RuntimeError, match="requires K_SERVICE and FUNCTION_TARGET"):
-        entry_point()
-
-    assert not list(tmp_path.iterdir())
+def test_share_entrypoints_do_not_require_cloud_function_marker_variables() -> None:
+    for module_path in (SCRIPTS / "scrape_shares.py", SCRIPTS / "insert_shares.py"):
+        source = module_path.read_text()
+        assert "K_SERVICE" not in source
+        assert "FUNCTION_TARGET" not in source
 
 
 def test_importing_share_modules_has_no_storage_side_effects(monkeypatch, tmp_path) -> None:
