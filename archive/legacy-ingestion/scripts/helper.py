@@ -1,4 +1,4 @@
-"""Shared legacy-ingestion helpers and immutable acquisition evidence.
+"""Shared cloud-backed ingestion helpers.
 
 The module intentionally has no client construction or filesystem activity at
 import time.  Entry points that need cloud or parsing libraries import them at
@@ -7,47 +7,14 @@ call time so a scheduler, test runner, or parser manifest inspection is safe.
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import io
 import json
-import os
 import re
-import shutil
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping
-
-
-class AcquisitionNotCommittable(ValueError):
-    """Raised when acquisition evidence cannot truthfully be committed."""
-
-
-@dataclass(frozen=True)
-class ParserManifest:
-    """Versioned, content-addressed description of the parser that ran."""
-
-    parser_name: str
-    parser_version: str
-    configuration: dict[str, Any]
-    configuration_sha256: str
-
-
-@dataclass(frozen=True)
-class SourceSnapshot:
-    """Immutable evidence created only after a complete successful acquisition."""
-
-    source: str
-    run_id: str
-    acquired_at: str
-    http_status: int
-    payload_sha256: str
-    payload_bytes: int
-    parser_manifest: ParserManifest
-    directory: str
+from uuid import uuid4
 
 
 def _canonical_json(value: Mapping[str, Any]) -> bytes:
@@ -60,102 +27,6 @@ def _safe_identifier(value: str, field: str) -> str:
     if not value or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
         raise ValueError(f"{field} must use only letters, digits, '.', '_' or '-'")
     return value
-
-
-def build_parser_manifest(
-    parser_name: str,
-    parser_version: str,
-    configuration: Mapping[str, Any] | None = None,
-) -> ParserManifest:
-    """Return a deterministic parser manifest without invoking a parser."""
-
-    _safe_identifier(parser_name, "parser_name")
-    _safe_identifier(parser_version, "parser_version")
-    normalized_configuration = dict(configuration or {})
-    return ParserManifest(
-        parser_name=parser_name,
-        parser_version=parser_version,
-        configuration=normalized_configuration,
-        configuration_sha256=hashlib.sha256(
-            _canonical_json(normalized_configuration)
-        ).hexdigest(),
-    )
-
-
-def new_acquisition_run_id(now: datetime | None = None) -> str:
-    """Create a sortable, collision-resistant run identifier for retry evidence."""
-
-    instant = now or datetime.now(timezone.utc)
-    if instant.tzinfo is None:
-        raise ValueError("now must be timezone-aware")
-    return f"{instant.astimezone(timezone.utc):%Y%m%dT%H%M%S%fZ}-{os.urandom(6).hex()}"
-
-
-def commit_source_snapshot(
-    snapshot_root: str | Path,
-    *,
-    source: str,
-    run_id: str,
-    payload: bytes,
-    parser_manifest: ParserManifest,
-    http_status: int,
-    acquisition_complete: bool,
-    acquired_at: datetime | None = None,
-) -> SourceSnapshot:
-    """Persist one immutable snapshot directory for a complete HTTP acquisition.
-
-    ``run_id`` is part of the path, so retries retain evidence even where the
-    source, calendar date, and payload are identical.  A completed marker is
-    written last and no pre-existing run directory is ever reused.
-    """
-
-    source = _safe_identifier(source, "source")
-    run_id = _safe_identifier(run_id, "run_id")
-    if not 200 <= http_status < 300:
-        raise AcquisitionNotCommittable(
-            f"HTTP status {http_status} cannot be committed as a successful acquisition"
-        )
-    if not acquisition_complete:
-        raise AcquisitionNotCommittable("incomplete acquisition cannot be committed")
-
-    instant = acquired_at or datetime.now(timezone.utc)
-    if instant.tzinfo is None:
-        raise ValueError("acquired_at must be timezone-aware")
-    acquired_at_text = instant.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    payload_sha256 = hashlib.sha256(payload).hexdigest()
-    root = Path(snapshot_root)
-    run_directory = root / source / run_id
-
-    try:
-        run_directory.mkdir(parents=True, exist_ok=False)
-    except FileExistsError as error:
-        raise FileExistsError(
-            f"snapshot evidence already exists for source={source!r}, run_id={run_id!r}"
-        ) from error
-
-    snapshot = SourceSnapshot(
-        source=source,
-        run_id=run_id,
-        acquired_at=acquired_at_text,
-        http_status=http_status,
-        payload_sha256=payload_sha256,
-        payload_bytes=len(payload),
-        parser_manifest=parser_manifest,
-        directory=str(run_directory),
-    )
-    try:
-        (run_directory / "payload.bin").write_bytes(payload)
-        (run_directory / "manifest.json").write_bytes(
-            _canonical_json(asdict(snapshot))
-        )
-        # This marker is deliberately last: callers may only treat its presence
-        # as committed success after both evidence files are durable.
-        (run_directory / "COMMITTED").write_text("\n", encoding="ascii")
-    except Exception:
-        shutil.rmtree(run_directory, ignore_errors=True)
-        raise
-
-    return snapshot
 
 
 def get_symbols_from_richbourse(url):
@@ -256,39 +127,29 @@ def get_project_number(project_id):
     project = client.get_project(name=f"projects/{project_id}")
     return project.name.split("/")[1]  # Format is "projects/{project_number}"
 
-def save_dataframe_as_csv(df, fin_asset, conf):
-    """
-    Save a Pandas DataFrame as a CSV file either locally or to Google Cloud Storage (GCS).
-
-    Parameters:
-    - df (pd.DataFrame): The DataFrame to save.
-    - filename (str): The name of the file to save as.
-    - gcs_bucket_name (str, optional): The name of the GCS bucket. If provided, the file will be saved to GCS.
-      If None, the file will be saved locally.
-    """
+def _cloud_project():
     from google.auth import default
+
+    credentials, project_id = default()
+    if not project_id:
+        raise RuntimeError("cloud ingestion requires an application-default project")
+    return credentials, project_id
+
+
+def save_dataframe_as_csv(df, fin_asset, _conf):
+    """Write staged source rows to the configured GCS data bucket."""
+    from datetime import datetime
+
     from google.cloud import storage
 
-    today = datetime.now().strftime('%Y-%m-%d')
-    filename = f'{fin_asset.lower()}-{today}.csv'
-    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-        # Save the file to a temporary location
-        csv_string = df.to_csv(index=False, sep="|")
-        credentials, project_id = default()
-        project_number = get_project_number(project_id)
-        # Upload the file to GCS
-        client = storage.Client()
-        bucket_url = f"data-{project_number}"
-        bucket = client.bucket(bucket_url)
-        blob = bucket.blob(filename)
-        blob.upload_from_string(csv_string)
-
-        return f"File saved to GCS bucket '{bucket_url}' as '{filename}'.\n"
-    else:
-        # Save the file locally
-        file = os.path.join(os.path.dirname(__file__), '..','data', filename)
-        df.to_csv(file, index=False, sep="|")
-        return(f"File saved locally as '{filename}'.\n")
+    credentials, project_id = _cloud_project()
+    project_number = get_project_number(project_id)
+    filename = f"{fin_asset.lower()}-{datetime.now().strftime('%Y-%m-%d')}.csv"
+    bucket_url = f"data-{project_number}"
+    storage.Client(credentials=credentials, project=project_id).bucket(bucket_url).blob(
+        filename
+    ).upload_from_string(df.to_csv(index=False, sep="|"))
+    return f"File saved to GCS bucket '{bucket_url}' as '{filename}'.\n"
 
 def scrape(url):
     import requests
@@ -318,30 +179,6 @@ def scrape(url):
         row = [cell.text.strip() for cell in cells]
         rows.append(row)
     return headers, rows
-
-def move_csv_files(source_dir, destination_dir, pattern):
-    # List all files in the source directory
-    files = [f for f in os.path.join(os.path.dirname(__file__), '..', source_dir) if f.startswith(pattern)]
-    csv_files = glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '..', source_dir), f"{pattern}*.csv"))
-
-    # Loop through the files and move the CSV files to the destination directory
-    for file in csv_files:
-        file_name = file.split("/")[-1]
-        source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, file_name)
-        destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, file_name)
-        # source_file = os.path.join(f"../{source_dir}", file)
-        # destination_file = os.path.join(f"../{destination_dir}", file)
-        shutil.move(source_file, destination_file)
-        print(f'Moved: {file_name}\n')
-
-def move_csv_file(source_dir, destination_dir, file):
-
-    filename = file.split("/")[-1]
-    source_file = os.path.join(os.path.dirname(__file__), '..', source_dir, filename)
-    destination_file = os.path.join(os.path.dirname(__file__), '..', destination_dir, filename)
-    shutil.move(source_file, destination_file)
-    print(f'File {filename} moved to {destination_dir}\n')
-
 
 def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
     from google.cloud import storage
@@ -395,7 +232,7 @@ def _load_identity(
     dataset: str,
     table: str,
     source_keys: Sequence[str],
-    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+    snapshot_manifest: object | None = None,
 ) -> str:
     """Return a stable committed identity, anchored to a snapshot when supplied."""
 
@@ -476,7 +313,7 @@ def upsert_into_bigquery(
     primary_keys,
     *,
     run_id: str | None = None,
-    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+    snapshot_manifest: object | None = None,
     update_matched: bool = True,
 ):
     """Idempotently merge source rows using explicit keys and an isolated stage.
@@ -534,7 +371,7 @@ def upsert_into_bigquery(
         primary_keys,
         snapshot_manifest,
     )
-    run_id = _safe_identifier(run_id or new_acquisition_run_id(), "run_id")
+    run_id = _safe_identifier(run_id or uuid4().hex, "run_id")
     client = bigquery.Client(project=project_id)
     table_id = f"{project_id}.{dataset}.{table}"
     staging_table_id = f"{table_id}__stage_{run_id}"
@@ -620,7 +457,7 @@ def upsert_and_archive(
     archive: Callable[[], Any],
     *,
     run_id: str | None = None,
-    snapshot_manifest: SourceSnapshot | Mapping[str, Any] | None = None,
+    snapshot_manifest: object | None = None,
 ):
     """Commit an idempotent load before archiving its source evidence."""
 
@@ -741,48 +578,25 @@ def upsert_financial_report_and_archive(
         commit_revision_and_archive,
     )
 
-# Define a function to insert data into DuckDB
-def insert_into_duckdb(df, db_path, table):
-    import duckdb
-
-    with duckdb.connect(os.path.join(os.path.dirname(__file__), '..', db_path)) as con:
-        con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM df where FALSE")  # Create table if not exists
-        con.execute(f"INSERT INTO {table} SELECT * FROM df")
-
-def process_files(conf, files, asset):
+def process_files(_conf, files, asset):
     import pandas as pd
-    from google.auth import default
+    credentials, project_id = _cloud_project()
+    project_number = get_project_number(project_id)
+    source_bucket = f"data-{project_number}"
+    archive_bucket = f"archive-{project_number}"
+    for file in files:
+        df = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
+        df["date"] = pd.to_datetime(df["date"]).dt.date
+        insert_into_bigquery(df, project_id, "stocks", asset)
+        move_csv_file_gcp(source_bucket, archive_bucket, file.name)
 
-    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):  # GCP cloud function environment
-        for f in files:
-            content = f.download_as_text()
-            df = pd.read_csv(io.StringIO(content), sep='|')
-            df['date'] = pd.to_datetime(df['date']).dt.date
-            credentials, project_id = default()
-            project_number = get_project_number(project_id)
-            bucket_url1 = f"data-{project_number}"
-            bucket_url2 = f"archive-{project_number}"
-            insert_into_bigquery(df, project_id, 'stocks', asset)
-            move_csv_file_gcp(bucket_url1, bucket_url2, f.name)
 
-    else:
-        for f in files:
-            df = pd.read_csv(f, sep='|')
-            insert_into_duckdb(df, conf['duckdb']['database'], asset)
-            move_csv_file(conf["csv_directory"], conf["archive"], f)
+def load_files(_config, asset):
+    """Return GCS source objects for an asset; local staging is unsupported."""
+    from google.cloud import storage
 
-# Define a function to load CSV files based on today's date
-def load_files(config, asset):
-
-    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-        from google.auth import default
-        from google.cloud import storage
-
-        credentials, project_id = default()
-        project_number = get_project_number(project_id)
-        bucket_uri = f"data-{project_number}"
-        bucket = storage.Client().bucket(bucket_uri)
-        return bucket.list_blobs(prefix=asset)
-
-    else:
-        return glob.glob(os.path.join(os.path.join(os.path.dirname(__file__), '', config['csv_directory']), f"{asset}*.csv"))
+    credentials, project_id = _cloud_project()
+    project_number = get_project_number(project_id)
+    return storage.Client(credentials=credentials, project=project_id).bucket(
+        f"data-{project_number}"
+    ).list_blobs(prefix=asset)

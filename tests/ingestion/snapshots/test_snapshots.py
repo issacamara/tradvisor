@@ -12,15 +12,15 @@ from types import ModuleType
 import pytest
 
 
-def _load_helper() -> ModuleType:
-    helper_path = (
+def _load_support() -> ModuleType:
+    support_path = (
         Path(__file__).resolve().parents[3]
-        / "archive"
-        / "legacy-ingestion"
-        / "scripts"
-        / "helper.py"
+        / "tests"
+        / "ingestion"
+        / "snapshots"
+        / "support.py"
     )
-    specification = importlib.util.spec_from_file_location("ingestion_helper", helper_path)
+    specification = importlib.util.spec_from_file_location("snapshot_support", support_path)
     assert specification is not None
     assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
@@ -30,7 +30,7 @@ def _load_helper() -> ModuleType:
 
 
 def test_import_is_safe_without_snapshot_or_client_activity(tmp_path: Path) -> None:
-    helper = _load_helper()
+    helper = _load_support()
 
     assert not list(tmp_path.iterdir())
     assert callable(helper.commit_source_snapshot)
@@ -38,7 +38,7 @@ def test_import_is_safe_without_snapshot_or_client_activity(tmp_path: Path) -> N
 
 
 def test_retries_create_distinct_immutable_same_day_evidence(tmp_path: Path) -> None:
-    helper = _load_helper()
+    helper = _load_support()
     manifest = helper.build_parser_manifest("shares", "1.0", {"separator": "|"})
     acquired_at = datetime(2026, 9, 22, 8, 30, tzinfo=timezone.utc)
 
@@ -78,7 +78,7 @@ def test_retries_create_distinct_immutable_same_day_evidence(tmp_path: Path) -> 
 def test_failed_or_incomplete_acquisition_is_never_committed(
     tmp_path: Path, http_status: int, complete: bool
 ) -> None:
-    helper = _load_helper()
+    helper = _load_support()
     manifest = helper.build_parser_manifest("shares", "1.0")
 
     with pytest.raises(helper.AcquisitionNotCommittable):
@@ -96,7 +96,7 @@ def test_failed_or_incomplete_acquisition_is_never_committed(
 
 
 def test_existing_run_id_is_not_overwritten(tmp_path: Path) -> None:
-    helper = _load_helper()
+    helper = _load_support()
     manifest = helper.build_parser_manifest("shares", "1.0")
     arguments = {
         "source": "brvm-shares",
@@ -115,7 +115,7 @@ def test_existing_run_id_is_not_overwritten(tmp_path: Path) -> None:
 
 
 def test_parser_manifest_is_deterministic_and_run_ids_are_unique() -> None:
-    helper = _load_helper()
+    helper = _load_support()
 
     first = helper.build_parser_manifest("shares", "1.0", {"b": 2, "a": 1})
     second = helper.build_parser_manifest("shares", "1.0", {"a": 1, "b": 2})
@@ -123,3 +123,19 @@ def test_parser_manifest_is_deterministic_and_run_ids_are_unique() -> None:
 
     assert first.configuration_sha256 == second.configuration_sha256
     assert helper.new_acquisition_run_id(now) != helper.new_acquisition_run_id(now)
+
+
+def test_deployed_helper_excludes_filesystem_snapshot_persistence() -> None:
+    helper_path = (
+        Path(__file__).resolve().parents[3]
+        / "archive"
+        / "legacy-ingestion"
+        / "scripts"
+        / "helper.py"
+    )
+    specification = importlib.util.spec_from_file_location("deployed_ingestion_helper", helper_path)
+    assert specification is not None and specification.loader is not None
+    helper = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(helper)
+
+    assert not hasattr(helper, "commit_source_snapshot")

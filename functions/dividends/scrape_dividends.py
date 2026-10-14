@@ -1,6 +1,5 @@
 import json
 import hashlib
-import os
 import re
 from bs4 import BeautifulSoup
 from curl_cffi import requests
@@ -218,7 +217,5 @@ def entry_point(request=None):
     return save_dataframe_as_csv(df, "dividends", config)
 
 
-# Local testing
 if __name__ == "__main__":
-    if not (os.getenv("K_SERVICE") and os.getenv("FUNCTION_TARGET")):
-        print(entry_point())
+    print(entry_point())
