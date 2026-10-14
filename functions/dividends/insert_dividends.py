@@ -1,23 +1,14 @@
-import os
 import io
 import functions_framework
-import yaml
-from google.cloud import storage
-from google.cloud import bigquery
-from google.auth import default
 import pandas as pd
 
-from helper import load_files, upsert_and_archive, get_project_number
+from helper import get_project_number, upsert_and_archive
 
 
 @functions_framework.http
 def entry_point(request=None):
-    # Load configuration from YAML file
-    with open("config.yml", 'r') as file:
-        config = yaml.safe_load(file)
-
     asset = "dividends"  # lowercase table name
-    process_dividends(config, asset)
+    process_dividends(None, asset)
 
     return "Data upsert successfully completed !\n"
 
@@ -27,6 +18,8 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     
     Keeps only the most recent 5 years of data for each symbol.
     """
+    from google.cloud import bigquery
+
     client = bigquery.Client(project=project_id)
     table_id = f"{project_id}.{dataset}.{table}"
     
@@ -44,51 +37,34 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     print(f"Cleaned up dividend records older than {years_to_keep} years")
 
 
-def process_dividends(conf, asset):
+def process_dividends(_conf, asset):
     """Process dividend CSV files and upsert into BigQuery."""
-    if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):  # GCP cloud function environment
-        credentials, project_id = default()
-        project_number = get_project_number(project_id)
-        bucket_url1 = f"data-{project_number}"
-        bucket_url2 = f"archive-{project_number}"
-        bucket = storage.Client().bucket(bucket_url1)
-        
-        # Process each file in the bucket
-        blobs = list(bucket.list_blobs(prefix=asset))
-        for blob in blobs:
-            if blob.name.endswith('.csv'):
-                content = blob.download_as_text()
-                df = pd.read_csv(io.StringIO(content), sep='|')
-                rows_count = len(df)  # Get row count before upsert
-                # Fiscal year is an attribution, not payment identity.
-                def archive_csv():
-                    from helper import move_csv_file_gcp
-                    move_csv_file_gcp(bucket_url1, bucket_url2, blob.name)
+    from google.auth import default
+    from google.cloud import storage
 
-                upsert_and_archive(
-                    df,
-                    project_id,
-                    'stocks',
-                    asset,
-                    ['payment_id'],
-                    archive_csv,
-                )
-                print(f"Upserted {rows_count} rows into {asset} table")
+    credentials, project_id = default()
+    if not project_id:
+        raise RuntimeError("cloud ingestion requires an application-default project")
+    project_number = get_project_number(project_id)
+    source_bucket = f"data-{project_number}"
+    archive_bucket = f"archive-{project_number}"
+    blobs = storage.Client(credentials=credentials, project=project_id).bucket(
+        source_bucket
+    ).list_blobs(prefix=asset)
+    for blob in blobs:
+        if blob.name.endswith(".csv"):
+            df = pd.read_csv(io.StringIO(blob.download_as_text()), sep="|")
 
-    else:
-        # Local development
-        from helper import move_csv_file
-        import glob
-        files = glob.glob(os.path.join(os.path.dirname(__file__), '..', conf['csv_directory'], f"{asset}*.csv"))
-        for f in files:
-            df = pd.read_csv(f, sep='|')
-            # For local, use DuckDB (no upsert needed for local)
-            from helper import insert_into_duckdb
-            insert_into_duckdb(df, conf['duckdb']['database'], asset)
-            move_csv_file(conf["csv_directory"], conf["archive"], f)
+            def archive_csv(blob_name=blob.name):
+                from helper import move_csv_file_gcp
+
+                move_csv_file_gcp(source_bucket, archive_bucket, blob_name)
+
+            upsert_and_archive(
+                df, project_id, "stocks", asset, ["payment_id"], archive_csv
+            )
+            print(f"Upserted {len(df)} rows into {asset} table")
 
 
-if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-    pass
-else:
+if __name__ == "__main__":
     print(entry_point())

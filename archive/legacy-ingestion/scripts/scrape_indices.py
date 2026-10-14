@@ -3,7 +3,6 @@ import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
 from datetime import datetime
-import os
 from bs4 import BeautifulSoup
 import functions_framework
 
@@ -52,8 +51,5 @@ def entry_point(request=None):
     df = scrape_brvm_indices(config['url']['indices'])
     return save_dataframe_as_csv(df, 'indices', config)
 
-env = 'gcp'
-if os.getenv('K_SERVICE') and os.getenv('FUNCTION_TARGET'):
-    pass
-else:
+if __name__ == "__main__":
     print(entry_point())
