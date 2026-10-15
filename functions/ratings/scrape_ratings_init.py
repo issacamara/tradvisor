@@ -14,12 +14,15 @@ def scrape_ratings_init(url=RATINGS_URL, *, collected_at=None):
 
 @functions_framework.http
 def entry_point(request=None):
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
     with open("config.yml", "r") as file:
-        config = yaml.safe_load(file)
-    frame = scrape_ratings_init(config["url"].get("ratings", RATINGS_URL))
+        endpoints = source_endpoints(yaml.safe_load(file))
+    frame = scrape_ratings_init(endpoints["ratings"])
     if frame.empty:
         return "No ratings data to collect.\n"
-    return save_dataframe_as_csv(frame, "ratings", config)
+    return save_dataframe_as_csv(frame, "ratings", configuration)
 
 
 if __name__ == "__main__":

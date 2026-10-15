@@ -127,25 +127,32 @@ def get_project_number(project_id):
     project = client.get_project(name=f"projects/{project_id}")
     return project.name.split("/")[1]  # Format is "projects/{project_number}"
 
-def _cloud_project():
+def cloud_project(configuration=None):
+    """Return credentials plus the validated explicit project target."""
     from google.auth import default
 
     credentials, project_id = default()
+    if hasattr(configuration, "validate_application_default_project"):
+        configuration.validate_application_default_project(project_id)
+        return credentials, configuration.project_id
     if not project_id:
         raise RuntimeError("cloud ingestion requires an application-default project")
     return credentials, project_id
 
 
-def save_dataframe_as_csv(df, fin_asset, _conf):
+def save_dataframe_as_csv(df, fin_asset, configuration):
     """Write staged source rows to the configured GCS data bucket."""
     from datetime import datetime
 
     from google.cloud import storage
 
-    credentials, project_id = _cloud_project()
-    project_number = get_project_number(project_id)
+    credentials, project_id = cloud_project(configuration)
     filename = f"{fin_asset.lower()}-{datetime.now().strftime('%Y-%m-%d')}.csv"
-    bucket_url = f"data-{project_number}"
+    bucket_url = (
+        configuration.data_bucket
+        if configuration is not None
+        else f"data-{get_project_number(project_id)}"
+    )
     storage.Client(credentials=credentials, project=project_id).bucket(bucket_url).blob(
         filename
     ).upload_from_string(df.to_csv(index=False, sep="|"))
@@ -578,12 +585,19 @@ def upsert_financial_report_and_archive(
         commit_revision_and_archive,
     )
 
-def process_files(_conf, files, asset):
+def process_files(configuration, files, asset):
     import pandas as pd
-    credentials, project_id = _cloud_project()
-    project_number = get_project_number(project_id)
-    source_bucket = f"data-{project_number}"
-    archive_bucket = f"archive-{project_number}"
+    credentials, project_id = cloud_project(configuration)
+    source_bucket = (
+        configuration.data_bucket
+        if configuration is not None
+        else f"data-{get_project_number(project_id)}"
+    )
+    archive_bucket = (
+        configuration.archive_bucket
+        if configuration is not None
+        else f"archive-{get_project_number(project_id)}"
+    )
     for file in files:
         df = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
         df["date"] = pd.to_datetime(df["date"]).dt.date
@@ -591,12 +605,16 @@ def process_files(_conf, files, asset):
         move_csv_file_gcp(source_bucket, archive_bucket, file.name)
 
 
-def load_files(_config, asset):
+def load_files(configuration, asset):
     """Return GCS source objects for an asset; local staging is unsupported."""
     from google.cloud import storage
 
-    credentials, project_id = _cloud_project()
-    project_number = get_project_number(project_id)
+    credentials, project_id = cloud_project(configuration)
+    bucket = (
+        configuration.data_bucket
+        if configuration is not None
+        else f"data-{get_project_number(project_id)}"
+    )
     return storage.Client(credentials=credentials, project=project_id).bucket(
-        f"data-{project_number}"
+        bucket
     ).list_blobs(prefix=asset)

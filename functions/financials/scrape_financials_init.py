@@ -276,9 +276,12 @@ def get_financial_reports_for_company(slug, max_year):
     return reports
 
 
-def get_bucket_name():
+def get_bucket_name(configuration=None):
     """Get the Cloud Storage bucket name for storing PDFs."""
     credentials, project_id = default()
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
+        return configuration.data_bucket
     client = storage.Client(credentials=credentials, project=project_id)
     
     # Look for data bucket
@@ -336,7 +339,7 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         return False
 
 
-def scrape_financials_init(url=None, openrouter_api_key=None):
+def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None):
     """Scrape annual financial statements from BRVM - INITIALIZATION (last 5 years).
     
     Downloads PDF files to Cloud Storage for later processing by insert_financials.
@@ -354,7 +357,9 @@ def scrape_financials_init(url=None, openrouter_api_key=None):
     company_records = discover_company_references(mapping_csv_path)
     
     # Get storage bucket name
-    bucket_name = get_bucket_name()
+    bucket_name = (
+        get_bucket_name(configuration) if configuration is not None else get_bucket_name()
+    )
     print(f"Using storage bucket: {bucket_name}")
     
     total_downloaded = 0
@@ -421,13 +426,17 @@ def scrape_financials_init(url=None, openrouter_api_key=None):
 
 @functions_framework.http
 def entry_point(request=None):
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
     with open('config.yml', 'r') as file:
-        config = yaml.safe_load(file)
+        endpoints = source_endpoints(yaml.safe_load(file))
     
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     scrape_financials_init(
-        config['url'].get('financials', 'https://www.brvm.org/fr/rapports-societes-cotees'),
+        endpoints['financials'],
         openrouter_api_key,
+        configuration,
     )
     
     return "PDF download initialization complete.\n"

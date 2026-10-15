@@ -8,7 +8,10 @@ from helper import get_project_number, upsert_and_archive
 @functions_framework.http
 def entry_point(request=None):
     asset = "dividends"  # lowercase table name
-    process_dividends(None, asset)
+    from ingestion_configuration import IngestionConfiguration
+
+    configuration = IngestionConfiguration.from_environment()
+    process_dividends(configuration, asset)
 
     return "Data upsert successfully completed !\n"
 
@@ -37,17 +40,26 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     print(f"Cleaned up dividend records older than {years_to_keep} years")
 
 
-def process_dividends(_conf, asset):
+def process_dividends(configuration, asset):
     """Process dividend CSV files and upsert into BigQuery."""
     from google.auth import default
     from google.cloud import storage
 
     credentials, project_id = default()
-    if not project_id:
-        raise RuntimeError("cloud ingestion requires an application-default project")
-    project_number = get_project_number(project_id)
-    source_bucket = f"data-{project_number}"
-    archive_bucket = f"archive-{project_number}"
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
+        source_bucket = configuration.data_bucket
+        archive_bucket = configuration.archive_bucket
+        dataset = configuration.dataset
+        table = configuration.table_for(asset).rsplit(".", 1)[1]
+    else:
+        if not project_id:
+            raise RuntimeError("cloud ingestion requires an application-default project")
+        project_number = get_project_number(project_id)
+        source_bucket = f"data-{project_number}"
+        archive_bucket = f"archive-{project_number}"
+        dataset = "stocks"
+        table = asset
     blobs = storage.Client(credentials=credentials, project=project_id).bucket(
         source_bucket
     ).list_blobs(prefix=asset)
@@ -61,7 +73,7 @@ def process_dividends(_conf, asset):
                 move_csv_file_gcp(source_bucket, archive_bucket, blob_name)
 
             upsert_and_archive(
-                df, project_id, "stocks", asset, ["payment_id"], archive_csv
+                df, project_id, dataset, table, ["payment_id"], archive_csv
             )
             print(f"Upserted {len(df)} rows into {asset} table")
 

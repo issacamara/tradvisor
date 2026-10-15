@@ -111,7 +111,12 @@ def _build_artifact(tmp_path: Path, artifact_kind: str, name: str) -> Path:
     source_root = FUNCTION_ROOTS[name]
     package = tmp_path / name
     package.mkdir(parents=True)
-    for common in ("helper.py", "config.yml", "requirements.txt"):
+    for common in (
+        "helper.py",
+        "config.yml",
+        "ingestion_configuration.py",
+        "requirements.txt",
+    ):
         shutil.copy2(SCRIPTS / common, package / common)
     if artifact_kind != "normal" or name in NORMAL_MAPPING_FUNCTIONS:
         shutil.copy2(SCRIPTS / "mapping.csv", package / "mapping.csv")
@@ -134,7 +139,14 @@ def _build_artifact(tmp_path: Path, artifact_kind: str, name: str) -> Path:
 
 
 def _import_artifact(monkeypatch: pytest.MonkeyPatch, package: Path, module_name: str) -> ModuleType:
-    for local_name in ("helper", "scrape_shares", "scrape_ratings", "company_reference", "insert_financials"):
+    for local_name in (
+        "helper",
+        "ingestion_configuration",
+        "scrape_shares",
+        "scrape_ratings",
+        "company_reference",
+        "insert_financials",
+    ):
         monkeypatch.delitem(sys.modules, local_name, raising=False)
     monkeypatch.syspath_prepend(str(package))
     specification = importlib.util.spec_from_file_location(module_name, package / "main.py")
@@ -165,6 +177,7 @@ def test_declared_artifacts_build_and_import_with_cloud_fakes(tmp_path: Path, mo
             assert callable(module.entry_point)
             assert (package / "helper.py").is_file()
             assert (package / "config.yml").is_file()
+            assert (package / "ingestion_configuration.py").is_file()
             assert (package / "requirements.txt").is_file()
             assert (package / "mapping.csv").is_file() is (
                 artifact_kind != "normal" or entrypoint in NORMAL_MAPPING_FUNCTIONS
@@ -177,17 +190,17 @@ def test_share_scraper_artifact_runs_against_fake_gcs_without_marker_variables(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_cloud_fakes(monkeypatch)
+    _set_ingestion_environment(monkeypatch)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
     yaml = ModuleType("yaml")
-    yaml.safe_load = lambda _stream: {"url": {"shares": "fixture://shares"}}  # type: ignore[attr-defined]
+    yaml.safe_load = lambda _stream: _source_config()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "yaml", yaml)
 
     scraper_package = _build_artifact(tmp_path / "scraper", "managed", "scrape_shares")
     monkeypatch.chdir(scraper_package)
     scraper = _import_artifact(monkeypatch, scraper_package, "cloud_fake_scraper")
     helper = _load_helper(scraper_package)
-    helper.get_project_number = lambda _project_id: "123"  # type: ignore[attr-defined]
     uploaded: dict[str, str] = {}
 
     class Blob:
@@ -198,11 +211,11 @@ def test_share_scraper_artifact_runs_against_fake_gcs_without_marker_variables(
             assert kwargs == {"content_type": "text/csv", "if_generation_match": 0}
             uploaded[self.name] = content
 
-    bucket = SimpleNamespace(name="data-123", blob=Blob)
+    bucket = SimpleNamespace(name="fixture-data-bucket", blob=Blob)
     storage = sys.modules["google.cloud.storage"]
     storage.Client = lambda **_kwargs: SimpleNamespace(bucket=lambda _name: bucket)  # type: ignore[attr-defined]
     monkeypatch.setattr(scraper, "scrape_brvm_shares", lambda *_args, **_kwargs: pd.DataFrame())
-    assert "data-123" in scraper.entry_point()
+    assert "fixture-data-bucket" in scraper.entry_point()
     assert len(uploaded) == 1
     assert next(iter(uploaded)).startswith("shares-")
 
@@ -211,20 +224,29 @@ def test_share_loader_artifact_rejects_missing_adc_project_without_local_fallbac
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_cloud_fakes(monkeypatch, project_id=None)
+    _set_ingestion_environment(monkeypatch)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
     yaml = ModuleType("yaml")
-    yaml.safe_load = lambda _stream: {"url": {"shares": "fixture://shares"}}  # type: ignore[attr-defined]
+    yaml.safe_load = lambda _stream: _source_config()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "yaml", yaml)
 
     loader_package = _build_artifact(tmp_path / "loader", "managed", "insert_shares")
     monkeypatch.chdir(loader_package)
     loader = _import_artifact(monkeypatch, loader_package, "cloud_fake_loader")
     _load_helper(loader_package)
-    before = {path.relative_to(loader_package) for path in loader_package.rglob("*")}
-    with pytest.raises(RuntimeError, match="application-default project"):
+    before = {
+        path.relative_to(loader_package)
+        for path in loader_package.rglob("*")
+        if "__pycache__" not in path.parts
+    }
+    with pytest.raises(ValueError, match="application-default project"):
         loader.entry_point()
-    assert {path.relative_to(loader_package) for path in loader_package.rglob("*")} == before
+    assert {
+        path.relative_to(loader_package)
+        for path in loader_package.rglob("*")
+        if "__pycache__" not in path.parts
+    } == before
 
 
 def test_cloud_references_are_documented_without_secrets_or_local_storage() -> None:
@@ -234,8 +256,44 @@ def test_cloud_references_are_documented_without_secrets_or_local_storage() -> N
     assert config.lstrip().startswith("url:\n")
     assert "\nduckdb:" not in config
     assert "\ncsv_directory:" not in config
-    assert "GOOGLE_CLOUD_PROJECT=your-project-id" in example
-    assert "data-<project-number>" in example
-    assert "archive-<project-number>" in example
-    assert "service-account JSON" in example
+    assert "TRADVISOR_RUNTIME_TARGET=ingestion" in example
+    assert "TRADVISOR_INGESTION_DATA_BUCKET" in example
+    assert "TRADVISOR_INGESTION_SERVICE_ACCOUNT" in example
+    assert "workload identity" in example
     assert "/Users/" not in example
+
+
+def _set_ingestion_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRADVISOR_RUNTIME_TARGET", "ingestion")
+    monkeypatch.setenv("TRADVISOR_ENVIRONMENT", "development")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "fixture-project")
+    monkeypatch.setenv("TRADVISOR_TARGET_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv("TRADVISOR_ENVIRONMENT_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv(
+        "TRADVISOR_INGESTION_SERVICE_ACCOUNT",
+        "fixture-ingestion@fixture-project.iam.gserviceaccount.com",
+    )
+    monkeypatch.setenv("TRADVISOR_INGESTION_DATA_BUCKET", "fixture-data-bucket")
+    monkeypatch.setenv("TRADVISOR_INGESTION_ARCHIVE_BUCKET", "fixture-archive-bucket")
+    monkeypatch.setenv("TRADVISOR_INGESTION_DATASET", "stocks")
+    for asset in ("SHARES", "DIVIDENDS", "FINANCIALS", "RATINGS"):
+        monkeypatch.setenv(
+            f"TRADVISOR_INGESTION_{asset}_TABLE",
+            f"fixture-project.stocks.{asset.lower()}",
+        )
+
+
+def _source_config() -> dict[str, dict[str, str]]:
+    return {
+        "url": {
+            "shares": "https://source.example.test/shares",
+            "brvm_session": "https://source.example.test/sessions",
+            "bonds": "https://source.example.test/bonds",
+            "capitalizations": "https://source.example.test/capitalizations",
+            "volumes": "https://source.example.test/volumes",
+            "indices": "https://source.example.test/indices",
+            "dividends": "https://source.example.test/dividends",
+            "financials": "https://source.example.test/financials",
+            "ratings": "https://source.example.test/ratings",
+        }
+    }

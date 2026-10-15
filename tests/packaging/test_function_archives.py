@@ -55,6 +55,12 @@ def test_live_ingestion_entrypoints_are_outside_the_legacy_archive() -> None:
         assert not (SCRIPTS / f"{name}.py").exists()
 
 
+def test_every_packaged_entrypoint_validates_the_ingestion_contract_first() -> None:
+    for name, source_root in FUNCTION_ROOTS.items():
+        source = (source_root / f"{name}.py").read_text()
+        assert "IngestionConfiguration.from_environment()" in source
+
+
 def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     buckets = (TERRAFORM / "buckets.tf").read_text()
     variables = (TERRAFORM / "variables.tf").read_text()
@@ -66,6 +72,7 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     assert 'filename = "main.py"' in buckets
     assert 'filename = "helper.py"' in buckets
     assert 'filename = "config.yml"' in buckets
+    assert 'filename = "ingestion_configuration.py"' in buckets
     assert 'filename = "requirements.txt"' in buckets
     assert 'lookup(var.function_local_files, each.key, [])' in managed_archive
     assert 'insert_shares' in variables and '"scrape_shares.py"' in variables
@@ -99,6 +106,8 @@ def test_packaging_keeps_credentials_as_references_and_resources_preserved() -> 
 
     assert "secret_data" not in buckets
     assert "google_service_account.tradvisor_sa.email" in functions
+    assert "TRADVISOR_INGESTION_SERVICE_ACCOUNT" in functions
+    assert "TRADVISOR_INGESTION_DATA_BUCKET" in functions
     assert "google_service_account_key.tradvisor_sa_key" in iam
     assert 'default     = false' in variables[variables.index('variable "manage_legacy_source_objects"'):]
     assert "prevent_destroy = true" in buckets

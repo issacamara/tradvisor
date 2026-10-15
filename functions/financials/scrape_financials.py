@@ -490,7 +490,7 @@ def _load_shared_extraction_module():
     return sys.modules[module_name]
 
 
-def scrape_financials(url, openrouter_api_key=None):
+def scrape_financials(url, openrouter_api_key=None, configuration=None):
     """Scrape annual financial statements - MONTHLY RUN.
     
     This script is for regular monthly runs. It collects current and previous
@@ -502,6 +502,9 @@ def scrape_financials(url, openrouter_api_key=None):
     import gc
 
     _, project_id = default()
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
+        project_id = configuration.project_id
     
     current_year = datetime.now().year
     previous_year = current_year - 1
@@ -717,16 +720,20 @@ def scrape_financials(url, openrouter_api_key=None):
 
 @functions_framework.http
 def entry_point(request=None):
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
     with open('config.yml', 'r') as file:
-        config = yaml.safe_load(file)
+        endpoints = source_endpoints(yaml.safe_load(file))
     
     # Get OpenRouter API key from environment
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     
     # Scrape and upsert to BigQuery (memory-efficient, processes each symbol individually)
     scrape_financials(
-        config['url'].get('financials', 'https://www.richbourse.com/common/actualite-categorie/index/etats-financiers'),
-        openrouter_api_key
+        endpoints['financials'],
+        openrouter_api_key,
+        configuration,
     )
     
     return "Monthly run complete.\n"
