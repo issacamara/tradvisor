@@ -8,13 +8,13 @@ the existing atomic Firestore publisher.
 from __future__ import annotations
 
 import json
-import os
 import hashlib
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, Protocol, cast
 
 from backend.analysis.batch import CalculationOutput, StockCalculation
+from backend.configuration import RuntimeConfiguration
 from backend.analysis.atr import calculate_atr14
 from backend.analysis.ema import calculate_ema20_50
 from backend.analysis.inputs import AnalyticalInputSnapshot as TechnicalSnapshot, SessionInput
@@ -512,13 +512,19 @@ def _money(value: object) -> dict[str, str] | None:
 
 
 def build_worker() -> DailyAnalyticalWorker:
-    project_id = _required("GOOGLE_CLOUD_PROJECT")
-    market_table = _required("MARKET_DATA_TABLE")
-    financial_table = _required("FINANCIALS_TABLE")
-    secret = _required("FIRESTORE_CURSOR_SECRET")
+    configuration = RuntimeConfiguration.from_environment("daily_job")
+    project_id = configuration.project_id
+    market_table = configuration.market_data_table
+    financial_table = configuration.financials_table
+    assert market_table is not None
+    assert financial_table is not None
     from google.cloud import bigquery
 
-    store = FirestoreSdkStore(project_id=project_id, cursor_secret=secret)
+    store = FirestoreSdkStore(
+        project_id=project_id,
+        database_id=configuration.firestore_database,
+        cursor_secret=configuration.cursor_secret,
+    )
     publisher = AnalyticalPublisher(store)
     return DailyAnalyticalWorker(
         snapshots=BigQuerySharesReader(bigquery.Client(project=project_id), market_table, financial_table, publisher.active_publication),
@@ -530,13 +536,6 @@ def build_worker() -> DailyAnalyticalWorker:
 def run_from_environment() -> None:
     result = build_worker().run("shares-latest")
     print(json.dumps({"run_id": result.run_id, "status": result.status, "batch_id": result.batch_id}))
-
-
-def _required(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise RuntimeError(f"{name} is required")
-    return value
 
 
 def _status(value: object) -> Literal["available", "unavailable"]:

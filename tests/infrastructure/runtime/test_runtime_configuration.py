@@ -28,10 +28,11 @@ class RuntimeConfigurationTests(unittest.TestCase):
         )
         self.assertIn("count               = local.v1_api_enabled ? 1 : 0", self.runtime)
         self.assertIn("count               = local.v1_runtime_enabled ? 1 : 0", self.runtime)
-        self.assertIn(
-            'condition     = contains(["development", "production"], var.environment)',
+        self.assertRegex(
             self.runtime,
+            r'condition\s*=\s*contains\(\["development", "production"\], var\.environment\)\s*&&\s*trimspace\(var\.v1_environment_project_id\) != ""\s*&&\s*var\.v1_environment_project_id == var\.project_id',
         )
+        self.assertRegex(self.variables, r'variable "v1_environment_project_id"\s*\{')
         self.assertNotIn("prod-tradvisor", self.runtime)
 
     def test_api_scales_to_zero_and_is_bounded(self) -> None:

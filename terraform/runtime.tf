@@ -112,8 +112,58 @@ resource "google_cloud_run_v2_service" "v1_api" {
       }
 
       env {
+        name  = "TRADVISOR_RUNTIME_TARGET"
+        value = "api"
+      }
+
+      env {
+        name  = "TRADVISOR_ENVIRONMENT"
+        value = var.environment
+      }
+
+      env {
+        name  = "TRADVISOR_TARGET_PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "TRADVISOR_ENVIRONMENT_PROJECT_ID"
+        value = var.v1_environment_project_id
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_FIRESTORE_DATABASE"
+        value = "(default)"
+      }
+
+      env {
+        name  = "TRADVISOR_SERVING_TARGET"
+        value = "firestore"
+      }
+
+      env {
+        name  = "MARKET_DATA_TABLE"
+        value = "${var.project_id}.stocks.shares"
+      }
+
+      env {
+        name  = "FINANCIALS_TABLE"
+        value = var.v1_financials_table
+      }
+
+      env {
+        name  = "TRADVISOR_RECOVERY_BUCKET"
+        value = google_storage_bucket.v1_recovery_register.name
+      }
+
+      env {
         name  = "TRADVISOR_CORS_ORIGINS"
         value = var.v1_cors_origins
+      }
+
+      env {
+        name  = "WORKFLOW_REGION"
+        value = var.region
       }
 
       env {
@@ -139,8 +189,8 @@ resource "google_cloud_run_v2_service" "v1_api" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = contains(["development", "production"], var.environment)
-      error_message = "V1 runtime configuration requires a supported deployment environment."
+      condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
+      error_message = "V1 runtime configuration requires a supported environment and its separately configured project target."
     }
 
     precondition {
@@ -197,6 +247,26 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
       }
 
       env {
+        name  = "TRADVISOR_RUNTIME_TARGET"
+        value = "workflow_dispatcher"
+      }
+
+      env {
+        name  = "TRADVISOR_ENVIRONMENT"
+        value = var.environment
+      }
+
+      env {
+        name  = "TRADVISOR_TARGET_PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "TRADVISOR_ENVIRONMENT_PROJECT_ID"
+        value = var.v1_environment_project_id
+      }
+
+      env {
         name  = "WORKFLOW_REGION"
         value = var.region
       }
@@ -214,8 +284,8 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = contains(["development", "production"], var.environment)
-      error_message = "Workflow dispatcher configuration requires a supported deployment environment."
+      condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
+      error_message = "Workflow dispatcher requires a supported environment and its separately configured project target."
     }
 
     precondition {
@@ -260,6 +330,36 @@ resource "google_cloud_run_v2_job" "v1_batch" {
         }
 
         env {
+          name  = "TRADVISOR_RUNTIME_TARGET"
+          value = "daily_job"
+        }
+
+        env {
+          name  = "TRADVISOR_ENVIRONMENT"
+          value = var.environment
+        }
+
+        env {
+          name  = "TRADVISOR_TARGET_PROJECT_ID"
+          value = var.project_id
+        }
+
+        env {
+          name  = "TRADVISOR_ENVIRONMENT_PROJECT_ID"
+          value = var.v1_environment_project_id
+        }
+
+        env {
+          name  = "GOOGLE_CLOUD_FIRESTORE_DATABASE"
+          value = "(default)"
+        }
+
+        env {
+          name  = "TRADVISOR_SERVING_TARGET"
+          value = "firestore"
+        }
+
+        env {
           name = "FIRESTORE_CURSOR_SECRET"
           value_source {
             secret_key_ref {
@@ -276,8 +376,8 @@ resource "google_cloud_run_v2_job" "v1_batch" {
     prevent_destroy = true
 
     precondition {
-      condition     = contains(["development", "production"], var.environment)
-      error_message = "V1 batch jobs require a supported deployment environment."
+      condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
+      error_message = "V1 batch jobs require a supported environment and its separately configured project target."
     }
 
     precondition {
