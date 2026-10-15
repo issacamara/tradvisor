@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -12,7 +14,73 @@ TERRAFORM_DIR = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = TERRAFORM_DIR.parent
 
 
+def _table_block(configuration: str, resource_name: str) -> str:
+    match = re.search(
+        rf'resource "google_bigquery_table" "{resource_name}" \{{(.*?)\n\}}',
+        configuration,
+        re.DOTALL,
+    )
+    if match is None:
+        raise AssertionError(f"missing BigQuery table resource {resource_name}")
+    return match.group(1)
+
+
+def _table_schema(block: str) -> list[dict[str, str]]:
+    match = re.search(r"schema\s*=\s*jsonencode\((\[.*?\])\)", block, re.DOTALL)
+    if match is None:
+        raise AssertionError("BigQuery table resource is missing a schema")
+    schema = re.sub(r"(name|type|mode)\s*=", r'"\1":', match.group(1))
+    return json.loads(re.sub(r",(\s*\])", r"\1", schema))
+
+
+def _share_writer_columns() -> tuple[str, ...]:
+    tree = ast.parse((REPOSITORY_ROOT / "functions/shares/insert_shares.py").read_text())
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "MARKET_COLUMNS" for target in node.targets)
+        ):
+            return tuple(ast.literal_eval(node.value))
+    raise AssertionError("share writer MARKET_COLUMNS contract is missing")
+
+
+def _financial_writer_columns() -> tuple[str, ...]:
+    source = (REPOSITORY_ROOT / "functions/financials/insert_financials.py").read_text()
+    match = re.search(r"df\s*=\s*pd\.DataFrame\(\[\{(.*?)\}\]\)", source, re.DOTALL)
+    if match is None:
+        raise AssertionError("financial writer DataFrame contract is missing")
+    return tuple(re.findall(r"['\"]([a-z_]+)['\"]\s*:", match.group(1)))
+
+
 class PreservationDeclarationTests(unittest.TestCase):
+    def test_run_scoped_staging_tables_are_declared_and_protected(self) -> None:
+        configuration = (TERRAFORM_DIR / "main.tf").read_text()
+        expected = {
+            "shares_staging": ("shares_staging", _share_writer_columns()),
+            "financials_staging": ("financials_staging", _financial_writer_columns()),
+        }
+
+        for resource_name, (table_id, writer_columns) in expected.items():
+            with self.subTest(resource=resource_name):
+                block = _table_block(configuration, resource_name)
+                schema = _table_schema(block)
+                schema_columns = tuple(field["name"] for field in schema)
+
+                self.assertIn(f'table_id            = "{table_id}"', block)
+                self.assertIn("deletion_protection = true", block)
+                self.assertIn("lifecycle { prevent_destroy = true }", block)
+                self.assertCountEqual(schema_columns, ("run_id", *writer_columns))
+                self.assertEqual(schema[0], {"name": "run_id", "type": "STRING", "mode": "REQUIRED"})
+                self.assertIn('clustering          = ["run_id", "symbol"]', block)
+
+    def test_staging_payload_columns_match_the_canonical_merge_contract(self) -> None:
+        configuration = (TERRAFORM_DIR / "main.tf").read_text()
+        for canonical, staging in (("shares", "shares_staging"), ("financials", "financials_staging")):
+            with self.subTest(canonical=canonical):
+                canonical_schema = _table_schema(_table_block(configuration, canonical))
+                staging_schema = _table_schema(_table_block(configuration, staging))
+                self.assertEqual(staging_schema[1:], canonical_schema)
+
     def test_remaining_legacy_ownership_is_opt_in(self) -> None:
         variables = (TERRAFORM_DIR / "variables.tf").read_text()
         main = (TERRAFORM_DIR / "main.tf").read_text()
