@@ -17,6 +17,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 
+from backend.configuration import (
+    RuntimeConfiguration,
+    RuntimeConfigurationError,
+    WorkflowDispatchConfiguration,
+)
 from backend.auth.fastapi import verified_identity_dependency
 from backend.auth.identity import AdmissionRepository, AdmittedIdentity, FirebaseIdTokenVerifier, TokenVerifier, FirestoreAdmissionRepository, RegisterAdmissionDenyFence
 from backend.auth.workload import GoogleWorkloadTokenVerifier, WorkloadTokenVerifier, workload_identity_dependency
@@ -59,15 +64,17 @@ ERROR_MESSAGES: Final = {
 
 @lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
+    configuration = _api_configuration()
     from google.cloud import firestore  # type: ignore[import-untyped]
     from google.cloud import storage
     from backend.recovery.register import GcsStorageAdapter
 
-    client = firestore.Client()
-    storage_client = storage.Client()
-    if not storage_client.project:
-        raise RuntimeError("recovery register project is unavailable")
-    register = GcsStorageAdapter(storage_client.bucket(f"{storage_client.project}-v1-recovery-register"))
+    client = firestore.Client(
+        project=configuration.project_id,
+        database=configuration.firestore_database,
+    )
+    storage_client = storage.Client(project=configuration.project_id)
+    register = GcsStorageAdapter(storage_client.bucket(configuration.recovery_bucket))
     return FirestoreAdmissionRepository(client, deny_fence=RegisterAdmissionDenyFence(register))
 
 
@@ -78,13 +85,24 @@ class _LazyAdmissionRepository:
 
 @lru_cache(maxsize=1)
 def _production_analysis_publisher() -> AnalyticalPublisher:
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-    cursor_secret = os.environ.get("FIRESTORE_CURSOR_SECRET", "")
-    if not project or not cursor_secret:
-        raise RuntimeError("analysis serving configuration is unavailable")
+    configuration = _api_configuration()
     return AnalyticalPublisher(
-        FirestoreSdkStore(project_id=project, cursor_secret=cursor_secret)
+        FirestoreSdkStore(
+            project_id=configuration.project_id,
+            database_id=configuration.firestore_database,
+            cursor_secret=configuration.cursor_secret,
+        )
     )
+
+
+@lru_cache(maxsize=1)
+def _api_configuration() -> RuntimeConfiguration:
+    return RuntimeConfiguration.from_environment("api")
+
+
+@lru_cache(maxsize=1)
+def _workflow_dispatch_configuration() -> WorkflowDispatchConfiguration:
+    return WorkflowDispatchConfiguration.from_environment()
 
 
 class _LazyAnalysisPublisher:
@@ -125,12 +143,12 @@ def _chart_query(
 
 def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch_id: str) -> StockChartData:
     """Serve close prices directly when the analytical chart output is unavailable."""
+    configuration = _api_configuration()
     from google.cloud import bigquery
 
-    table = os.environ.get("MARKET_DATA_TABLE", "dev-tradvisor.stocks.shares").strip()
-    if not table or "`" in table or ";" in table:
-        raise PublicationError("market data serving configuration is unavailable")
-    client = bigquery.Client()
+    table = configuration.market_data_table
+    assert table is not None
+    client = bigquery.Client(project=configuration.project_id)
     query = (
         f"SELECT date, close FROM `{table}` "
         "WHERE symbol = @symbol AND date BETWEEN @from_date AND @to_date "
@@ -203,15 +221,35 @@ def create_app(
     clock: Callable[[], datetime] = _utc_now,
     request_id_factory: Callable[[], str] = _request_id,
 ) -> FastAPI:
+    runtime_target = os.environ.get("TRADVISOR_RUNTIME_TARGET", "")
+    if runtime_target == "api":
+        runtime_configuration: RuntimeConfiguration | WorkflowDispatchConfiguration | None = _api_configuration()
+    elif runtime_target == "workflow_dispatcher":
+        runtime_configuration = _workflow_dispatch_configuration()
+    elif runtime_target:
+        raise RuntimeConfigurationError("TRADVISOR_RUNTIME_TARGET is unsupported")
+    elif os.environ.get("TRADVISOR_ENVIRONMENT"):
+        raise RuntimeConfigurationError("TRADVISOR_RUNTIME_TARGET is required")
+    else:
+        runtime_configuration = None
     selected_verifier = verifier if verifier is not None else FirebaseIdTokenVerifier()
     require_identity = verified_identity_dependency(selected_verifier)
     require_workload = workload_identity_dependency(workload_verifier or GoogleWorkloadTokenVerifier(), audience=workload_audience)
     selected_analysis: AnalysisPublisher = analysis_publisher or _LazyAnalysisPublisher()
-    selected_analysis_secret: bytes | str = analysis_cursor_secret if analysis_cursor_secret is not None else os.environ.get("FIRESTORE_CURSOR_SECRET", "")
+    selected_analysis_secret: bytes | str = (
+        analysis_cursor_secret
+        if analysis_cursor_secret is not None
+        else runtime_configuration.cursor_secret
+        if isinstance(runtime_configuration, RuntimeConfiguration)
+        else os.environ.get("FIRESTORE_CURSOR_SECRET", "")
+    )
     if isinstance(selected_analysis_secret, str):
         selected_analysis_secret = selected_analysis_secret.encode("utf-8")
     application = FastAPI(title="Tradvisor API", version="0.13.0")
-    allowed_origins = [origin.strip() for origin in os.environ.get("TRADVISOR_CORS_ORIGINS", "").split(",") if origin.strip()]
+    if isinstance(runtime_configuration, RuntimeConfiguration):
+        allowed_origins = list(runtime_configuration.cors_origins)
+    else:
+        allowed_origins = []
     application.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -259,7 +297,21 @@ def create_app(
     @application.post("/internal/workflows/{workflow_name}/dispatch", include_in_schema=False)
     async def dispatch_workflow(workflow_name: str, _: str = Depends(require_workload)) -> dict[str, str]:
         try:
-            execution = await __import__("asyncio").to_thread(dispatch_and_wait, workflow_name, project=__import__("os").environ.get("GOOGLE_CLOUD_PROJECT", ""), region=__import__("os").environ.get("WORKFLOW_REGION", "europe-central2"))
+            if os.environ.get("TRADVISOR_RUNTIME_TARGET") == "workflow_dispatcher":
+                configuration = _workflow_dispatch_configuration()
+                project_id = configuration.project_id
+                workflow_region = configuration.workflow_region
+            else:
+                configuration = _api_configuration()
+                project_id = configuration.project_id
+                workflow_region = configuration.workflow_region
+                assert workflow_region is not None
+            execution = await __import__("asyncio").to_thread(
+                dispatch_and_wait,
+                workflow_name,
+                project=project_id,
+                region=workflow_region,
+            )
         except WorkflowDispatchError as error:
             raise HTTPException(status_code=503, detail="service_unavailable") from error
         return {"execution": execution}

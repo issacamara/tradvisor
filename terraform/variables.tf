@@ -15,6 +15,18 @@ variable "environment" {
     error_message = "environment must be development or production."
   }
 }
+
+variable "v1_environment_project_id" {
+  description = "Explicit project ID authorized for this V1 runtime environment; set independently from project_id"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.v1_environment_project_id == "" || can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.v1_environment_project_id))
+    error_message = "v1_environment_project_id must be empty or a valid explicit project ID."
+  }
+}
+
 variable "region" {
   description = "Region of the project"
   type        = string
