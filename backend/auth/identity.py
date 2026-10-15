@@ -115,7 +115,7 @@ class FirestoreAdmissionRepository:
 
     def __init__(self, client: Any | None = None, deny_fence: AdmissionDenyFence | None = None) -> None:
         if client is None:
-            from google.cloud import firestore  # type: ignore[import-untyped]
+            from google.cloud import firestore
 
             client = firestore.Client()
         self._client = client

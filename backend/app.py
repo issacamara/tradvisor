@@ -65,8 +65,8 @@ ERROR_MESSAGES: Final = {
 @lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
     configuration = _api_configuration()
-    from google.cloud import firestore  # type: ignore[import-untyped]
-    from google.cloud import storage
+    from google.cloud import firestore
+    from google.cloud import storage  # type: ignore[attr-defined]
     from backend.recovery.register import GcsStorageAdapter
 
     client = firestore.Client(
@@ -144,7 +144,7 @@ def _chart_query(
 def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch_id: str) -> StockChartData:
     """Serve close prices directly when the analytical chart output is unavailable."""
     configuration = _api_configuration()
-    from google.cloud import bigquery
+    from google.cloud import bigquery  # type: ignore[attr-defined]
 
     table = configuration.market_data_table
     assert table is not None
@@ -302,9 +302,14 @@ def create_app(
                 project_id = configuration.project_id
                 workflow_region = configuration.workflow_region
             else:
-                configuration = _api_configuration()
-                project_id = configuration.project_id
-                workflow_region = configuration.workflow_region
+                runtime_configuration = _api_configuration()
+                if runtime_configuration.workflow_region is None:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Workflow dispatch is not configured for this runtime.",
+                    )
+                project_id = runtime_configuration.project_id
+                workflow_region = runtime_configuration.workflow_region
                 assert workflow_region is not None
             execution = await __import__("asyncio").to_thread(
                 dispatch_and_wait,
