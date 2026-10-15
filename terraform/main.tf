@@ -103,6 +103,53 @@ resource "google_bigquery_table" "financials" {
   lifecycle { prevent_destroy = true }
 }
 
+# These tables are intentionally separate from the canonical source tables.
+# Ingestion writers append a single run's rows and later merge only rows with
+# that run identifier; they must never create, replace, or truncate staging
+# tables at runtime.
+resource "google_bigquery_table" "shares_staging" {
+  dataset_id          = "stocks"
+  table_id            = "shares_staging"
+  deletion_protection = true
+  clustering          = ["run_id", "symbol"]
+
+  schema = jsonencode([
+    { name = "run_id", type = "STRING", mode = "REQUIRED" },
+    { name = "symbol", type = "STRING", mode = "NULLABLE" },
+    { name = "name", type = "STRING", mode = "NULLABLE" },
+    { name = "open", type = "FLOAT", mode = "NULLABLE" },
+    { name = "high", type = "FLOAT", mode = "NULLABLE" },
+    { name = "low", type = "FLOAT", mode = "NULLABLE" },
+    { name = "close", type = "FLOAT", mode = "NULLABLE" },
+    { name = "volume", type = "FLOAT", mode = "NULLABLE" },
+    { name = "date", type = "DATE", mode = "NULLABLE" },
+  ])
+
+  lifecycle { prevent_destroy = true }
+}
+
+resource "google_bigquery_table" "financials_staging" {
+  dataset_id          = "stocks"
+  table_id            = "financials_staging"
+  deletion_protection = true
+  clustering          = ["run_id", "symbol"]
+
+  schema = jsonencode([
+    { name = "run_id", type = "STRING", mode = "REQUIRED" },
+    { name = "symbol", type = "STRING", mode = "REQUIRED" },
+    { name = "fiscal_year", type = "INTEGER", mode = "REQUIRED" },
+    { name = "revenue", type = "FLOAT", mode = "NULLABLE" },
+    { name = "net_income", type = "FLOAT", mode = "NULLABLE" },
+    { name = "total_debt", type = "FLOAT", mode = "NULLABLE" },
+    { name = "cash_and_cash_equivalents", type = "FLOAT", mode = "NULLABLE" },
+    { name = "total_equity", type = "FLOAT", mode = "NULLABLE" },
+    { name = "collected_at", type = "TIMESTAMP", mode = "NULLABLE" },
+    { name = "document_link", type = "STRING", mode = "NULLABLE" },
+  ])
+
+  lifecycle { prevent_destroy = true }
+}
+
 resource "google_bigquery_table" "ratings" {
   dataset_id          = "stocks"
   table_id            = "ratings"
