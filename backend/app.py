@@ -65,8 +65,8 @@ ERROR_MESSAGES: Final = {
 @lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
     configuration = _api_configuration()
-    from google.cloud import firestore
-    from google.cloud import storage  # type: ignore[attr-defined]
+    from google.cloud import firestore  # type: ignore[import-untyped]
+    from google.cloud import storage
     from backend.recovery.register import GcsStorageAdapter
 
     client = firestore.Client(
@@ -144,7 +144,7 @@ def _chart_query(
 def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch_id: str) -> StockChartData:
     """Serve close prices directly when the analytical chart output is unavailable."""
     configuration = _api_configuration()
-    from google.cloud import bigquery  # type: ignore[attr-defined]
+    from google.cloud import bigquery
 
     table = configuration.market_data_table
     assert table is not None
