@@ -1,6 +1,6 @@
 """Bounded, sanitized operational telemetry primitives."""
 
-from .events import OperationalEvent, SanitizedLogger, record_event
+from .events import JsonStdoutFormatter, OperationalEvent, SanitizedLogger, configure_json_stdout, record_event
 from .health import is_stale
 
-__all__ = ["OperationalEvent", "SanitizedLogger", "is_stale", "record_event"]
+__all__ = ["JsonStdoutFormatter", "OperationalEvent", "SanitizedLogger", "configure_json_stdout", "is_stale", "record_event"]
