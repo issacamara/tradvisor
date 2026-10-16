@@ -4,7 +4,8 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.auth.identity import VerifiedIdentity
-from backend.openapi import StockChartData
+from backend.openapi import ChartPoint, StockChartData
+from backend.read_api.analysis import AnalysisNotReady
 from tests.auth.test_app_startup import AdmissionFixture, TokenVerifierFixture
 
 
@@ -17,6 +18,17 @@ class WorkloadFixture:
 def client() -> TestClient:
     verifier = TokenVerifierFixture(VerifiedIdentity(uid="user-1", email="investor@example.com", email_verified=True))
     return TestClient(create_app(verifier=verifier, admissions=AdmissionFixture(), workload_verifier=WorkloadFixture(), workload_audience="https://worker"))
+
+
+def _block_bigquery(monkeypatch) -> list[object]:
+    calls: list[object] = []
+
+    class Client:
+        def __init__(self, *args, **kwargs) -> None:
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr("google.cloud.bigquery.Client", Client)
+    return calls
 
 
 def test_every_v1_route_requires_user_admission() -> None:
@@ -41,18 +53,39 @@ def test_analysis_routes_return_typed_not_ready_without_a_complete_publication()
         assert response.json()["error"]["code"] == "analysis_not_ready"
 
 
-def test_empty_published_chart_falls_back_to_market_data(monkeypatch) -> None:
+def test_absent_chart_returns_typed_unavailability_without_bigquery(monkeypatch) -> None:
     application = client()
+    bigquery_calls = _block_bigquery(monkeypatch)
+
+    class Configuration:
+        project_id = "test-project"
+        market_data_table = "test-project.market.prices"
+
+    def no_chart(*args, **kwargs):
+        raise AnalysisNotReady
+
+    monkeypatch.setattr("backend.app._api_configuration", lambda: Configuration())
+    monkeypatch.setattr("backend.app.read_chart", no_chart)
+
+    response = application.get(
+        "/v1/stocks/AAA/chart",
+        params={"from": "2026-01-01", "to": "2026-01-02"},
+        headers={"Authorization": "Bearer fixture-token"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "analysis_not_ready"
+    assert bigquery_calls == []
+
+
+def test_empty_published_chart_keeps_its_published_batch_without_bigquery(monkeypatch) -> None:
+    application = client()
+    bigquery_calls = _block_bigquery(monkeypatch)
     empty_chart = StockChartData(
         symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
         batch_id="published-batch", points=(),
     )
-    market_chart = StockChartData(
-        symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
-        batch_id="market-fallback:2026-01-02", points=(),
-    )
     monkeypatch.setattr("backend.app.read_chart", lambda *args, **kwargs: empty_chart)
-    monkeypatch.setattr("backend.app._market_chart_fallback", lambda **kwargs: market_chart)
 
     response = application.get(
         "/v1/stocks/AAA/chart",
@@ -61,7 +94,56 @@ def test_empty_published_chart_falls_back_to_market_data(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["batch_id"] == "market-fallback:2026-01-02"
+    assert response.json()["data"] == empty_chart.model_dump(mode="json", by_alias=True)
+    assert bigquery_calls == []
+
+
+def test_previous_complete_chart_batch_is_returned_without_bigquery(monkeypatch) -> None:
+    application = client()
+    bigquery_calls = _block_bigquery(monkeypatch)
+    previous_chart = StockChartData(
+        symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
+        batch_id="previous-complete-batch", points=(),
+    )
+    monkeypatch.setattr("backend.app.read_chart", lambda *args, **kwargs: previous_chart)
+
+    response = application.get(
+        "/v1/stocks/AAA/chart",
+        params={"from": "2026-01-01", "to": "2026-01-02"},
+        headers={"Authorization": "Bearer fixture-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["batch_id"] == "previous-complete-batch"
+    assert bigquery_calls == []
+
+
+def test_published_chart_points_are_returned_without_bigquery(monkeypatch) -> None:
+    application = client()
+    bigquery_calls = _block_bigquery(monkeypatch)
+    chart = StockChartData(
+        symbol="AAA", **{"from": date(2026, 1, 1), "to": date(2026, 1, 2)},
+        batch_id="current-complete-batch",
+        points=(ChartPoint.model_validate({
+            "session_date": date(2026, 1, 2), "status": "traded",
+            "open": None, "high": None, "low": None,
+            "close": {"amount": "100", "currency": "XOF"},
+            "last_traded_close": {"amount": "100", "currency": "XOF"},
+            "analytical_carried_close": None, "volume": None,
+            "indicators": {}, "source_evidence": (),
+        }),),
+    )
+    monkeypatch.setattr("backend.app.read_chart", lambda *args, **kwargs: chart)
+
+    response = application.get(
+        "/v1/stocks/AAA/chart",
+        params={"from": "2026-01-01", "to": "2026-01-02"},
+        headers={"Authorization": "Bearer fixture-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == chart.model_dump(mode="json", by_alias=True)
+    assert bigquery_calls == []
 
 
 def test_analysis_routes_remain_protected() -> None:

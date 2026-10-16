@@ -6,7 +6,6 @@ from collections.abc import Callable
 from datetime import date, datetime, timezone
 from functools import lru_cache
 import os
-import logging
 from typing import Any, Final, cast
 from uuid import uuid4
 
@@ -30,7 +29,6 @@ from backend.contracts.routes import (
     MeResource, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 )
 from backend.openapi import (
-    ChartPoint,
     ChartQuery,
     LongTermRankingsData,
     RecommendationQuery,
@@ -41,7 +39,7 @@ from backend.openapi import (
     SwingRecommendationsData,
 )
 from backend.publication.analysis import AnalyticalPublisher, PublicationError
-from backend.read_api.analysis import AnalysisNotReady, InvalidAnalysisSymbol, read_chart, read_long_term, read_stock, read_swing
+from backend.read_api.analysis import InvalidAnalysisSymbol, read_chart, read_long_term, read_stock, read_swing
 from backend.read_api.cursors import CursorError
 from backend.read_api.readers import AnalysisPublisher
 from backend.store.firestore_sdk import FirestoreSdkStore
@@ -51,7 +49,6 @@ from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 
 PRIVATE_NO_STORE: Final = "private, no-store"
 MAX_BODY_BYTES: Final = 16 * 1024
-LOGGER = logging.getLogger(__name__)
 ERROR_MESSAGES: Final = {
     "unauthenticated": "Authentication is required.", "admission_denied": "Current invitation access is required.",
     "email_unverified": "Verify your email before accessing the workspace.",
@@ -138,46 +135,6 @@ def _chart_query(
         "to": to_date,
         "batch_id": batch_id,
         "series": series,
-    })
-
-
-def _market_chart_fallback(*, symbol: str, from_date: date, to_date: date, batch_id: str) -> StockChartData:
-    """Serve close prices directly when the analytical chart output is unavailable."""
-    configuration = _api_configuration()
-    from google.cloud import bigquery
-
-    table = configuration.market_data_table
-    assert table is not None
-    client = bigquery.Client(project=configuration.project_id)
-    query = (
-        f"SELECT date, close FROM `{table}` "
-        "WHERE symbol = @symbol AND date BETWEEN @from_date AND @to_date "
-        "ORDER BY date"
-    )
-    config = bigquery.QueryJobConfig(query_parameters=[
-        bigquery.ScalarQueryParameter("symbol", "STRING", symbol),
-        bigquery.ScalarQueryParameter("from_date", "DATE", from_date),
-        bigquery.ScalarQueryParameter("to_date", "DATE", to_date),
-    ])
-    rows_by_date: dict[date, Any] = {}
-    for row in client.query(query, job_config=config).result():
-        session_date = row["date"]
-        current = rows_by_date.get(session_date)
-        if current is None or (current["close"] is None and row["close"] is not None):
-            rows_by_date[session_date] = row
-    rows = [rows_by_date[session_date] for session_date in sorted(rows_by_date)]
-    points = tuple(ChartPoint.model_validate({
-        "session_date": row["date"],
-        "status": "traded" if row["close"] is not None else "missing_price",
-        "open": None, "high": None, "low": None,
-        "close": None if row["close"] is None else {"amount": str(row["close"]), "currency": "XOF"},
-        "last_traded_close": None if row["close"] is None else {"amount": str(row["close"]), "currency": "XOF"},
-        "analytical_carried_close": None,
-        "volume": None, "indicators": {}, "source_evidence": (),
-    }) for row in rows)
-    return StockChartData.model_validate({
-        "symbol": symbol, "from": from_date, "to": to_date,
-        "batch_id": batch_id, "points": points,
     })
 
 
@@ -362,24 +319,6 @@ def create_app(
     async def get_stock_chart(request: Request, symbol: str, query: ChartQuery = Depends(_chart_query), _identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[StockChartData]:
         try:
             data = read_chart(selected_analysis, symbol=symbol, from_date=query.from_date, to_date=query.to_date, series=query.series, cursor_secret=selected_analysis_secret, now=clock)
-            if not data.points:
-                data = _market_chart_fallback(
-                    symbol=symbol,
-                    from_date=query.from_date,
-                    to_date=query.to_date,
-                    batch_id=f"market-fallback:{query.to_date.isoformat()}",
-                )
-        except AnalysisNotReady:
-            try:
-                data = _market_chart_fallback(
-                    symbol=symbol,
-                    from_date=query.from_date,
-                    to_date=query.to_date,
-                    batch_id=f"market-fallback:{query.to_date.isoformat()}",
-                )
-            except Exception as error:
-                LOGGER.exception("market chart fallback failed for %s", symbol)
-                raise _analysis_failure(error) from error
         except Exception as error:
             raise _analysis_failure(error) from error
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
