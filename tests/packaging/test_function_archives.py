@@ -74,6 +74,8 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     assert 'filename = "config.yml"' in buckets
     assert 'filename = "ingestion_configuration.py"' in buckets
     assert 'filename = "requirements.txt"' in buckets
+    assert 'filename = "requirements.in"' in buckets
+    assert 'filename = "requirements.lock"' in buckets
     assert 'lookup(var.function_local_files, each.key, [])' in managed_archive
     assert 'insert_shares' in variables and '"scrape_shares.py"' in variables
 
@@ -88,7 +90,7 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
 
 
 def test_archive_inputs_exclude_duckdb_and_persistent_local_paths() -> None:
-    requirements = (SCRIPTS / "requirements.txt").read_text().lower()
+    requirements = (SCRIPTS / "requirements.in").read_text().lower()
     config = (SCRIPTS / "config.yml").read_text()
 
     assert "duckdb" not in requirements
@@ -96,6 +98,34 @@ def test_archive_inputs_exclude_duckdb_and_persistent_local_paths() -> None:
     assert "csv_directory:" not in config
     assert "archive: processed_data" not in config
     assert "/users/" not in config.lower()
+
+
+def test_archive_requirements_are_complete_hashed_locks() -> None:
+    requirements = (SCRIPTS / "requirements.txt").read_text().strip()
+    lock = (SCRIPTS / "requirements.lock").read_text()
+    declared = (SCRIPTS / "requirements.in").read_text().lower()
+
+    assert requirements == "-r requirements.lock"
+    assert "--hash=sha256:" in lock
+    assert "duckdb" not in lock.lower()
+    packages = (
+        "functions-framework",
+        "google-cloud-storage",
+        "google-cloud-bigquery",
+        "pandas",
+        "pdfplumber",
+        "pypdf",
+    )
+    for package in packages:
+        assert re.search(rf"^{re.escape(package)}==", lock, re.MULTILINE | re.IGNORECASE)
+        assert re.search(rf"^{re.escape(package)}==", declared, re.MULTILINE | re.IGNORECASE)
+
+
+def test_every_retained_archive_helper_is_syntax_compilable() -> None:
+    retained = sorted(SCRIPTS.glob("*.py"))
+    assert retained
+    for source in retained:
+        ast.parse(source.read_text(), filename=str(source))
 
 
 def test_packaging_keeps_credentials_as_references_and_resources_preserved() -> None:

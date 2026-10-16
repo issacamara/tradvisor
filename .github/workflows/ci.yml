@@ -32,7 +32,10 @@ jobs:
           pip-compile --all-build-deps --allow-unsafe --strip-extras --generate-hashes \
             --extra=test --extra=type --extra=lock \
             --output-file=backend/requirements/test.lock backend/pyproject.toml
-          git diff --exit-code -- backend/requirements
+          pip-compile --strip-extras --generate-hashes \
+            --output-file=archive/legacy-ingestion/scripts/requirements.lock \
+            archive/legacy-ingestion/scripts/requirements.in
+          git diff --exit-code -- backend/requirements archive/legacy-ingestion/scripts/requirements.lock
 
       - name: Run backend regression and wave suites
         run: python -m pytest tests -q
