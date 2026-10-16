@@ -1,1 +1,1 @@
-"""Shared backend mutation command helpers."""
+"""Same-release trusted administrative and analytical command entry points."""
