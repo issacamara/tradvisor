@@ -184,6 +184,7 @@ def adapter_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     for name in (
         "get_financial_report_revision",
         "upsert_financial_report_and_archive",
+        "upsert_financials_and_archive",
         "upsert_into_bigquery",
         "get_project_number",
     ):
@@ -892,6 +893,7 @@ def test_importing_financial_pipeline_modules_does_not_construct_clients_or_call
         "save_dataframe_as_csv",
         "table_exists",
         "upsert_financial_report_and_archive",
+        "upsert_financials_and_archive",
         "upsert_financial_report_current_and_revision",
     ):
         setattr(helper, name, lambda *args, **kwargs: None)

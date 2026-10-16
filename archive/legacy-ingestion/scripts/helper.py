@@ -574,6 +574,103 @@ def upsert_shares_and_archive(
     return committed_load_id
 
 
+def upsert_financials_and_archive(
+    df,
+    revision_df,
+    project_id: str,
+    dataset: str,
+    archive: Callable[[], Any],
+    *,
+    run_id: str | None = None,
+):
+    """Append one serialized financial run to managed staging before merging it."""
+    from google.cloud import bigquery
+
+    columns = [str(column) for column in df.columns]
+    expected_columns = [
+        "symbol",
+        "fiscal_year",
+        "revenue",
+        "net_income",
+        "total_debt",
+        "cash_and_cash_equivalents",
+        "total_equity",
+        "document_link",
+        "collected_at",
+    ]
+    if columns != expected_columns:
+        raise ValueError("financial rows must match the managed financials staging schema")
+    if df.empty:
+        archive()
+        return _load_identity(df, project_id, dataset, "financials", ["symbol", "fiscal_year"])
+    if df[["symbol", "fiscal_year"]].isna().any(axis=None):
+        raise ValueError("financial source keys must not contain null values")
+
+    staged_rows = df.drop_duplicates(subset=["symbol", "fiscal_year"]).copy()
+    committed_load_id = _load_identity(
+        staged_rows, project_id, dataset, "financials", ["symbol", "fiscal_year"]
+    )
+    resolved_run_id = _safe_identifier(run_id or uuid4().hex, "run_id")
+    staging_table_id = f"{project_id}.{dataset}.financials_staging"
+    table_id = f"{project_id}.{dataset}.financials"
+    labels = {
+        "tradvisor_load_id": committed_load_id[:63],
+        "tradvisor_run_id": re.sub(r"[^a-z0-9_-]", "_", resolved_run_id.lower())[:63],
+    }
+    query_parameters = [
+        bigquery.ScalarQueryParameter("run_id", "STRING", resolved_run_id)
+    ]
+    scoped_config = bigquery.QueryJobConfig(
+        labels=labels, query_parameters=query_parameters
+    )
+    cleanup_query = f"DELETE FROM `{staging_table_id}` WHERE `run_id` = @run_id"
+
+    client = bigquery.Client(project=project_id)
+    client.query(cleanup_query, job_config=scoped_config).result()
+    staged_rows.insert(0, "run_id", resolved_run_id)
+    load_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        labels=labels,
+    )
+    try:
+        client.load_table_from_dataframe(
+            staged_rows, staging_table_id, job_config=load_config
+        ).result()
+        assignments = ", ".join(
+            f"target.{_sql_identifier(column, 'column')} = source.{_sql_identifier(column, 'column')}"
+            for column in expected_columns
+            if column not in {"symbol", "fiscal_year"}
+        )
+        insert_columns = ", ".join(
+            _sql_identifier(column, "column") for column in expected_columns
+        )
+        insert_values = ", ".join(
+            f"source.{_sql_identifier(column, 'column')}" for column in expected_columns
+        )
+        merge_query = f"""
+        MERGE `{table_id}` target
+        USING (
+          SELECT {insert_columns}
+          FROM `{staging_table_id}`
+          WHERE `run_id` = @run_id
+        ) source
+        ON target.`symbol` = source.`symbol`
+           AND target.`fiscal_year` = source.`fiscal_year`
+        WHEN MATCHED THEN UPDATE SET {assignments}
+        WHEN NOT MATCHED THEN
+          INSERT ({insert_columns})
+          VALUES ({insert_values})
+        """
+        client.query(merge_query, job_config=scoped_config).result()
+    finally:
+        client.query(cleanup_query, job_config=scoped_config).result()
+
+    if revision_df is not None:
+        upsert_financial_report_revision(revision_df, project_id, dataset)
+    archive()
+    return committed_load_id
+
+
 def upsert_financial_report_revision(df, project_id, dataset="stocks"):
     """Insert an immutable report revision into the provisioned history table.
 

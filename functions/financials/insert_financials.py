@@ -14,7 +14,7 @@ from google.cloud import bigquery
 from datetime import datetime, timezone
 from helper import (
     get_financial_report_revision,
-    upsert_financial_report_and_archive,
+    upsert_financials_and_archive,
 )
 
 MAX_PROVIDER_ATTEMPTS_PER_PDF = 4
@@ -586,50 +586,6 @@ def get_existing_data_in_bigquery(project_id):
         return set()
 
 
-def upsert_into_bigquery(df, project_id, dataset, table, primary_keys):
-    """Upsert data into BigQuery using MERGE statement."""
-    client = bigquery.Client(project=project_id)
-    table_id = f"{project_id}.{dataset}.{table}"
-    
-    # Create a temporary table
-    temp_table_id = f"{table_id}_temp"
-    job = client.load_table_from_dataframe(df, temp_table_id)
-    job.result()
-    
-    try:
-        def get_cast_expression(col):
-            col_lower = col.lower()
-            if col_lower.endswith('_at') or 'time' in col_lower:
-                return f"PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', CAST(source.{col} AS STRING))"
-            elif 'date' in col_lower:
-                return f"PARSE_DATE('%Y-%m-%d', CAST(source.{col} AS STRING))"
-            return f"source.{col}"
-
-        primary_key_conditions = ' AND '.join([f"target.{pk} = {get_cast_expression(pk)}" for pk in primary_keys])
-        update_columns = [col for col in df.columns if col not in primary_keys]
-        update_set = ', '.join([f"target.{col} = {get_cast_expression(col)}" for col in update_columns])
-        insert_values = ', '.join([get_cast_expression(col) for col in df.columns])
-        
-        merge_query = f"""
-        MERGE `{table_id}` target
-        USING `{temp_table_id}` source
-        ON {primary_key_conditions}
-        WHEN MATCHED THEN
-          UPDATE SET {update_set}
-        WHEN NOT MATCHED THEN
-          INSERT ({', '.join(df.columns)})
-          VALUES ({insert_values})
-        """
-        
-        client.query(merge_query).result()
-        
-    finally:
-        try:
-            client.delete_table(temp_table_id, not_found_ok=True)
-        except Exception as e:
-            print(f"Warning: Failed to delete temporary table {temp_table_id}: {e}")
-
-
 def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_name=None):
     """Move a processed PDF to the archive bucket.
     
@@ -847,11 +803,14 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                 ):
                     raise RuntimeError(f"failed to archive {blob.name}")
 
-            upsert_financial_report_and_archive(
+            run_id = "financials-" + hashlib.sha256(blob.name.encode("utf-8")).hexdigest()
+            upsert_financials_and_archive(
                 df,
                 revision_df,
                 project_id,
+                configuration.dataset if configuration is not None else "stocks",
                 archive_pdf,
+                run_id=run_id,
             )
             print(f"    ✓ Upserted current result and report revision for {symbol} FY{fiscal_year}")
             

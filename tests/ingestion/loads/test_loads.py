@@ -402,6 +402,71 @@ def test_missing_managed_share_staging_fails_before_archive(
     assert client.deleted_tables == []
 
 
+def _financial_rows(symbol: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "symbol": symbol,
+                "fiscal_year": 2025,
+                "revenue": 100.0,
+                "net_income": 20.0,
+                "total_debt": 30.0,
+                "cash_and_cash_equivalents": 40.0,
+                "total_equity": 50.0,
+                "document_link": f"gs://archive/{symbol}.pdf",
+                "collected_at": "2026-10-16 00:00:00",
+            }
+        ]
+    )
+
+
+def test_financial_runs_use_managed_staging_without_cross_contamination(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    staging_id = "project.stocks.financials_staging"
+    client.stages[staging_id] = [
+        {"run_id": "other-run", **_financial_rows("OTHER").iloc[0].to_dict()}
+    ]
+
+    helper.upsert_financials_and_archive(
+        _financial_rows("ABC"), None, "project", "stocks", lambda: None, run_id="run-one"
+    )
+    helper.upsert_financials_and_archive(
+        _financial_rows("XYZ"), None, "project", "stocks", lambda: None, run_id="run-two"
+    )
+
+    assert [call[0] for call in client.load_calls] == [staging_id, staging_id]
+    assert all(call[1].write_disposition == "WRITE_APPEND" for call in client.load_calls)
+    assert {row["symbol"] for row in client.tables["project.stocks.financials"]} == {
+        "ABC",
+        "XYZ",
+    }
+    assert client.stages[staging_id] == [
+        {"run_id": "other-run", **_financial_rows("OTHER").iloc[0].to_dict()}
+    ]
+    assert all("WHERE `run_id` = @run_id" in query for query in client.merge_queries)
+    assert client.cleanup_run_ids[-4:] == ["run-one", "run-one", "run-two", "run-two"]
+    assert client.deleted_tables == []
+
+
+def test_missing_managed_financial_staging_fails_before_archive(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    client.load_error = RuntimeError("Not found: project.stocks.financials_staging")
+    archived: list[bool] = []
+
+    with pytest.raises(RuntimeError, match="Not found"):
+        helper.upsert_financials_and_archive(
+            _financial_rows("ABC"), None, "project", "stocks", lambda: archived.append(True), run_id="missing-stage"
+        )
+
+    assert archived == []
+    assert client.merge_queries == []
+    assert client.deleted_tables == []
+
+
 def test_conflicting_duplicate_source_keys_are_rejected_before_bigquery(
     loader: tuple[ModuleType, _FakeBigQueryClient],
 ) -> None:
