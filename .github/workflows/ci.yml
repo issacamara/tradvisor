@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11.11"
 
       - name: Install backend test dependencies
         run: |
@@ -54,6 +54,8 @@ jobs:
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
 
       - name: Check Terraform formatting
         run: terraform fmt -check -recursive terraform
@@ -61,6 +63,12 @@ jobs:
       - name: Initialize Terraform
         working-directory: terraform
         run: terraform init -backend=false
+
+      - name: Verify Terraform provider lock
+        working-directory: terraform
+        run: |
+          terraform init -backend=false -upgrade
+          git diff --exit-code -- .terraform.lock.hcl
 
       - name: Validate Terraform
         working-directory: terraform
@@ -75,7 +83,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11.11"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -86,6 +94,9 @@ jobs:
 
       - name: Install locked frontend dependencies
         run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+
+      - name: Install locked OpenAPI generator dependencies
+        run: npm ci --prefix scripts/generate-client --ignore-scripts --no-audit --no-fund
 
       - name: Lint frontend
         run: npm --prefix frontend run lint
@@ -115,3 +126,6 @@ jobs:
             echo "Potential secret material found in tracked files."
             exit 1
           fi
+
+      - name: Verify pinned delivery inputs
+        run: python scripts/ci/verify_delivery_inputs.py

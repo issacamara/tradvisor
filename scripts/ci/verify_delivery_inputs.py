@@ -1,0 +1,42 @@
+"""Validate the repository's pinned delivery inputs."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+PYTHON_VERSION = "3.11.11"
+NODE_VERSION = "22.14.0"
+TERRAFORM_VERSION = "1.9.8"
+FIREBASE_TOOLS_VERSION = "13.29.1"
+PYTHON_BASE = (
+    "python:3.11.11-slim-bookworm@"
+    "sha256:081075da77b2b55c23c088251026fb69a7b2bf92471e491ff5fd75c192fd38e5"
+)
+
+
+def validate(root: Path) -> None:
+    ci = (root / ".github/workflows/ci.yml").read_text()
+    development = (root / ".github/workflows/v1-development-delivery.yml").read_text()
+    production = (root / ".github/workflows/v1-production-delivery.yml").read_text()
+    dockerfile = (root / "backend/Dockerfile").read_text()
+
+    if ci.count(f'python-version: "{PYTHON_VERSION}"') != 2:
+        raise ValueError("CI must pin both Python setup steps")
+    for workflow in (ci, development, production):
+        if f"terraform_version: {TERRAFORM_VERSION}" not in workflow:
+            raise ValueError("all Terraform setup steps must pin Terraform")
+        if f"node-version: {NODE_VERSION}" not in workflow:
+            raise ValueError("all Node.js setup steps must use the pinned runtime")
+        if "firebase-tools@" in workflow and f"firebase-tools@{FIREBASE_TOOLS_VERSION}" not in workflow:
+            raise ValueError("Firebase CLI references must use the pinned version")
+    if f"FROM {PYTHON_BASE}" not in dockerfile:
+        raise ValueError("backend image must use the pinned Python digest")
+    if re.search(r"firebase-tools@(latest|[0-9]+(?:\.[0-9]+)?(?:\.[0-9]+)?)\b", ci):
+        raise ValueError("CI contains a mutable or non-exact Firebase CLI reference")
+
+
+if __name__ == "__main__":
+    validate(Path(__file__).resolve().parents[2])
+    print("delivery inputs are pinned")
