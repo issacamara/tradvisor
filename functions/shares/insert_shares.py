@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -203,7 +204,7 @@ def _load_then_archive(
     from helper import (
         get_project_number,
         move_csv_file_gcp,
-        upsert_into_bigquery,
+        upsert_shares_and_archive,
     )
 
     normalized, evidence = prepare_normalized_rows(raw_frame)
@@ -213,22 +214,35 @@ def _load_then_archive(
     _, project_id = default()
     if configuration is not None:
         configuration.validate_application_default_project(project_id)
+    dataset = configuration.dataset if configuration is not None else "stocks"
+    if configuration is not None and configuration.table_for("shares") != (
+        f"{project_id}.{dataset}.{MARKET_TABLE}"
+    ):
+        raise ValueError("share target does not match the managed staging contract")
+    project_number = get_project_number(project_id) if configuration is None else None
+    data_bucket = (
+        configuration.data_bucket if configuration is not None else f"data-{project_number}"
+    )
+    archive_bucket = (
+        configuration.archive_bucket
+        if configuration is not None
+        else f"archive-{project_number}"
+    )
+
+    def archive() -> None:
+        move_csv_file_gcp(data_bucket, archive_bucket, file.name)
+
     if not market_rows.empty:
-        upsert_into_bigquery(
+        run_id = "shares-" + hashlib.sha256(file.name.encode("utf-8")).hexdigest()
+        upsert_shares_and_archive(
             market_rows,
             project_id,
-            configuration.dataset if configuration is not None else "stocks",
-            configuration.table_for("shares").rsplit(".", 1)[1]
-            if configuration is not None
-            else MARKET_TABLE,
-            list(MARKET_KEYS),
+            dataset,
+            archive,
+            run_id=run_id,
         )
-    project_number = get_project_number(project_id) if configuration is None else None
-    move_csv_file_gcp(
-        configuration.data_bucket if configuration is not None else f"data-{project_number}",
-        configuration.archive_bucket if configuration is not None else f"archive-{project_number}",
-        file.name,
-    )
+    else:
+        archive()
     return evidence
 
 
