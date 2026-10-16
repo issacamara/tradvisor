@@ -20,6 +20,10 @@ on:
         description: "GitHub Actions run ID that produced the release bundle"
         required: true
         type: string
+      terraform_plan_run_id:
+        description: "GitHub Actions run ID containing the reviewed Terraform plan (apply only)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -75,6 +79,19 @@ jobs:
           rm -rf frontend/out
           mkdir -p frontend/out
           tar -xf release/frontend/production.tar -C frontend/out
+      - name: Require a reviewed Terraform plan run
+        if: inputs.action == 'apply'
+        env:
+          TERRAFORM_PLAN_RUN_ID: ${{ inputs.terraform_plan_run_id }}
+        run: test -n "$TERRAFORM_PLAN_RUN_ID" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
+      - name: Download reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}-production-terraform-plan
+          run-id: ${{ inputs.terraform_plan_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: reviewed-plan
 
       - name: Validate production delivery inputs
         if: inputs.action != 'frontend'
@@ -109,6 +126,22 @@ jobs:
             *@"$expected_digest") ;;
             *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
           esac
+      - name: Verify reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          python3 scripts/deployment/terraform_plan_attestation.py verify \
+            --plan reviewed-plan/tfplan \
+            --attestation reviewed-plan/plan-attestation.json \
+            --release-manifest release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE"
 
       - name: Initialize Terraform backend
         if: inputs.action != 'frontend'
@@ -132,6 +165,32 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
         run: terraform plan -out=tfplan
+      - name: Create reviewed production Terraform plan attestation
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          python3 ../scripts/deployment/terraform_plan_attestation.py create \
+            --plan tfplan \
+            --release-manifest ../release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE" \
+            --output plan-attestation.json
+          mkdir -p ../terraform-plan-artifact
+          cp tfplan plan-attestation.json ../terraform-plan-artifact/
+      - name: Upload reviewed production Terraform plan
+        if: inputs.action == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}-production-terraform-plan
+          path: terraform-plan-artifact/
+          if-no-files-found: error
 
       - name: Apply approved production plan
         if: inputs.action == 'apply'
@@ -149,7 +208,7 @@ jobs:
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve ../reviewed-plan/tfplan
 
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'

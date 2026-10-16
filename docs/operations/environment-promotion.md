@@ -37,9 +37,13 @@ must never be shared between development and production.
 1. Build and test the commit on `V1`.
 2. Deploy and smoke-test development.
 3. Promote the same immutable API image digest to production.
-4. Run a production Terraform plan using the production state backend.
-5. Require production environment approval before apply.
-6. Run authentication, API health, Swing, Long-Term, and Paper Trading smoke tests.
+4. Run a Terraform plan using the target environment state backend and retain the
+   resulting plan artifact with its release, environment, image, state-backend,
+   and SHA-256 attestation.
+5. Require the reviewed plan run ID when applying; the delivery workflow verifies
+   the attestation and applies that exact plan artifact without regenerating it.
+6. Require production environment approval before production apply.
+7. Run authentication, API health, Swing, Long-Term, and Paper Trading smoke tests.
 
 The development workflow has safe defaults for the existing `dev-tradvisor`
 configuration. Production values must be configured in GitHub before a
