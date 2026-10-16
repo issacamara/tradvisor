@@ -67,7 +67,7 @@ jobs:
       - name: Verify Terraform provider lock
         working-directory: terraform
         run: |
-          terraform init -backend=false -upgrade
+          terraform init -backend=false
           git diff --exit-code -- .terraform.lock.hcl
 
       - name: Validate Terraform
