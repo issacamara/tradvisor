@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx==0.28.1", "pandas==2.2.2", "pytest==8.3.5"]
+test = ["httpx==0.28.1", "numpy==2.4.6", "pandas==2.2.2", "pytest==8.3.5"]
 type = ["mypy==1.15.0"]
 lock = ["pip==24.0", "pip-tools==7.4.1"]
 firestore = []
