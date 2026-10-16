@@ -154,25 +154,29 @@ def test_unavailable_outputs_are_copied_with_manifest_coverage_and_retry_is_idem
     assert publisher.active_publication() == active
 
 
-def test_mid_copy_failure_keeps_old_batch_active_and_retry_promotes_complete_batch() -> None:
+def test_process_replacement_retry_keeps_old_batch_active_until_complete_copy() -> None:
     store = MemoryStore()
-    publisher = AnalyticalPublisher(store)
+    first_process_publisher = AnalyticalPublisher(store)
     old_batch = _batch()
-    old_active = publisher.publish(old_batch)
+    old_active = first_process_publisher.publish(old_batch)
     new_batch = _batch("2026-09-25")
     store.fail_result_write_number = store.result_write_count + 2
 
     with pytest.raises(RuntimeError, match="mid-copy"):
-        publisher.publish(new_batch)
-    assert publisher.active_publication() == old_active
+        first_process_publisher.publish(new_batch)
+    assert first_process_publisher.active_publication() == old_active
     with pytest.raises(PublicationError, match="not a complete"):
-        publisher.read_batch(new_batch.batch_id, limit=1)
+        first_process_publisher.read_batch(new_batch.batch_id, limit=1)
 
+    # A replacement process gets a fresh publisher instance but reconnects to
+    # the same durable serving store. It must be able to finish the immutable
+    # copy without changing the batch identity or promoting the partial copy.
     store.fail_result_write_number = None
-    new_active = publisher.publish(new_batch)
+    replacement_process_publisher = AnalyticalPublisher(store)
+    new_active = replacement_process_publisher.publish(new_batch)
     assert new_active.batch_id == new_batch.batch_id
-    assert publisher.active_publication() == new_active
-    assert len(publisher.read_batch(new_batch.batch_id, limit=10).items) == 3
+    assert replacement_process_publisher.active_publication() == new_active
+    assert len(replacement_process_publisher.read_batch(new_batch.batch_id, limit=10).items) == 3
 
 
 def test_incomplete_readback_never_promotes_and_a_complete_retry_can_promote() -> None:
