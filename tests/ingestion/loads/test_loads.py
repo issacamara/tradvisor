@@ -868,6 +868,26 @@ def _install_cloud_runtime(
 def _load_cloud_consumer(
     monkeypatch: pytest.MonkeyPatch, path: Path, helper: ModuleType, name: str
 ) -> ModuleType:
+    configuration_path = (
+        Path(__file__).resolve().parents[3]
+        / "archive"
+        / "legacy-ingestion"
+        / "scripts"
+        / "ingestion_configuration.py"
+    )
+    configuration_specification = importlib.util.spec_from_file_location(
+        "ingestion_configuration", configuration_path
+    )
+    assert (
+        configuration_specification is not None
+        and configuration_specification.loader is not None
+    )
+    configuration = importlib.util.module_from_spec(
+        configuration_specification
+    )
+    monkeypatch.setitem(sys.modules, "ingestion_configuration", configuration)
+    configuration_specification.loader.exec_module(configuration)
+
     framework = ModuleType("functions_framework")
     framework.http = lambda function: function  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "functions_framework", framework)
