@@ -4,6 +4,7 @@ import re
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 import functions_framework
+from ingestion_observability import emit_event, observed_entrypoint
 import pandas as pd
 import yaml
 from helper import save_dataframe_as_csv
@@ -128,7 +129,7 @@ def scrape_dividends(url):
                 if _first_value(item, "s", "symbol"):
                     all_data.append(item)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            print(f"Error parsing rbSimData JSON: {e}")
+            emit_event("ingestion.dividends.parse", "failed", error_class=type(e).__name__)
 
     # --- Method 2: Fallback to HTML table parsing ---
     if not all_data:
@@ -209,6 +210,7 @@ def scrape_dividends(url):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.dividends.scrape")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

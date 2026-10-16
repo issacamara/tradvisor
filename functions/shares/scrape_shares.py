@@ -6,6 +6,7 @@ import json
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from ingestion_observability import observed_entrypoint
 
 RAW_COLUMNS = (
     "symbol",
@@ -323,6 +324,7 @@ def _save_raw_observations(frame, collected_at: datetime, configuration=None) ->
     raise FileExistsError("could not allocate a unique share observation object")
 
 
+@observed_entrypoint("ingestion.shares.scrape")
 def entry_point(request=None):
     import yaml
     from ingestion_configuration import IngestionConfiguration, source_endpoints

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timezone
 from functools import lru_cache
 import os
+import logging
 from typing import Any, Final, cast
 from uuid import uuid4
 
@@ -45,10 +46,13 @@ from backend.read_api.readers import AnalysisPublisher
 from backend.store.firestore_sdk import FirestoreSdkStore
 from backend.store.repositories import Page
 from backend.publication.analysis import ServingStock
+from backend.observability import SanitizedLogger, configure_json_stdout
 from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 
 PRIVATE_NO_STORE: Final = "private, no-store"
 MAX_BODY_BYTES: Final = 16 * 1024
+LOGGER = configure_json_stdout(logging.getLogger(__name__))
+EVENTS = SanitizedLogger(LOGGER)
 ERROR_MESSAGES: Final = {
     "unauthenticated": "Authentication is required.", "admission_denied": "Current invitation access is required.",
     "email_unverified": "Verify your email before accessing the workspace.",
@@ -223,7 +227,11 @@ def create_app(
         content_length = request.headers.get("content-length")
         if content_length and request.method in {"POST", "PATCH", "PUT"} and int(content_length) > MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"error": {"code": "body_too_large", "message": ERROR_MESSAGES["body_too_large"], "retryable": False, "request_id": request.state.request_id}}, headers={"Cache-Control": PRIVATE_NO_STORE})
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as error:
+            EVENTS.event("api.request", "failed", attributes={"error_class": type(error).__name__})
+            raise
         if request.url.path.startswith("/v1/"):
             response.headers["Cache-Control"] = PRIVATE_NO_STORE
         return response
@@ -275,6 +283,7 @@ def create_app(
                 region=workflow_region,
             )
         except WorkflowDispatchError as error:
+            EVENTS.event("api.workflow_dispatch", "failed", attributes={"error_class": type(error).__name__})
             raise HTTPException(status_code=503, detail="service_unavailable") from error
         return {"execution": execution}
 
@@ -296,6 +305,7 @@ def create_app(
         try:
             data = read_swing(selected_analysis, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
+            EVENTS.event("api.analysis_read", "failed", attributes={"error_class": type(error).__name__})
             raise _analysis_failure(error) from error
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
 
@@ -304,6 +314,7 @@ def create_app(
         try:
             data = read_long_term(selected_analysis, objective=query.objective, limit=query.limit, cursor=query.cursor, symbol=query.symbol, sector=query.sector, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
+            EVENTS.event("api.analysis_read", "failed", attributes={"error_class": type(error).__name__})
             raise _analysis_failure(error) from error
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
 
@@ -312,6 +323,7 @@ def create_app(
         try:
             data = read_stock(selected_analysis, symbol=symbol, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
+            EVENTS.event("api.analysis_read", "failed", attributes={"error_class": type(error).__name__})
             raise _analysis_failure(error) from error
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
 
@@ -320,6 +332,7 @@ def create_app(
         try:
             data = read_chart(selected_analysis, symbol=symbol, from_date=query.from_date, to_date=query.to_date, series=query.series, cursor_secret=selected_analysis_secret, now=clock)
         except Exception as error:
+            EVENTS.event("api.chart_read", "failed", attributes={"error_class": type(error).__name__})
             raise _analysis_failure(error) from error
         return ResponseEnvelope(data=data, meta=_meta(request, clock))
 

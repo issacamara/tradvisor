@@ -4,6 +4,7 @@ from google.auth import default
 from datetime import datetime
 from bs4 import BeautifulSoup
 import functions_framework
+from ingestion_observability import emit_event, observed_entrypoint
 import os
 import re
 import gc
@@ -133,7 +134,7 @@ def get_companies_from_brvm():
             page += 1
             
         except Exception as e:
-            print(f"    Error fetching companies page {page}: {e}")
+            emit_event("ingestion.financials.companies", "failed", error_class=type(e).__name__)
             break
     
     return companies
@@ -270,7 +271,7 @@ def get_financial_reports_for_company(slug, max_year):
             page += 1
 
         except Exception as e:
-            print(f"    Error fetching reports for {slug} page {page}: {e}")
+            emit_event("ingestion.financials.reports", "failed", error_class=type(e).__name__)
             break
     
     return reports
@@ -314,7 +315,7 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         pdf_response = session.get(report['pdf_url'], headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
         
         if pdf_response.status_code != 200:
-            print(f"      Failed to download PDF: HTTP {pdf_response.status_code}")
+            emit_event("ingestion.financials.pdf_download", "failed", error_class="HttpError")
             return False
         
         pdf_content = pdf_response.content
@@ -335,7 +336,7 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         return True
         
     except Exception as e:
-        print(f"      Error downloading/uploading PDF: {e}")
+        emit_event("ingestion.financials.pdf_archive", "failed", error_class=type(e).__name__)
         return False
 
 
@@ -425,6 +426,7 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.financials.initialize")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

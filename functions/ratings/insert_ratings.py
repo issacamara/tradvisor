@@ -4,6 +4,7 @@ import functions_framework
 import pandas as pd
 
 from helper import get_project_number, move_csv_file_gcp, upsert_into_bigquery
+from ingestion_observability import observed_entrypoint
 
 
 def process_rating_files(configuration, files):
@@ -39,6 +40,7 @@ def process_rating_files(configuration, files):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.ratings.insert")
 def entry_point(request=None):
     """Load all dated rating observations without deleting older history."""
     asset = "ratings"

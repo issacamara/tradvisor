@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any, Mapping
 from uuid import uuid4
+from ingestion_observability import emit_event
 
 
 def _canonical_json(value: Mapping[str, Any]) -> bytes:
@@ -452,7 +453,7 @@ def upsert_into_bigquery(
         try:
             client.delete_table(staging_table_id, not_found_ok=True)
         except Exception as e:
-            print(f"Warning: Failed to delete staging table {staging_table_id}: {e}")
+            emit_event("ingestion.staging_cleanup", "failed", error_class=type(e).__name__)
 
 
 def upsert_and_archive(

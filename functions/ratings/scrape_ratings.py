@@ -11,6 +11,7 @@ import yaml
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 from helper import get_symbols_from_richbourse, save_dataframe_as_csv
+from ingestion_observability import observed_entrypoint
 
 
 RATINGS_URL = "https://www.richbourse.com/common/notation-financiere/index"
@@ -131,6 +132,7 @@ def scrape_ratings(url=RATINGS_URL, *, collected_at=None):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.ratings.scrape")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

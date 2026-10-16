@@ -9,6 +9,7 @@ from helper import (
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 import functions_framework
+from ingestion_observability import emit_event, observed_entrypoint
 import os
 import re
 import json
@@ -196,7 +197,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
         response = session.get(details_url, headers=html_headers, timeout=30, impersonate="chrome", allow_redirects=True)
         
         if response.status_code != 200:
-            print(f"    Failed to fetch details page: HTTP {response.status_code}")
+            emit_event("ingestion.financials.details", "failed", error_class="HttpError")
             return None
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -249,7 +250,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
         return pdf_url
         
     except Exception as e:
-        print(f"    Error extracting PDF URL from details page: {e}")
+        emit_event("ingestion.financials.pdf_url", "failed", error_class=type(e).__name__)
         return None
 
 
@@ -268,7 +269,7 @@ def extract_text_from_pdf(pdf_content):
             text = "\n".join(page.extract_text() or "" for page in pdf.pages)
         return text if text.strip() else None
     except Exception as e:
-        print(f"    pdfplumber failed: {e}")
+        emit_event("ingestion.financials.pdf_text", "failed", error_class=type(e).__name__)
     
     # Fallback to pypdf
     try:
@@ -277,7 +278,7 @@ def extract_text_from_pdf(pdf_content):
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         return text if text.strip() else None
     except Exception as e:
-        print(f"    pypdf failed: {e}")
+        emit_event("ingestion.financials.pdf_text", "failed", error_class=type(e).__name__)
     
     return None
 
@@ -448,16 +449,16 @@ Output format:
                         # Continue to try better model
                         continue
             else:
-                print(f"    OpenRouter API error: {response.status_code} - {response.text}")
+                emit_event("ingestion.financials.provider", "failed", error_class="ProviderError")
         except Exception as e:
-            print(f"    Error with {model_name}: {e}")
+            emit_event("ingestion.financials.provider", "failed", error_class=type(e).__name__)
             continue
     
     # Return best result we got, even if incomplete
     if best_result:
         print(f"    Returning best result (may be incomplete)")
     else:
-        print(f"    All models failed to extract data")
+        emit_event("ingestion.financials.provider", "failed", error_class="AllModelsFailed")
     
     return best_result
 
@@ -694,7 +695,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                 session.close()
                 
             except Exception as e:
-                print(f"    FATAL ERROR: {e}")
+                emit_event("ingestion.financials.process", "failed", error_class=type(e).__name__)
                 raise
         
         # Upsert this symbol's data to BigQuery immediately
@@ -705,7 +706,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                 print(f"  Upserted {len(df_symbol)} records to BigQuery.")
                 total_processed += len(df_symbol)
             except Exception as e:
-                print(f"  BigQuery upsert failed: {e}")
+                emit_event("ingestion.financials.upsert", "failed", error_class=type(e).__name__)
             
             # Free memory
             del df_symbol
@@ -719,6 +720,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.financials.scrape")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

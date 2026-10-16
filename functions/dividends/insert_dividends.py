@@ -1,11 +1,13 @@
 import io
 import functions_framework
 import pandas as pd
+from ingestion_observability import observed_entrypoint
 
 from helper import get_project_number, upsert_and_archive
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.dividends.insert")
 def entry_point(request=None):
     asset = "dividends"  # lowercase table name
     from ingestion_configuration import IngestionConfiguration

@@ -2,6 +2,7 @@ from curl_cffi import requests
 import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
+from ingestion_observability import observed_entrypoint
 from datetime import datetime
 from bs4 import BeautifulSoup
 import functions_framework
@@ -45,6 +46,7 @@ def scrape_brvm_indices(url):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.indices.scrape")
 def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
