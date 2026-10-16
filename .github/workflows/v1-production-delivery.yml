@@ -35,6 +35,8 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         if: inputs.action != 'frontend'
+        with:
+          terraform_version: 1.9.8
 
       - name: Authenticate to Google Cloud with workload identity
         uses: google-github-actions/auth@v2
@@ -45,7 +47,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.14.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -57,7 +59,7 @@ jobs:
         run: |
           test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || { echo "Production Firebase API key is unavailable" >&2; exit 1; }
           test -n "$NEXT_PUBLIC_TRADVISOR_API_URL" || { echo "Production API URL is unavailable" >&2; exit 1; }
-          npm ci
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run build
 
       - name: Validate production delivery inputs
@@ -127,4 +129,4 @@ jobs:
 
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
-        run: npx -y firebase-tools@latest deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+        run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
