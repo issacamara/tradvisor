@@ -5,8 +5,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8080
 
 WORKDIR /app
+
+COPY pyproject.toml /app/backend/pyproject.toml
+COPY requirements/runtime.lock /app/backend/requirements/runtime.lock
+RUN python -m pip install --no-cache-dir --require-hashes \
+    -r /app/backend/requirements/runtime.lock
+
 COPY . /app/backend/
-RUN pip install --no-cache-dir /app/backend
+RUN python -m pip install --no-cache-dir --no-deps --no-build-isolation /app/backend \
+    && sha256sum /app/backend/requirements/runtime.lock \
+      > /usr/share/tradvisor-backend-lock.sha256
 
 USER 10001:10001
 EXPOSE 8080
