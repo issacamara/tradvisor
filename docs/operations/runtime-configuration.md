@@ -9,7 +9,23 @@ a development project. The sanitized reference is in
 only and is not a runnable cloud credential file.
 
 The API container declares `TRADVISOR_RUNTIME_TARGET=api`; the batch job declares
-`daily_job`; the internal workflow dispatcher declares `workflow_dispatcher`.
+`daily_job`; trusted administrative commands declare `admin`; and the internal
+workflow dispatcher declares `workflow_dispatcher`.
+
+The administrative entry points are same-release, non-HTTP commands:
+
+```text
+python -m backend.commands.admission --operation-id ... --operator ... \
+  --subject ... --email ... --action deny|grant --generation ... \
+  --sequence ... --created-at ...
+python -m backend.commands.recovery --operation-id ... --operator ... \
+  --generation ... --sequence ... --created-at ...
+```
+
+They require an explicit target project and recovery bucket, reuse the immutable
+register and Firestore admission contracts, and emit only bounded sanitized
+results. Operation IDs are stable retry keys; they must not contain secrets,
+email addresses, tokens, or credentials.
 The dispatcher has a smaller configuration contract because it only submits
 the explicitly selected workflow and does not access Firestore, BigQuery, or
 Storage. Unsupported runtime-target names fail during application setup.
