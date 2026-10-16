@@ -73,6 +73,7 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     assert 'filename = "helper.py"' in buckets
     assert 'filename = "config.yml"' in buckets
     assert 'filename = "ingestion_configuration.py"' in buckets
+    assert 'filename = "ingestion_observability.py"' in buckets
     assert 'filename = "requirements.txt"' in buckets
     assert 'filename = "requirements.in"' in buckets
     assert 'filename = "requirements.lock"' in buckets
@@ -126,6 +127,16 @@ def test_every_retained_archive_helper_is_syntax_compilable() -> None:
     assert retained
     for source in retained:
         ast.parse(source.read_text(), filename=str(source))
+
+
+def test_every_function_entrypoint_emits_sanitized_outcome_events() -> None:
+    for name, source_root in FUNCTION_ROOTS.items():
+        source = (source_root / f"{name}.py").read_text()
+        assert "observed_entrypoint" in source
+
+    for source in SCRIPTS.glob("*.py"):
+        if "def entry_point" in source.read_text():
+            assert "observed_entrypoint" in source.read_text()
 
 
 def test_packaging_keeps_credentials_as_references_and_resources_preserved() -> None:

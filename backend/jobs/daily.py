@@ -9,6 +9,7 @@ the complete-copy gate and active-pointer transition.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Mapping, Protocol
@@ -18,6 +19,10 @@ from backend.analysis.batch import (
     StockCalculation,
     build_analytical_batch,
 )
+from backend.observability import SanitizedLogger, configure_json_stdout
+
+
+EVENTS = SanitizedLogger(configure_json_stdout(logging.getLogger(__name__)))
 
 
 class DailyError(RuntimeError):
@@ -109,13 +114,19 @@ def run_daily(*, run_id: str, factory: BatchFactory, publisher: Publisher) -> Da
     """Build and publish once; no external extraction or order creation occurs here."""
     if not run_id or len(run_id) > 128:
         raise ValueError("run_id is required and bounded")
-    batch = factory.build(run_id=run_id)
+    try:
+        batch = factory.build(run_id=run_id)
+    except Exception as error:
+        EVENTS.event("daily.build", "failed", attributes={"error_class": type(error).__name__})
+        raise DailyError("daily batch build failed") from error
     if batch is None:
         return DailyRunResult(run_id, "unchanged", None, None)
     try:
         publication = publisher.publish(batch)
     except Exception as error:
+        EVENTS.event("daily.publish", "failed", attributes={"error_class": type(error).__name__})
         raise DailyError("daily publication failed; previous publication remains active") from error
+    EVENTS.event("daily.publish", "succeeded")
     return DailyRunResult(run_id, "published", batch.batch_id, publication)
 
 

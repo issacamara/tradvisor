@@ -3,6 +3,7 @@ from __future__ import annotations
 import functions_framework
 import yaml
 from helper import save_dataframe_as_csv
+from ingestion_observability import observed_entrypoint
 
 from scrape_ratings import RATINGS_URL, scrape_ratings
 
@@ -13,6 +14,7 @@ def scrape_ratings_init(url=RATINGS_URL, *, collected_at=None):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.ratings.initialize")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

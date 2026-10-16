@@ -1,6 +1,7 @@
 import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
+from ingestion_observability import emit_event, observed_entrypoint
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -37,7 +38,7 @@ def scrape(url):
             row = [symbol]+[name]+[price]+[interest_rate]+[issue_date]+[maturity_date]
             rows.append(row)
         except Exception:
-            print("Issue with row:", t_row)
+            emit_event("ingestion.bonds.row", "failed", error_class="MalformedRow")
             continue
     return headers, rows
 
@@ -59,6 +60,7 @@ def scrape_brvm_bonds(url):
     return df
 
 @functions_framework.http
+@observed_entrypoint("ingestion.bonds.scrape")
 def entry_point(request=None):
     with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)

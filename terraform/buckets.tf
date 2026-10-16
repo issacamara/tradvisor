@@ -40,6 +40,10 @@ data "archive_file" "assets" {
     filename = "ingestion_configuration.py"
   }
   source {
+    content  = file("${local.legacy_function_root}/ingestion_observability.py")
+    filename = "ingestion_observability.py"
+  }
+  source {
     content  = file("${local.legacy_function_root}/requirements.txt")
     filename = "requirements.txt"
   }
@@ -107,6 +111,10 @@ data "archive_file" "new_function_assets" {
     filename = "ingestion_configuration.py"
   }
   source {
+    content  = file("../archive/legacy-ingestion/scripts/ingestion_observability.py")
+    filename = "ingestion_observability.py"
+  }
+  source {
     content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
     filename = "requirements.txt"
   }
@@ -165,6 +173,10 @@ data "archive_file" "initialization_assets" {
   source {
     content  = file("../archive/legacy-ingestion/scripts/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
+  }
+  source {
+    content  = file("../archive/legacy-ingestion/scripts/ingestion_observability.py")
+    filename = "ingestion_observability.py"
   }
   source {
     content  = file("../archive/legacy-ingestion/scripts/requirements.txt")

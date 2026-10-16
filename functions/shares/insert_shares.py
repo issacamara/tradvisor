@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 
 import pandas as pd
+from ingestion_observability import observed_entrypoint
 from scrape_shares import parse_localized_decimal
 
 
@@ -293,6 +294,7 @@ def process_share_files(
     return evidence
 
 
+@observed_entrypoint("ingestion.shares.insert")
 def entry_point(request=None):
     import yaml
     from helper import load_files

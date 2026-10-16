@@ -7,6 +7,7 @@ import gc
 import importlib.util
 import sys
 import functions_framework
+from ingestion_observability import emit_event, observed_entrypoint
 import yaml
 import pandas as pd
 from google.auth import default
@@ -202,7 +203,7 @@ def extract_text_from_pdf(pdf_content):
         if text.strip():
             return text
     except Exception as e:
-        print(f"    pdfplumber failed: {e}")
+        emit_event("ingestion.financials.pdf_text", "failed", error_class=type(e).__name__)
     
     try:
         from pypdf import PdfReader
@@ -211,7 +212,7 @@ def extract_text_from_pdf(pdf_content):
         if text.strip():
             return text
     except Exception as e:
-        print(f"    pypdf failed: {e}")
+        emit_event("ingestion.financials.pdf_text", "failed", error_class=type(e).__name__)
     
     return None
 
@@ -257,7 +258,7 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
         return buffer.getvalue()
 
     except Exception as e:
-        print(f"    Smart slicing failed: {e}")
+        emit_event("ingestion.financials.pdf_slice", "failed", error_class=type(e).__name__)
         return pdf_content
 
 
@@ -413,9 +414,9 @@ Each evidenced amount object has source-reported numeric "value", "currency", ex
                     else:
                         print(f"    ✗ Incomplete data from {model_name}, trying next model...")
             else:
-                print(f"    OpenRouter API error: {response.status_code} - {response.text}")
+                emit_event("ingestion.financials.provider", "failed", error_class="ProviderError")
         except Exception as e:
-            print(f"    Error with {model_name}: {e}")
+            emit_event("ingestion.financials.provider", "failed", error_class=type(e).__name__)
             continue
 
     return best_result
@@ -527,7 +528,7 @@ def extract_financials_from_pdf(
                 if chunk_result and not is_data_incomplete(chunk_result):
                     return chunk_result
     except Exception as e:
-        print(f"    Sequential chunking error: {e}")
+        emit_event("ingestion.financials.chunking", "failed", error_class=type(e).__name__)
 
     return result if result and not is_data_incomplete(result) else None
 
@@ -607,7 +608,7 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
         return True
         
     except Exception as e:
-        print(f"    Warning: Failed to move PDF to archive: {e}")
+        emit_event("ingestion.financials.pdf_archive", "failed", error_class=type(e).__name__)
         return False
 
 
@@ -730,7 +731,7 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                     save_extraction_artifact(bucket, document_revision, evidence[-1])
 
             if is_data_incomplete(financial_data):
-                print(f"    ERROR: Failed to extract data from PDF")
+                emit_event("ingestion.financials.process", "failed", error_class="ExtractionFailed")
                 total_failed += 1
                 continue
 
@@ -820,7 +821,7 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
             del financial_data
             
         except Exception as e:
-            print(f"    ERROR processing {blob.name}: {e}")
+            emit_event("ingestion.financials.process", "failed", error_class=type(e).__name__)
             total_failed += 1
             continue
         
@@ -835,6 +836,7 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
 
 
 @functions_framework.http
+@observed_entrypoint("ingestion.financials.insert")
 def entry_point(request=None):
     from ingestion_configuration import IngestionConfiguration, source_endpoints
 

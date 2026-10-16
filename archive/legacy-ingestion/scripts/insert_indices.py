@@ -1,8 +1,10 @@
 import functions_framework
 
 from helper import process_files, load_files
+from ingestion_observability import observed_entrypoint
 
 @functions_framework.http
+@observed_entrypoint("ingestion.indices.insert")
 def entry_point(request=None):
     # Load configuration from YAML file
     asset = "indices"
