@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import importlib.util
+import hashlib
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -462,13 +463,13 @@ def test_close_only_observation_keeps_permitted_missing_candle_fields() -> None:
 
 
 def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monkeypatch) -> None:
-    signature = inspect.signature(actual_helper.upsert_into_bigquery)
+    signature = inspect.signature(actual_helper.upsert_shares_and_archive)
     signature.bind(
         pd.DataFrame(),
         "project",
         "stocks",
-        loader.MARKET_TABLE,
-        list(loader.MARKET_KEYS),
+        lambda: None,
+        run_id="shares-run",
     )
 
     calls = []
@@ -480,10 +481,9 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
         frame,
         project_id,
         dataset,
-        table,
-        primary_keys,
+        archive,
         *,
-        update_matched=True,
+        run_id,
     ):
         calls.append(
             (
@@ -491,14 +491,13 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
                 len(frame),
                 project_id,
                 dataset,
-                table,
-                tuple(primary_keys),
-                update_matched,
+                run_id,
                 frame.to_dict("records"),
             )
         )
+        archive()
 
-    helper.upsert_into_bigquery = upsert
+    helper.upsert_shares_and_archive = upsert
     monkeypatch.setitem(sys.modules, "helper", helper)
     google = ModuleType("google")
     google_auth = ModuleType("google.auth")
@@ -521,9 +520,7 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
             1,
             "project",
             "stocks",
-            loader.MARKET_TABLE,
-            loader.MARKET_KEYS,
-            True,
+            "shares-" + hashlib.sha256(b"shares.csv").hexdigest(),
             [
                 {
                     "symbol": "ABC",
@@ -545,7 +542,7 @@ def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) ->
     calls = []
     helper = ModuleType("helper")
     helper.get_project_number = lambda _project: "123"
-    helper.upsert_into_bigquery = lambda *_args, **_kwargs: calls.append("upsert")
+    helper.upsert_shares_and_archive = lambda *_args, **_kwargs: calls.append("upsert")
     helper.move_csv_file_gcp = lambda *args: calls.append(("archive", *args))
     monkeypatch.setitem(sys.modules, "helper", helper)
     google = ModuleType("google")
@@ -582,8 +579,14 @@ def test_retry_after_archive_failure_does_not_duplicate_canonical_observations(m
         if archive_attempts == 1:
             raise OSError("archive move failed after data commit")
 
+
     helper.move_csv_file_gcp = archive
-    helper.upsert_into_bigquery = upsert
+
+    def staged_upsert(frame, _project, _dataset, archive_callback, *, run_id):
+        upsert(frame)
+        archive_callback()
+
+    helper.upsert_shares_and_archive = staged_upsert
     monkeypatch.setitem(sys.modules, "helper", helper)
     google = ModuleType("google")
     google_auth = ModuleType("google.auth")
@@ -614,7 +617,11 @@ def test_bigquery_failure_leaves_gcs_object_retryable(monkeypatch) -> None:
         if len(calls) == 1:
             raise RuntimeError("BigQuery unavailable")
 
-    helper.upsert_into_bigquery = upsert
+    def staged_upsert(_frame, _project, _dataset, archive_callback, *, run_id):
+        upsert()
+        archive_callback()
+
+    helper.upsert_shares_and_archive = staged_upsert
     helper.move_csv_file_gcp = lambda *_args: calls.append("archive")
     monkeypatch.setitem(sys.modules, "helper", helper)
     google = ModuleType("google")

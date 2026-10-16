@@ -48,6 +48,8 @@ class _FakeBigQueryClient:
         self.tables: dict[str, list[dict[str, Any]]] = {}
         self.load_calls: list[tuple[str, Any]] = []
         self.merge_queries: list[str] = []
+        self.cleanup_queries: list[str] = []
+        self.cleanup_run_ids: list[str] = []
         self.select_queries: list[str] = []
         self.deleted_tables: list[str] = []
         self.load_error: Exception | None = None
@@ -63,16 +65,32 @@ class _FakeBigQueryClient:
         self, dataframe: pd.DataFrame, table_id: str, *, job_config: Any
     ) -> _Job:
         self.load_calls.append((table_id, job_config))
-        self.stages[table_id] = dataframe.to_dict(orient="records")
+        rows = dataframe.to_dict(orient="records")
+        if job_config.write_disposition == "WRITE_APPEND":
+            self.stages.setdefault(table_id, []).extend(rows)
+        else:
+            self.stages[table_id] = rows
         return _Job(error=self.load_error)
 
     def query(self, sql: str, *, job_config: Any) -> _Job:
+        parameters = {
+            parameter.name: parameter.value
+            for parameter in getattr(job_config, "query_parameters", [])
+        }
+        if sql.lstrip().startswith("DELETE FROM"):
+            table_match = re.search(r"DELETE FROM `([^`]+)`", sql)
+            assert table_match is not None
+            self.cleanup_queries.append(sql)
+            self.cleanup_run_ids.append(parameters["run_id"])
+            table_id = table_match.group(1)
+            self.stages[table_id] = [
+                row
+                for row in self.stages.get(table_id, [])
+                if row.get("run_id") != parameters["run_id"]
+            ]
+            return _Job()
         if "FROM `project.stocks.financial_report_revisions`" in sql:
             self.select_queries.append(sql)
-            parameters = {
-                parameter.name: parameter.value
-                for parameter in job_config.query_parameters
-            }
             table_match = re.search(r"FROM `([^`]+)`", sql)
             assert table_match is not None
             rows = self.tables.get(table_match.group(1), [])
@@ -93,7 +111,9 @@ class _FakeBigQueryClient:
             )
             return _Job(result=[dict(match)] if match else [])
         self.merge_queries.append(sql)
-        staging_id = re.search(r"USING `([^`]+)`", sql)
+        staging_id = re.search(r"USING `([^`]+)`", sql) or re.search(
+            r"FROM `([^`]+)`", sql
+        )
         target_id = re.search(r"MERGE `([^`]+)`", sql)
         assert staging_id is not None and target_id is not None
         if self.merge_error:
@@ -102,7 +122,13 @@ class _FakeBigQueryClient:
         target_rows = self.tables.setdefault(target_id.group(1), [])
         on_clause = sql.split("WHEN", maxsplit=1)[0]
         keys = re.findall(r"target\.`([^`]+)` = source\.`[^`]+`", on_clause)
-        for incoming in self.stages[staging_id.group(1)]:
+        source_rows = self.stages[staging_id.group(1)]
+        if "@run_id" in sql:
+            source_rows = [
+                row for row in source_rows if row.get("run_id") == parameters["run_id"]
+            ]
+        for incoming in source_rows:
+            incoming = {key: value for key, value in incoming.items() if key != "run_id"}
             key = tuple(incoming[column] for column in keys)
             current = next(
                 (
@@ -136,7 +162,9 @@ def loader(monkeypatch: pytest.MonkeyPatch) -> tuple[ModuleType, _FakeBigQueryCl
         ScalarQueryParameter=lambda name, type_, value: SimpleNamespace(
             name=name, type=type_, value=value
         ),
-        WriteDisposition=SimpleNamespace(WRITE_TRUNCATE="WRITE_TRUNCATE"),
+        WriteDisposition=SimpleNamespace(
+            WRITE_APPEND="WRITE_APPEND", WRITE_TRUNCATE="WRITE_TRUNCATE"
+        ),
     )
     google = ModuleType("google")
     google_cloud = ModuleType("google.cloud")
@@ -306,6 +334,72 @@ def test_retries_and_revision_batches_use_isolated_staging(
     }
     assert len(set(client.deleted_tables)) == 3
     assert all("DELETE FROM" not in query.upper() for query in client.merge_queries)
+
+
+def _share_rows(symbol: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "symbol": symbol,
+                "name": f"{symbol} SA",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 100.0,
+                "date": "2026-10-16",
+            }
+        ]
+    )
+
+
+def test_share_runs_use_managed_staging_without_cross_contamination(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    staging_id = "project.stocks.shares_staging"
+    client.stages[staging_id] = [{"run_id": "other-run", **_share_rows("OTHER").iloc[0]}]
+
+    helper.upsert_shares_and_archive(
+        _share_rows("ABC"), "project", "stocks", lambda: None, run_id="run-one"
+    )
+    helper.upsert_shares_and_archive(
+        _share_rows("XYZ"), "project", "stocks", lambda: None, run_id="run-two"
+    )
+
+    assert [call[0] for call in client.load_calls] == [staging_id, staging_id]
+    assert all(call[1].write_disposition == "WRITE_APPEND" for call in client.load_calls)
+    assert {row["symbol"] for row in client.tables["project.stocks.shares"]} == {
+        "ABC",
+        "XYZ",
+    }
+    assert client.stages[staging_id] == [
+        {"run_id": "other-run", **_share_rows("OTHER").iloc[0]}
+    ]
+    assert all("WHERE `run_id` = @run_id" in query for query in client.merge_queries)
+    assert client.cleanup_run_ids == ["run-one", "run-one", "run-two", "run-two"]
+    assert client.deleted_tables == []
+
+
+def test_missing_managed_share_staging_fails_before_archive(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    client.load_error = RuntimeError("Not found: project.stocks.shares_staging")
+    archived: list[bool] = []
+
+    with pytest.raises(RuntimeError, match="Not found"):
+        helper.upsert_shares_and_archive(
+            _share_rows("ABC"),
+            "project",
+            "stocks",
+            lambda: archived.append(True),
+            run_id="missing-stage",
+        )
+
+    assert archived == []
+    assert client.merge_queries == []
+    assert client.deleted_tables == []
 
 
 def test_conflicting_duplicate_source_keys_are_rejected_before_bigquery(
