@@ -289,7 +289,7 @@ def scrape_brvm_shares(
     return pd.DataFrame(observations)
 
 
-def _save_raw_observations(frame, collected_at: datetime) -> str:
+def _save_raw_observations(frame, collected_at: datetime, configuration=None) -> str:
     """Write each scrape as a new GCS object; a retry must never replace evidence."""
     if collected_at.tzinfo is None or collected_at.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
@@ -301,8 +301,13 @@ def _save_raw_observations(frame, collected_at: datetime) -> str:
     from helper import get_project_number
 
     _, project_id = default()
-    project_number = get_project_number(project_id)
-    bucket = storage.Client().bucket(f"data-{project_number}")
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
+        bucket_name = configuration.data_bucket
+    else:
+        bucket_name = f"data-{get_project_number(project_id)}"
+    client = storage.Client(project=project_id) if configuration is not None else storage.Client()
+    bucket = client.bucket(bucket_name)
     for suffix in range(1000):
         suffix_text = "" if suffix == 0 else f"-{suffix}"
         filename = f"shares-{stamp}{suffix_text}.csv"
@@ -320,16 +325,19 @@ def _save_raw_observations(frame, collected_at: datetime) -> str:
 
 def entry_point(request=None):
     import yaml
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
 
     with open("config.yml", "r") as file:
-        config = yaml.safe_load(file)
+        endpoints = source_endpoints(yaml.safe_load(file))
     collected_at = datetime.now(timezone.utc)
     df = scrape_brvm_shares(
-        config["url"]["shares"],
+        endpoints["shares"],
         collected_at=collected_at,
-        session_evidence_url=config["url"].get("brvm_session", BRVM_SESSION_URL),
+        session_evidence_url=endpoints["brvm_session"],
     )
-    return _save_raw_observations(df, collected_at)
+    return _save_raw_observations(df, collected_at, configuration)
 
 
 if __name__ == "__main__":

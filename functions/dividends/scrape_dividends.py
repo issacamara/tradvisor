@@ -210,11 +210,14 @@ def scrape_dividends(url):
 
 @functions_framework.http
 def entry_point(request=None):
-    with open("config.yml", "r") as file:
-        config = yaml.safe_load(file)
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
 
-    df = scrape_dividends(config["url"]["dividends"])
-    return save_dataframe_as_csv(df, "dividends", config)
+    configuration = IngestionConfiguration.from_environment()
+    with open("config.yml", "r") as file:
+        endpoints = source_endpoints(yaml.safe_load(file))
+
+    df = scrape_dividends(endpoints["dividends"])
+    return save_dataframe_as_csv(df, "dividends", configuration)
 
 
 if __name__ == "__main__":

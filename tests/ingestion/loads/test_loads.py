@@ -832,6 +832,23 @@ class _SourceBlob:
 def _install_cloud_runtime(
     monkeypatch: pytest.MonkeyPatch, blobs: list[_SourceBlob]
 ) -> None:
+    monkeypatch.setenv("TRADVISOR_RUNTIME_TARGET", "ingestion")
+    monkeypatch.setenv("TRADVISOR_ENVIRONMENT", "development")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "fixture-project")
+    monkeypatch.setenv("TRADVISOR_TARGET_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv("TRADVISOR_ENVIRONMENT_PROJECT_ID", "fixture-project")
+    monkeypatch.setenv(
+        "TRADVISOR_INGESTION_SERVICE_ACCOUNT",
+        "fixture-ingestion@fixture-project.iam.gserviceaccount.com",
+    )
+    monkeypatch.setenv("TRADVISOR_INGESTION_DATA_BUCKET", "fixture-data-bucket")
+    monkeypatch.setenv("TRADVISOR_INGESTION_ARCHIVE_BUCKET", "fixture-archive-bucket")
+    monkeypatch.setenv("TRADVISOR_INGESTION_DATASET", "stocks")
+    for asset in ("SHARES", "DIVIDENDS", "FINANCIALS", "RATINGS"):
+        monkeypatch.setenv(
+            f"TRADVISOR_INGESTION_{asset}_TABLE",
+            f"fixture-project.stocks.{asset.lower()}",
+        )
     bucket = SimpleNamespace(list_blobs=lambda prefix: blobs)
     storage = ModuleType("google.cloud.storage")
     storage.Client = lambda **kwargs: SimpleNamespace(bucket=lambda name: bucket)  # type: ignore[attr-defined]
@@ -851,6 +868,26 @@ def _install_cloud_runtime(
 def _load_cloud_consumer(
     monkeypatch: pytest.MonkeyPatch, path: Path, helper: ModuleType, name: str
 ) -> ModuleType:
+    configuration_path = (
+        Path(__file__).resolve().parents[3]
+        / "archive"
+        / "legacy-ingestion"
+        / "scripts"
+        / "ingestion_configuration.py"
+    )
+    configuration_specification = importlib.util.spec_from_file_location(
+        "ingestion_configuration", configuration_path
+    )
+    assert (
+        configuration_specification is not None
+        and configuration_specification.loader is not None
+    )
+    configuration = importlib.util.module_from_spec(
+        configuration_specification
+    )
+    monkeypatch.setitem(sys.modules, "ingestion_configuration", configuration)
+    configuration_specification.loader.exec_module(configuration)
+
     framework = ModuleType("functions_framework")
     framework.http = lambda function: function  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "functions_framework", framework)
@@ -877,8 +914,8 @@ def test_dividend_entrypoint_retries_gcs_source_without_local_fallback(
     def archive(source_bucket: str, archive_bucket: str, blob_name: str) -> None:
         nonlocal archive_attempts
         assert (source_bucket, archive_bucket, blob_name) == (
-            "data-123",
-            "archive-123",
+            "fixture-data-bucket",
+            "fixture-archive-bucket",
             blob.name,
         )
         archive_attempts += 1
@@ -935,8 +972,8 @@ def test_rating_entrypoint_preserves_revision_identity_across_gcs_retry(
     def archive(source_bucket: str, archive_bucket: str, blob_name: str) -> None:
         nonlocal archive_attempts
         assert (source_bucket, archive_bucket, blob_name) == (
-            "data-123",
-            "archive-123",
+            "fixture-data-bucket",
+            "fixture-archive-bucket",
             blob.name,
         )
         archive_attempts += 1

@@ -655,17 +655,27 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
         return False
 
 
-def process_financial_pdfs(openrouter_api_key):
+def process_financial_pdfs(openrouter_api_key, configuration=None):
     """Process PDF files from GCS and extract financial data to BigQuery."""
     from google.cloud import storage
 
     credentials, project_id = default()
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
+        project_id = configuration.project_id
+    else:
+        from helper import get_project_number
+
+        project_number = get_project_number(project_id)
     
     # Get storage bucket
-    from helper import get_project_number
-    project_number = get_project_number(project_id)
     storage_client = storage.Client(credentials=credentials)
-    bucket = storage_client.bucket(f"data-{project_number}")
+    bucket_name = (
+        configuration.data_bucket
+        if configuration is not None
+        else f"data-{project_number}"
+    )
+    bucket = storage_client.bucket(bucket_name)
     
     # Get existing data in BigQuery to avoid duplicates
     print("Checking existing data in BigQuery...")
@@ -718,7 +728,12 @@ def process_financial_pdfs(openrouter_api_key):
             archive_name = (
                 f"financial_report_revisions/{symbol}/{fiscal_year}/{document_revision}.pdf"
             )
-            document_link = f"gs://archive-{project_number}/{archive_name}"
+            archive_bucket = (
+                configuration.archive_bucket
+                if configuration is not None
+                else f"archive-{project_number}"
+            )
+            document_link = f"gs://{archive_bucket}/{archive_name}"
 
             artifact = (
                 load_extraction_artifact(bucket, document_revision)
@@ -862,12 +877,17 @@ def process_financial_pdfs(openrouter_api_key):
 
 @functions_framework.http
 def entry_point(request=None):
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
+    with open("config.yml", "r") as file:
+        source_endpoints(yaml.safe_load(file))
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     
     if not openrouter_api_key:
         return "Error: OPENROUTER_API_KEY environment variable not set\n", 500
     
-    process_financial_pdfs(openrouter_api_key)
+    process_financial_pdfs(openrouter_api_key, configuration)
     
     return "Financial data extraction complete.\n"
 

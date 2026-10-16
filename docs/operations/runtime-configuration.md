@@ -65,6 +65,21 @@ development process, set its explicit development target and use only
 development-scoped credentials and resources. A mismatch between the expected
 and actual project fails before BigQuery, Firestore, or Storage client creation.
 
+## Ingestion functions
+
+Packaged ingestion functions use the same explicit environment/project binding
+as the backend, with `TRADVISOR_RUNTIME_TARGET=ingestion`. Their archive
+contains `ingestion_configuration.py` and the secret-free source endpoint map
+in `config.yml`; every entry point validates both before a source, Storage, or
+BigQuery client is used. The required process settings are
+`TRADVISOR_INGESTION_SERVICE_ACCOUNT`, distinct
+`TRADVISOR_INGESTION_DATA_BUCKET` and `TRADVISOR_INGESTION_ARCHIVE_BUCKET`,
+`TRADVISOR_INGESTION_DATASET`, and the fully qualified project-bound tables
+for shares, dividends, financials, and ratings. Terraform supplies the named
+workload identity and these targets; it rejects an empty or cross-environment
+project binding. Do not derive buckets from a project number, discover a
+bucket, or substitute a source endpoint at runtime.
+
 ## Rule version boundary
 
 Deployment configuration selects service targets and credentials only. It must

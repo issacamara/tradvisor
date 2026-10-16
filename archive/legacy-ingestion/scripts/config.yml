@@ -7,3 +7,5 @@ url:
     volumes: https://www.brvm.org/en/volumes/0
     indices: https://www.brvm.org/en/indices
     dividends: https://www.richbourse.com/common/dividende/index
+    financials: https://www.richbourse.com/common/actualite-categorie/index/etats-financiers
+    ratings: https://www.richbourse.com/common/notation/index

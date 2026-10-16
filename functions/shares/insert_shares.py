@@ -198,6 +198,7 @@ def _normalize_collected_at(value: object) -> str:
 def _load_then_archive(
     file,
     raw_frame: pd.DataFrame,
+    configuration=None,
 ) -> dict[str, int]:
     from helper import (
         get_project_number,
@@ -210,16 +211,24 @@ def _load_then_archive(
     from google.auth import default
 
     _, project_id = default()
+    if configuration is not None:
+        configuration.validate_application_default_project(project_id)
     if not market_rows.empty:
         upsert_into_bigquery(
             market_rows,
             project_id,
-            "stocks",
-            MARKET_TABLE,
+            configuration.dataset if configuration is not None else "stocks",
+            configuration.table_for("shares").rsplit(".", 1)[1]
+            if configuration is not None
+            else MARKET_TABLE,
             list(MARKET_KEYS),
         )
-    project_number = get_project_number(project_id)
-    move_csv_file_gcp(f"data-{project_number}", f"archive-{project_number}", file.name)
+    project_number = get_project_number(project_id) if configuration is None else None
+    move_csv_file_gcp(
+        configuration.data_bucket if configuration is not None else f"data-{project_number}",
+        configuration.archive_bucket if configuration is not None else f"archive-{project_number}",
+        file.name,
+    )
     return evidence
 
 
@@ -257,24 +266,29 @@ def project_market_rows(raw_frame: pd.DataFrame, normalized: pd.DataFrame) -> pd
     return market_rows.drop_duplicates(list(MARKET_KEYS), keep="last").loc[:, MARKET_COLUMNS]
 
 
-def process_share_files(files: Iterable[object]) -> list[dict[str, int]]:
+def process_share_files(
+    files: Iterable[object], configuration=None
+) -> list[dict[str, int]]:
     """Archive each complete raw file, loading only verified observations."""
     import pandas as pd
 
     evidence = []
     for file in files:
         raw_frame = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
-        evidence.append(_load_then_archive(file, raw_frame))
+        evidence.append(_load_then_archive(file, raw_frame, configuration))
     return evidence
 
 
 def entry_point(request=None):
     import yaml
     from helper import load_files
+    from ingestion_configuration import IngestionConfiguration, source_endpoints
+
+    configuration = IngestionConfiguration.from_environment()
 
     with open("config.yml", "r") as file:
-        config = yaml.safe_load(file)
-    process_share_files(load_files(config, "shares"))
+        source_endpoints(yaml.safe_load(file))
+    process_share_files(load_files(configuration, "shares"), configuration)
     return "Share observations archived; only verified rows were loaded.\n"
 
 
