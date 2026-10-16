@@ -20,6 +20,7 @@ def validate(root: Path) -> None:
     ci = (root / ".github/workflows/ci.yml").read_text()
     development = (root / ".github/workflows/v1-development-delivery.yml").read_text()
     production = (root / ".github/workflows/v1-production-delivery.yml").read_text()
+    plan_attestation = (root / "scripts/deployment/terraform_plan_attestation.py").read_text()
     release = (root / ".github/workflows/v1-release.yml").read_text()
     dockerfile = (root / "backend/Dockerfile").read_text()
     manifest = (root / "scripts/release/manifest.py").read_text()
@@ -45,6 +46,17 @@ def validate(root: Path) -> None:
         raise ValueError("release manifest must require immutable SHA-256 backend digests")
     if 'REQUIRED_ENVIRONMENTS = frozenset({"development", "production"})' not in manifest:
         raise ValueError("release manifest must bind both environment artifacts")
+    for workflow in (development, production):
+        if "terraform_plan_run_id" not in workflow:
+            raise ValueError("delivery workflows must accept an exact reviewed plan run")
+        if "terraform_plan_attestation.py verify" not in workflow:
+            raise ValueError("apply must verify the Terraform plan attestation")
+        if "terraform_plan_attestation.py create" not in workflow:
+            raise ValueError("plan must publish a Terraform plan attestation")
+        if "terraform apply -auto-approve ../reviewed-plan/tfplan" not in workflow:
+            raise ValueError("apply must consume the reviewed Terraform plan")
+    if "def validate_attestation" not in plan_attestation or "terraform_plan_sha256" not in plan_attestation:
+        raise ValueError("Terraform plan attestation must bind the exact plan checksum")
 
 
 if __name__ == "__main__":
