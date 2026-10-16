@@ -12,9 +12,18 @@ on:
         description: "Immutable API image URI, preferably the digest promoted from development"
         required: false
         type: string
+      release_id:
+        description: "Release artifact bundle identifier"
+        required: true
+        type: string
+      release_run_id:
+        description: "GitHub Actions run ID that produced the release bundle"
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -32,6 +41,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
 
       - uses: hashicorp/setup-terraform@v3
         if: inputs.action != 'frontend'
@@ -51,16 +67,14 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build static frontend
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL }}
+      - name: Verify and unpack production frontend artifact
         run: |
-          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || { echo "Production Firebase API key is unavailable" >&2; exit 1; }
-          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL" || { echo "Production API URL is unavailable" >&2; exit 1; }
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build
+          python3 scripts/release/manifest.py \
+            --verify-manifest release/manifest/release-manifest.json \
+            --artifact-root release
+          rm -rf frontend/out
+          mkdir -p frontend/out
+          tar -xf release/frontend/production.tar -C frontend/out
 
       - name: Validate production delivery inputs
         if: inputs.action != 'frontend'
@@ -69,8 +83,8 @@ jobs:
         run: |
           test -n "$API_IMAGE" || { echo "api_image is required for production Terraform delivery" >&2; exit 1; }
           case "$API_IMAGE" in
-            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*) ;;
-            *) echo "api_image must target the production Artifact Registry" >&2; exit 1;;
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*@sha256:*) ;;
+            *) echo "api_image must be an immutable digest in the production Artifact Registry" >&2; exit 1;;
           esac
 
       - name: Validate production delivery context
@@ -85,6 +99,16 @@ jobs:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
           DEPLOY_ACTION: ${{ inputs.action }}
         run: bash scripts/deployment/guard.sh
+      - name: Bind delivery image to the verified release manifest
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          expected_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
+          case "$API_IMAGE" in
+            *@"$expected_digest") ;;
+            *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
+          esac
 
       - name: Initialize Terraform backend
         if: inputs.action != 'frontend'

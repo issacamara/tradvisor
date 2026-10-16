@@ -20,7 +20,9 @@ def validate(root: Path) -> None:
     ci = (root / ".github/workflows/ci.yml").read_text()
     development = (root / ".github/workflows/v1-development-delivery.yml").read_text()
     production = (root / ".github/workflows/v1-production-delivery.yml").read_text()
+    release = (root / ".github/workflows/v1-release.yml").read_text()
     dockerfile = (root / "backend/Dockerfile").read_text()
+    manifest = (root / "scripts/release/manifest.py").read_text()
 
     if ci.count(f'python-version: "{PYTHON_VERSION}"') != 2:
         raise ValueError("CI must pin both Python setup steps")
@@ -31,10 +33,18 @@ def validate(root: Path) -> None:
             raise ValueError("all Node.js setup steps must use the pinned runtime")
         if "firebase-tools@" in workflow and f"firebase-tools@{FIREBASE_TOOLS_VERSION}" not in workflow:
             raise ValueError("Firebase CLI references must use the pinned version")
+    if 'uses: actions/upload-artifact@v4' not in release:
+        raise ValueError("release workflow must upload the immutable artifact bundle")
+    if 'manifest.py' not in release or 'package_artifact.py' not in release:
+        raise ValueError("release workflow must package artifacts and create a manifest")
     if f"FROM {PYTHON_BASE}" not in dockerfile:
         raise ValueError("backend image must use the pinned Python digest")
     if re.search(r"firebase-tools@(latest|[0-9]+(?:\.[0-9]+)?(?:\.[0-9]+)?)\b", ci):
         raise ValueError("CI contains a mutable or non-exact Firebase CLI reference")
+    if 'IMAGE_DIGEST = re.compile(r"^sha256:' not in manifest:
+        raise ValueError("release manifest must require immutable SHA-256 backend digests")
+    if 'REQUIRED_ENVIRONMENTS = frozenset({"development", "production"})' not in manifest:
+        raise ValueError("release manifest must bind both environment artifacts")
 
 
 if __name__ == "__main__":
