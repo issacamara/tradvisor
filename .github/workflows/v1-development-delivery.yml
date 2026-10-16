@@ -12,9 +12,18 @@ on:
         description: "Immutable development API image URI"
         required: false
         type: string
+      release_id:
+        description: "Release artifact bundle identifier"
+        required: true
+        type: string
+      release_run_id:
+        description: "GitHub Actions run ID that produced the release bundle"
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -31,6 +40,13 @@ jobs:
       name: ${{ (inputs.action == 'apply' || inputs.action == 'frontend') && 'development-apply' || 'development-plan' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
       - uses: hashicorp/setup-terraform@v3
         if: inputs.action != 'frontend'
         with:
@@ -46,42 +62,14 @@ jobs:
           node-version: 22.14.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Build static frontend
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
+      - name: Verify and unpack development frontend artifact
         run: |
-          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || { echo "Development Firebase API key is unavailable" >&2; exit 1; }
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build
-      - name: Build development API image
-        if: inputs.action == 'apply'
-        env:
-          API_IMAGE: ${{ inputs.api_image }}
-        run: |
-          BUILD_ID="$(gcloud builds submit backend \
-            --project="$GCP_PROJECT_ID" \
-            --region="$GCP_REGION" \
-            --tag="$API_IMAGE" \
-            --async \
-            --format='value(id)' \
-            --quiet)"
-          test -n "$BUILD_ID"
-          while :; do
-            STATUS="$(gcloud builds describe "$BUILD_ID" \
-              --project="$GCP_PROJECT_ID" \
-              --region="$GCP_REGION" \
-              --format='value(status)')"
-            case "$STATUS" in
-              SUCCESS) break ;;
-              FAILURE|CANCELLED|EXPIRED|TIMEOUT)
-                echo "Cloud Build $BUILD_ID ended with status $STATUS" >&2
-                exit 1
-                ;;
-              *) sleep 10 ;;
-            esac
-          done
+          python3 scripts/release/manifest.py \
+            --verify-manifest release/manifest/release-manifest.json \
+            --artifact-root release
+          rm -rf frontend/out
+          mkdir -p frontend/out
+          tar -xf release/frontend/development.tar -C frontend/out
       - name: Validate delivery inputs
         if: inputs.action != 'frontend'
         env:
@@ -89,8 +77,8 @@ jobs:
         run: |
           test -n "$API_IMAGE" || { echo "api_image is required for delivery" >&2; exit 1; }
           case "$API_IMAGE" in
-            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*) ;;
-            *) echo "api_image must target the configured environment Artifact Registry" >&2; exit 1;;
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*@sha256:*) ;;
+            *) echo "api_image must be an immutable digest in the configured environment Artifact Registry" >&2; exit 1;;
           esac
       - name: Validate delivery context
         if: inputs.action != 'frontend'
@@ -105,6 +93,16 @@ jobs:
           DEPLOY_ACTION: ${{ inputs.action }}
           API_IMAGE: ${{ inputs.api_image }}
         run: bash scripts/deployment/guard.sh
+      - name: Bind delivery image to the verified release manifest
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          expected_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
+          case "$API_IMAGE" in
+            *@"$expected_digest") ;;
+            *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
+          esac
       - name: Initialize Terraform backend
         if: inputs.action != 'frontend'
         working-directory: terraform

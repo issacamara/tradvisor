@@ -1,0 +1,126 @@
+name: Build V1 release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Immutable release identifier"
+        required: true
+        type: string
+      api_image:
+        description: "Artifact Registry image URI to create and promote"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    if: github.ref_name == 'V1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11.11
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+      - name: Prepare release directories
+        run: mkdir -p dist/functions dist/frontend dist/manifest
+      - name: Build and push backend image by release tag
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+        run: |
+          case "$API_IMAGE" in
+            "$GCP_REGION-docker.pkg.dev"/*:*) ;;
+            *) echo "api_image must target the configured Artifact Registry" >&2; exit 1;;
+          esac
+          gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+          docker build --tag "$API_IMAGE" --iidfile dist/backend-image.id backend
+          docker push "$API_IMAGE"
+          gcloud artifacts docker images describe "$API_IMAGE" \
+            --format='value(image_summary.digest)' > dist/backend-registry.digest
+          grep -Eq '^sha256:[0-9a-f]{64}$' dist/backend-registry.digest
+      - name: Retain backend image artifact
+        run: |
+          docker save --output dist/backend-image.tar "$(cat dist/backend-image.id)"
+      - name: Package locked function archives
+        run: |
+          for function in shares dividends financials ratings; do
+            python3 scripts/release/package_artifact.py \
+              --source "functions/$function" \
+              --target "function:$function" \
+              --output "dist/functions/$function.tar"
+          done
+      - name: Build development frontend artifact
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.DEV_TRADVISOR_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          python3 ../scripts/release/package_artifact.py \
+            --source out --target development --output ../dist/frontend/development.tar
+      - name: Build production frontend artifact
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.PROD_TRADVISOR_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          rm -rf .next out
+          npm run build
+          python3 ../scripts/release/package_artifact.py \
+            --source out --target production --output ../dist/frontend/production.tar
+      - name: Create release manifest
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          API_IMAGE: ${{ inputs.api_image }}
+          DEV_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          DEV_TRADVISOR_API_URL: ${{ vars.DEV_TRADVISOR_API_URL }}
+          PROD_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
+          PROD_TRADVISOR_API_URL: ${{ vars.PROD_TRADVISOR_API_URL }}
+        run: |
+          dev_config="$(printf '%s' "$DEV_FIREBASE_API_KEY|$DEV_TRADVISOR_API_URL" | sha256sum | cut -d' ' -f1)"
+          prod_config="$(printf '%s' "$PROD_FIREBASE_API_KEY|$PROD_TRADVISOR_API_URL" | sha256sum | cut -d' ' -f1)"
+          python3 scripts/release/manifest.py \
+            --release-id "$RELEASE_ID" \
+            --commit "$GITHUB_SHA" \
+            --backend-digest "$(cat dist/backend-registry.digest)" \
+            --function-archive shares=dist/functions/shares.tar \
+            --function-archive dividends=dist/functions/dividends.tar \
+            --function-archive financials=dist/functions/financials.tar \
+            --function-archive ratings=dist/functions/ratings.tar \
+            --frontend-artifact development=dist/frontend/development.tar \
+            --frontend-artifact production=dist/frontend/production.tar \
+            --rule-version swing=swing-v1 \
+            --rule-version long_term=long-term-v1 \
+            --toolchain "python=$(python --version | awk '{print $2}')" \
+            --toolchain "node=$(node --version | sed 's/^v//')" \
+            --config-fingerprint "development=$dev_config" \
+            --config-fingerprint "production=$prod_config" \
+            --output dist/manifest/release-manifest.json
+      - name: Upload immutable release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
