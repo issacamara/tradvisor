@@ -44,6 +44,14 @@ data "archive_file" "assets" {
     filename = "requirements.txt"
   }
   source {
+    content  = file("${local.legacy_function_root}/requirements.in")
+    filename = "requirements.in"
+  }
+  source {
+    content  = file("${local.legacy_function_root}/requirements.lock")
+    filename = "requirements.lock"
+  }
+  source {
     content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
     filename = "main.py"
   }
@@ -103,6 +111,14 @@ data "archive_file" "new_function_assets" {
     filename = "requirements.txt"
   }
   source {
+    content  = file("../archive/legacy-ingestion/scripts/requirements.in")
+    filename = "requirements.in"
+  }
+  source {
+    content  = file("../archive/legacy-ingestion/scripts/requirements.lock")
+    filename = "requirements.lock"
+  }
+  source {
     content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
     filename = "mapping.csv"
   }
@@ -153,6 +169,14 @@ data "archive_file" "initialization_assets" {
   source {
     content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
     filename = "requirements.txt"
+  }
+  source {
+    content  = file("../archive/legacy-ingestion/scripts/requirements.in")
+    filename = "requirements.in"
+  }
+  source {
+    content  = file("../archive/legacy-ingestion/scripts/requirements.lock")
+    filename = "requirements.lock"
   }
   source {
     content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
