@@ -50,7 +50,7 @@ jobs:
         run: mypy --strict backend/store tests/store
 
       - name: Check Python syntax
-        run: python -m compileall archive/legacy-ingestion/scripts
+        run: python -m compileall archive/legacy-ingestion/scripts functions
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

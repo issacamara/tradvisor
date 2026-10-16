@@ -2,6 +2,8 @@
 
 **Status:** Active V1 architecture
 
+**Engineering amendment:** TF-1, approved 2026-10-12 and incorporated 2026-10-14. R1–R7 define the target design; implementation and compliance verification remain pending.
+
 ## Scope
 
 Tradvisor V1 is a read-only BRVM research application with two equal workflows:
@@ -32,7 +34,7 @@ The static Next.js application uses authenticated client requests to the Cloud R
 
 The approved [v1.1 cloud-only ingestion amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6110931290) supersedes future V1 requirements for a separate share-price revision store and point-in-time share-correction replay. Completed #14 and #42 remain historical delivery records; this amendment does not delete or reclassify their delivered work.
 
-1. Existing ingestion functions retain incoming files and raw source evidence in GCS, then load company, share, dividend, financial, and rating data into `dev-tradvisor.stocks`. Canonical `shares` observations are keyed by symbol and date; corrections may update that row while retaining the history needed for charts and indicator warm-up. V1 does not persist a separate share-price revision store or provide point-in-time replay of share corrections.
+1. Existing ingestion functions retain incoming files and raw source evidence in GCS, then load company, share, dividend, financial, and rating data into the configured environment's Terraform-managed `stocks` dataset. Canonical `shares` observations are keyed by symbol and date; corrections may update that row while retaining the history needed for charts and indicator warm-up. V1 does not persist a separate share-price revision store or provide point-in-time replay of share corrections.
 2. A daily analytical job reads only the necessary partitioned BigQuery history, calculates indicators and Long-Term inputs, and writes an immutable publication batch.
 3. The job validates the candidate batch and atomically updates `publication_state/current` only after all required serving documents are present.
 4. Firestore serves compact, read-optimized publication documents. BigQuery remains the analytical source of truth and is never queried by an interactive request.
@@ -102,3 +104,21 @@ Responses use the standard `data` and `meta` envelope and include explicit unava
 ## Retired V1 Surface
 
 The former simulated-trading workflow, its API routes, frontend page, backend modules, Firestore documents, tests, and backlog artefacts are removed from V1. Future product work would require a new approved architecture and contract rather than reusing retired data or code.
+
+## Approved Twelve-Factor Engineering Amendment
+
+The owner approved R1–R7 on 2026-10-12, including complete DuckDB removal. The normative engineering detail, architecture impacts, requirement traceability, acceptance criteria, risks and sequencing are in [Gate 2 engineering amendment TF-1](../../docs/architecture/twelve-factor-amendment.md). It extends existing components without adding platform services or changing financial rules, API scope or V1 workflows.
+
+| Decision | Approved target architecture |
+|---|---|
+| R1 — Dependencies | Lock complete Python dependency resolutions for backend and ingestion, retain npm locks, explicitly declare imported dependencies, and pin build/deployment tools and container digests. |
+| R2 — Configuration | Share validated configuration contracts across API, jobs, ingestion and administration; require explicit environment and backing-service targets; provide secret-free `.env.example` documentation. Keep versioned financial rules distinct from deployment settings. |
+| R3 — Backing services | Serve every interactive analytical read, including charts, only from the published Firestore batch; use typed unavailable states instead of BigQuery fallbacks. Terraform owns and protects all application/batch tables, including staging; retain retry identifiers and serialized writers without runtime table creation/replacement. |
+| R4 — Build, release, run | Separate artifact build, release preparation and execution. Promote the verified backend image digest, bind artifacts/configuration/rules to a release manifest, and apply the exact approved saved Terraform plan. Build environment-specific static frontend artifacts from the same approved source and locks. |
+| R5 — Processes | Remove DuckDB completely: dependencies, imports, local database configuration, persistence paths and DuckDB-specific tests. Use GCS/BigQuery/Firestore for durable state and disposable scratch only; credential-free tests use fixtures/test doubles. No replacement share-revision store or local-revision migration. |
+| R6 — Logs | Extend `OperationalEvent` with consistent JSON stdout formatting across entry points, bounded sanitized attributes and safe failure handling; exclude raw provider payloads, credentials and user identifiers. Platform-managed retention remains 30 days. |
+| R7 — Admin processes | Wrap existing admission, recovery and maintenance modules with thin commands using the approved backend image/configuration, explicit targets, operation-specific permissions, stable retry identifiers and conspicuous failures. Schema changes remain Terraform-owned. |
+
+These are approved design requirements, not claims that the codebase is now compliant. Implementation must preserve existing resources and source evidence, pass focused checks and current-head review/CI, and obtain separate authorization for cloud plans/applies, migrations, paid queries, seeding, schedule activation or production changes.
+
+Only the engineering amendment is synchronized with `tradvisor_architecture.md`. The pre-existing Swing guard/eligibility wording difference is preserved and requires separate owner reconciliation before any financial-rule change; TF-1 does not choose between those formulations.

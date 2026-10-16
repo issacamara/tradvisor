@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import hmac
+import os
 from typing import Any, Protocol, cast
 
 from backend.recovery.register import Intent, StorageAdapter
@@ -106,7 +107,9 @@ class FirebaseIdTokenVerifier:
         try:
             app = firebase_admin.get_app()
         except ValueError:
-            app = firebase_admin.initialize_app()
+            project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+            options = {"projectId": project_id} if project_id else None
+            app = firebase_admin.initialize_app(options=options)
         return cast(Mapping[str, Any], auth.verify_id_token(token, app=app, check_revoked=True))
 
 
