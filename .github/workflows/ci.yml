@@ -21,7 +21,18 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend test dependencies
-        run: python -m pip install -e "backend[test,type]"
+        run: |
+          python -m pip install --require-hashes -r backend/requirements/test.lock
+          python -m pip install --no-deps --no-build-isolation -e backend
+
+      - name: Verify backend dependency locks
+        run: |
+          pip-compile --all-build-deps --allow-unsafe --strip-extras --generate-hashes \
+            --output-file=backend/requirements/runtime.lock backend/pyproject.toml
+          pip-compile --all-build-deps --allow-unsafe --strip-extras --generate-hashes \
+            --extra=test --extra=type --extra=lock \
+            --output-file=backend/requirements/test.lock backend/pyproject.toml
+          git diff --exit-code -- backend/requirements
 
       - name: Run backend regression and wave suites
         run: python -m pytest tests -q
@@ -87,7 +98,8 @@ jobs:
 
       - name: Verify generated OpenAPI client
         run: |
-          python -m pip install -e backend
+          python -m pip install --require-hashes -r backend/requirements/runtime.lock
+          python -m pip install --no-deps --no-build-isolation backend
           bash scripts/generate-client/check.sh
 
       - name: Check frontend dependency advisories
