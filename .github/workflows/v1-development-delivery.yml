@@ -160,6 +160,7 @@ jobs:
         if: inputs.action == 'plan'
         working-directory: terraform
         env:
+          TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
           TF_VAR_environment: development
@@ -204,6 +205,7 @@ jobs:
         if: inputs.action == 'apply'
         working-directory: terraform
         env:
+          TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
           TF_VAR_environment: development
