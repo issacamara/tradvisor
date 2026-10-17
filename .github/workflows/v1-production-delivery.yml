@@ -1,0 +1,226 @@
+name: Production delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Production action; apply requires production environment approval"
+        required: true
+        type: choice
+        options: [plan, apply, frontend]
+      api_image:
+        description: "Immutable API image URI, preferably the digest promoted from development"
+        required: false
+        type: string
+      release_id:
+        description: "Release artifact bundle identifier"
+        required: true
+        type: string
+      release_run_id:
+        description: "GitHub Actions run ID that produced the release bundle"
+        required: true
+        type: string
+      terraform_plan_run_id:
+        description: "GitHub Actions run ID containing the reviewed Terraform plan (apply only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  delivery:
+    if: github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ (inputs.action == 'apply' || inputs.action == 'frontend') && 'production-apply' || 'production-plan' }}
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+      TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
+
+      - uses: hashicorp/setup-terraform@v3
+        if: inputs.action != 'frontend'
+        with:
+          terraform_version: 1.9.8
+
+      - name: Authenticate to Google Cloud with workload identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.PROD_SERVICE_ACCOUNT }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Require a reviewed Terraform plan run
+        if: inputs.action == 'apply'
+        env:
+          TERRAFORM_PLAN_RUN_ID: ${{ inputs.terraform_plan_run_id }}
+        run: test -n "$TERRAFORM_PLAN_RUN_ID" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
+      - name: Download reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}-production-terraform-plan
+          run-id: ${{ inputs.terraform_plan_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: reviewed-plan
+
+      - name: Validate production delivery inputs
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          test -n "$API_IMAGE" || { echo "api_image is required for production Terraform delivery" >&2; exit 1; }
+          case "$API_IMAGE" in
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*@sha256:*) ;;
+            *) echo "api_image must be an immutable digest in the production Artifact Registry" >&2; exit 1;;
+          esac
+
+      - name: Validate production delivery context
+        if: inputs.action != 'frontend'
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          DEPLOY_ENV: production
+          ALLOWED_BRANCH: production
+          EXPECTED_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          EXPECTED_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+          EXPECTED_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          DEPLOY_ACTION: ${{ inputs.action }}
+        run: bash scripts/deployment/guard.sh
+      - name: Bind delivery image to the verified release manifest
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          expected_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
+          case "$API_IMAGE" in
+            *@"$expected_digest") ;;
+            *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
+          esac
+      - name: Verify reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          python3 scripts/deployment/terraform_plan_attestation.py verify \
+            --plan reviewed-plan/tfplan \
+            --attestation reviewed-plan/plan-attestation.json \
+            --release-manifest release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE"
+
+      - name: Initialize Terraform backend
+        if: inputs.action != 'frontend'
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX"
+
+      - name: Plan production changes
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: terraform plan -out=tfplan
+      - name: Create reviewed production Terraform plan attestation
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          python3 ../scripts/deployment/terraform_plan_attestation.py create \
+            --plan tfplan \
+            --release-manifest ../release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE" \
+            --output plan-attestation.json
+          mkdir -p ../terraform-plan-artifact
+          cp tfplan plan-attestation.json ../terraform-plan-artifact/
+      - name: Upload reviewed production Terraform plan
+        if: inputs.action == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}-production-terraform-plan
+          path: terraform-plan-artifact/
+          if-no-files-found: error
+
+      - name: Apply approved production plan
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: terraform apply -auto-approve ../reviewed-plan/tfplan
+      - name: Build production frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [ "$ACTION" = "apply" ]; then
+            NEXT_PUBLIC_TRADVISOR_API_URL="$(gcloud run services describe tradvisor-v1-api \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --format='value(status.url)' \
+              --quiet)"
+          else
+            NEXT_PUBLIC_TRADVISOR_API_URL="${{ vars.PROD_TRADVISOR_API_URL }}"
+          fi
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          npm ci --ignore-scripts --no-audit --no-fund
+          NEXT_PUBLIC_TRADVISOR_API_URL="$NEXT_PUBLIC_TRADVISOR_API_URL" npm run build
+
+      - name: Deploy static frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive

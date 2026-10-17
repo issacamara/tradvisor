@@ -1,0 +1,22 @@
+{
+  "version": "growth-v1",
+  "dimensions": {
+    "activity_growth": 12,
+    "earnings_growth": 18,
+    "profitability": 25,
+    "sector_resilience": 20,
+    "earnings_book_valuation": 25
+  },
+  "advice": {
+    "candidate_minimum": 70,
+    "watchlist_minimum": 50,
+    "display_decimal_places": 1
+  },
+  "guards": {
+    "financial_report_max_age_months": 18,
+    "traded_price_max_age_sessions": 5,
+    "non_financial_max_net_debt_to_equity": 1,
+    "non_financial_min_current_ratio": 1,
+    "financial_institution_min_capital_coverage": 1
+  }
+}

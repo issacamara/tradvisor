@@ -1,0 +1,9 @@
+{
+  "name": "tradvisor-openapi-client-generator",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "devDependencies": {
+    "openapi-typescript": "7.6.1"
+  }
+}

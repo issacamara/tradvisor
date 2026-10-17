@@ -7,6 +7,6 @@ output "project_number" {
 }
 
 output "service_account_private_key" {
-  value     = google_service_account_key.tradvisor_sa_key.private_key
+  value     = var.manage_legacy_service_account_credentials ? google_service_account_key.tradvisor_sa_key[0].private_key : null
   sensitive = true
 }

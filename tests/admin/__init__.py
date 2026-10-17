@@ -1,0 +1,1 @@
+"""Trusted operator admission tests."""

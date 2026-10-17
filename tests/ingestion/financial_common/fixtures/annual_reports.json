@@ -1,0 +1,51 @@
+[
+  {
+    "company_id": "issuer-1",
+    "source_ref": "recorded://issuer-1/annual/2020",
+    "period": {"fiscal_year": 2020, "start": "2019-07-01", "end": "2020-06-30", "full_year": true},
+    "publication": {"published_at": "2020-10-15T12:00:00Z", "evidenced": true},
+    "collected_at": "2025-08-01T09:00:00Z",
+    "currency": "XOF", "report_scope": "consolidated", "accounting_basis": "SYSCOHADA", "financial_category": "non_financial",
+    "ordinary_owner_earnings": {"value": "-2.5", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true},
+    "earnings_basis": "ordinary_owner", "earnings_scope": "consolidated",
+    "equity": {"value": "120", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true},
+    "equity_basis": "ordinary_owner", "equity_scope": "consolidated",
+    "opening_equity": {"value": "110", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "date": "2019-06-30", "basis": "ordinary_owner", "scope": "consolidated", "evidenced": true},
+    "interest_bearing_debt": {"value": "30", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "scope": "consolidated", "evidenced": true},
+    "unrestricted_cash": {"value": "8", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "scope": "consolidated", "restricted": false, "evidenced": true},
+    "current_assets": {"value": "90", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "scope": "consolidated", "evidenced": true},
+    "current_liabilities": {"value": "45", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "scope": "consolidated", "evidenced": true}
+  },
+  {
+    "company_id": "issuer-1", "source_ref": "recorded://issuer-1/annual/2021",
+    "period": {"fiscal_year": 2021, "start": "2020-07-01", "end": "2021-06-30", "full_year": true},
+    "publication": {"published_at": "2021-10-15T12:00:00Z", "evidenced": true}, "collected_at": "2025-08-01T09:00:00Z",
+    "currency": "XOF", "report_scope": "consolidated", "accounting_basis": "SYSCOHADA", "financial_category": "non_financial",
+    "ordinary_owner_earnings": {"value": "4", "currency": "XOF", "unit": "thousand XOF", "scale_to_xof": "1000", "evidenced": true}, "earnings_basis": "ordinary_owner", "earnings_scope": "consolidated",
+    "equity": {"value": "125000", "currency": "XOF", "unit": "thousand XOF", "scale_to_xof": "1000", "evidenced": true}, "equity_basis": "ordinary_owner", "equity_scope": "consolidated"
+  },
+  {
+    "company_id": "issuer-1", "source_ref": "recorded://issuer-1/annual/2022",
+    "period": {"fiscal_year": 2022, "start": "2021-07-01", "end": "2022-06-30", "full_year": true},
+    "publication": {"published_at": "2022-10-15T12:00:00Z", "evidenced": true}, "collected_at": "2025-08-01T09:00:00Z",
+    "currency": "XOF", "report_scope": "consolidated", "accounting_basis": "SYSCOHADA", "financial_category": "non_financial",
+    "ordinary_owner_earnings": {"value": "5", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "earnings_basis": "ordinary_owner", "earnings_scope": "consolidated",
+    "equity": {"value": "130", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "equity_basis": "ordinary_owner", "equity_scope": "consolidated"
+  },
+  {
+    "company_id": "issuer-1", "source_ref": "recorded://issuer-1/annual/2023",
+    "period": {"fiscal_year": 2023, "start": "2022-07-01", "end": "2023-06-30", "full_year": true},
+    "publication": {"published_at": "2023-10-15T12:00:00Z", "evidenced": true}, "collected_at": "2025-08-01T09:00:00Z",
+    "currency": "XOF", "report_scope": "consolidated", "accounting_basis": "SYSCOHADA", "financial_category": "non_financial",
+    "ordinary_owner_earnings": {"value": "6", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "earnings_basis": "ordinary_owner", "earnings_scope": "consolidated",
+    "equity": {"value": "135", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "equity_basis": "ordinary_owner", "equity_scope": "consolidated"
+  },
+  {
+    "company_id": "issuer-1", "source_ref": "recorded://issuer-1/annual/2024",
+    "period": {"fiscal_year": 2024, "start": "2023-07-01", "end": "2024-06-30", "full_year": true},
+    "publication": {"published_at": "2024-10-15T12:00:00Z", "evidenced": true}, "collected_at": "2025-08-01T09:00:00Z",
+    "currency": "XOF", "report_scope": "consolidated", "accounting_basis": "SYSCOHADA", "financial_category": "non_financial",
+    "ordinary_owner_earnings": {"value": "7", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "earnings_basis": "ordinary_owner", "earnings_scope": "consolidated",
+    "equity": {"value": "140", "currency": "XOF", "unit": "million XOF", "scale_to_xof": "1000000", "evidenced": true}, "equity_basis": "ordinary_owner", "equity_scope": "consolidated"
+  }
+]

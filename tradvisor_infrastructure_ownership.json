@@ -1,0 +1,579 @@
+{
+  "date": "2026-09-20",
+  "scope": "Current objects in the two named state buckets only; state ownership claims, not live existence guarantees. Secret attributes, state outputs and private keys omitted.",
+  "environments": [
+    {
+      "project": "dev-tradvisor",
+      "object": "gs://dev-tradvisor-tfstate/tradvisor/V1/default.tfstate",
+      "serial": 210,
+      "terraformVersion": "1.10.2",
+      "counts": {
+        "google_bigquery_dataset": 1,
+        "google_cloud_run_service_iam_policy": 1,
+        "google_cloud_run_v2_service": 1,
+        "google_cloud_scheduler_job": 4,
+        "google_cloudfunctions2_function": 8,
+        "google_project_iam_binding": 13,
+        "google_project_service": 9,
+        "google_secret_manager_secret": 3,
+        "google_secret_manager_secret_version": 1,
+        "google_service_account": 2,
+        "google_service_account_key": 1,
+        "google_storage_bucket": 3,
+        "google_storage_bucket_object": 8,
+        "google_workflows_workflow": 4,
+        "null_resource": 8
+      },
+      "resources": [
+        {
+          "address": "google_bigquery_dataset.stocks",
+          "id": "projects/dev-tradvisor/datasets/stocks"
+        },
+        {
+          "address": "google_cloud_run_service_iam_policy.noauth"
+        },
+        {
+          "address": "google_cloud_run_v2_service.tradvisor_service",
+          "id": "projects/dev-tradvisor/locations/europe-central2/services/tradvisor"
+        },
+        {
+          "address": "google_cloud_scheduler_job.jobs[\"job1\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/jobs/shares-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.jobs[\"job2\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/jobs/bonds-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.jobs[\"job3\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/jobs/dividends-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.jobs[\"job4\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/jobs/capitalizations-job"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_bonds\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/insert_bonds_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_capitalizations\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/insert_capitalizations_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_dividends\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/insert_dividends_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_shares\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/insert_shares_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_bonds\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/scrape_bonds_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_capitalizations\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/scrape_capitalizations_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_dividends\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/scrape_dividends_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_shares\"]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/functions/scrape_shares_function"
+        },
+        {
+          "address": "google_project_iam_binding.all_buckets_viewer"
+        },
+        {
+          "address": "google_project_iam_binding.bq_data_editor"
+        },
+        {
+          "address": "google_project_iam_binding.bq_job_user"
+        },
+        {
+          "address": "google_project_iam_binding.bq_viewer"
+        },
+        {
+          "address": "google_project_iam_binding.build_sa_roles"
+        },
+        {
+          "address": "google_project_iam_binding.cloud_run_sa_invoker"
+        },
+        {
+          "address": "google_project_iam_binding.function_invoker"
+        },
+        {
+          "address": "google_project_iam_binding.log_writer"
+        },
+        {
+          "address": "google_project_iam_binding.run_admin"
+        },
+        {
+          "address": "google_project_iam_binding.sa_user"
+        },
+        {
+          "address": "google_project_iam_binding.sms_accessor"
+        },
+        {
+          "address": "google_project_iam_binding.storage_admin"
+        },
+        {
+          "address": "google_project_iam_binding.workflow_executor"
+        },
+        {
+          "address": "google_project_service.apis[\"bigquery.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudbuild.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudfunctions.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudresourcemanager.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudscheduler.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"iam.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"run.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"secretmanager.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"workflows.googleapis.com\"]"
+        },
+        {
+          "address": "google_secret_manager_secret.bigquery_creds"
+        },
+        {
+          "address": "google_secret_manager_secret.tradvisor_gmail_acc"
+        },
+        {
+          "address": "google_secret_manager_secret.tradvisor_sa_key_secret"
+        },
+        {
+          "address": "google_secret_manager_secret_version.sa_key_secret_version"
+        },
+        {
+          "address": "google_service_account.brvm_dashboard_sa"
+        },
+        {
+          "address": "google_service_account.tradvisor_sa"
+        },
+        {
+          "address": "google_service_account_key.tradvisor_sa_key"
+        },
+        {
+          "address": "google_storage_bucket.archive-brvm",
+          "id": "archive-287433769824"
+        },
+        {
+          "address": "google_storage_bucket.bucket",
+          "id": "tmp-287433769824"
+        },
+        {
+          "address": "google_storage_bucket.data-brvm",
+          "id": "data-287433769824"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"insert_bonds\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"insert_capitalizations\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"insert_dividends\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"insert_shares\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"scrape_bonds\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"scrape_capitalizations\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"scrape_dividends\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src-code[\"scrape_shares\"]"
+        },
+        {
+          "address": "google_workflows_workflow.workflows[0]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/workflows/shares-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflows[1]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/workflows/bonds-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflows[2]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/workflows/dividends-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflows[3]",
+          "id": "projects/dev-tradvisor/locations/europe-central2/workflows/capitalizations-wf"
+        },
+        {
+          "address": "null_resource.delete_archive[\"insert_bonds\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"insert_capitalizations\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"insert_dividends\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"insert_shares\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"scrape_bonds\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"scrape_capitalizations\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"scrape_dividends\"]"
+        },
+        {
+          "address": "null_resource.delete_archive[\"scrape_shares\"]"
+        }
+      ]
+    },
+    {
+      "project": "prod-tradvisor",
+      "object": "gs://prod-tradvisor-tfstate/state/prod/default.tfstate",
+      "serial": 1532,
+      "terraformVersion": "1.9.8",
+      "counts": {
+        "google_artifact_registry_repository": 1,
+        "google_bigquery_dataset": 1,
+        "google_bigquery_table": 5,
+        "google_billing_budget": 1,
+        "google_cloud_run_v2_service": 1,
+        "google_cloud_run_v2_service_iam_member": 1,
+        "google_cloud_scheduler_job": 6,
+        "google_cloudfunctions2_function": 10,
+        "google_monitoring_notification_channel": 1,
+        "google_project_iam_member": 18,
+        "google_project_service": 11,
+        "google_secret_manager_secret": 4,
+        "google_secret_manager_secret_iam_member": 3,
+        "google_secret_manager_secret_version": 3,
+        "google_service_account": 2,
+        "google_service_account_key": 1,
+        "google_storage_bucket": 3,
+        "google_storage_bucket_object": 10,
+        "google_workflows_workflow": 6
+      },
+      "resources": [
+        {
+          "address": "google_artifact_registry_repository.tradvisor",
+          "id": "projects/prod-tradvisor/locations/europe-central2/repositories/tradvisor"
+        },
+        {
+          "address": "google_bigquery_dataset.stocks",
+          "id": "projects/prod-tradvisor/datasets/stocks"
+        },
+        {
+          "address": "google_bigquery_table.brvm_companies",
+          "id": "projects/prod-tradvisor/datasets/stocks/tables/brvm_companies"
+        },
+        {
+          "address": "google_bigquery_table.dividends",
+          "id": "projects/prod-tradvisor/datasets/stocks/tables/dividends"
+        },
+        {
+          "address": "google_bigquery_table.financials",
+          "id": "projects/prod-tradvisor/datasets/stocks/tables/financials"
+        },
+        {
+          "address": "google_bigquery_table.ratings",
+          "id": "projects/prod-tradvisor/datasets/stocks/tables/ratings"
+        },
+        {
+          "address": "google_bigquery_table.shares",
+          "id": "projects/prod-tradvisor/datasets/stocks/tables/shares"
+        },
+        {
+          "address": "google_billing_budget.tradvisor_budget"
+        },
+        {
+          "address": "google_cloud_run_v2_service.tradvisor_service",
+          "id": "projects/prod-tradvisor/locations/europe-central2/services/prod-tradvisor"
+        },
+        {
+          "address": "google_cloud_run_v2_service_iam_member.noauth"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_dividends",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/dividends-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_financials",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/financials-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_financials_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/financials-init-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_ratings",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/ratings-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_ratings_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/ratings-init-job"
+        },
+        {
+          "address": "google_cloud_scheduler_job.job_shares",
+          "id": "projects/prod-tradvisor/locations/europe-central2/jobs/shares-job"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_dividends\"]",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/insert_dividends_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"insert_shares\"]",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/insert_shares_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_dividends\"]",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape_dividends_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.functions[\"scrape_shares\"]",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape_shares_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.insert_financials",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/insert_financials_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.insert_ratings",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/insert_ratings_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.scrape_financials",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape-financials"
+        },
+        {
+          "address": "google_cloudfunctions2_function.scrape_financials_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape-financials-init"
+        },
+        {
+          "address": "google_cloudfunctions2_function.scrape_ratings",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape_ratings_function"
+        },
+        {
+          "address": "google_cloudfunctions2_function.scrape_ratings_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/functions/scrape_ratings_init_function"
+        },
+        {
+          "address": "google_monitoring_notification_channel.email_alert"
+        },
+        {
+          "address": "google_project_iam_member.all_buckets_viewer"
+        },
+        {
+          "address": "google_project_iam_member.bq_data_editor"
+        },
+        {
+          "address": "google_project_iam_member.bq_job_user"
+        },
+        {
+          "address": "google_project_iam_member.bq_viewer"
+        },
+        {
+          "address": "google_project_iam_member.build_sa_roles_cloudbuild"
+        },
+        {
+          "address": "google_project_iam_member.build_sa_roles_compute"
+        },
+        {
+          "address": "google_project_iam_member.build_sa_roles_tradvisor"
+        },
+        {
+          "address": "google_project_iam_member.cloud_run_sa_invoker"
+        },
+        {
+          "address": "google_project_iam_member.function_invoker_compute"
+        },
+        {
+          "address": "google_project_iam_member.function_invoker_tradvisor"
+        },
+        {
+          "address": "google_project_iam_member.log_writer_compute"
+        },
+        {
+          "address": "google_project_iam_member.log_writer_tradvisor"
+        },
+        {
+          "address": "google_project_iam_member.run_admin"
+        },
+        {
+          "address": "google_project_iam_member.sa_user_compute"
+        },
+        {
+          "address": "google_project_iam_member.sa_user_tradvisor"
+        },
+        {
+          "address": "google_project_iam_member.sms_accessor"
+        },
+        {
+          "address": "google_project_iam_member.storage_admin"
+        },
+        {
+          "address": "google_project_iam_member.workflow_executor"
+        },
+        {
+          "address": "google_project_service.apis[\"artifactregistry.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"bigquery.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"billingbudgets.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudbuild.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudfunctions.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudresourcemanager.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"cloudscheduler.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"iam.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"run.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"secretmanager.googleapis.com\"]"
+        },
+        {
+          "address": "google_project_service.apis[\"workflows.googleapis.com\"]"
+        },
+        {
+          "address": "google_secret_manager_secret.bigquery_creds"
+        },
+        {
+          "address": "google_secret_manager_secret.openrouter_api_key"
+        },
+        {
+          "address": "google_secret_manager_secret.tradvisor_gmail_acc"
+        },
+        {
+          "address": "google_secret_manager_secret.tradvisor_sa_key_secret"
+        },
+        {
+          "address": "google_secret_manager_secret_iam_member.gmail_secret_accessor"
+        },
+        {
+          "address": "google_secret_manager_secret_iam_member.openrouter_api_key_accessor"
+        },
+        {
+          "address": "google_secret_manager_secret_iam_member.sa_key_secret_accessor"
+        },
+        {
+          "address": "google_secret_manager_secret_version.gmail_acc_secret_version"
+        },
+        {
+          "address": "google_secret_manager_secret_version.openrouter_api_key_version"
+        },
+        {
+          "address": "google_secret_manager_secret_version.sa_key_secret_version"
+        },
+        {
+          "address": "google_service_account.brvm_dashboard_sa"
+        },
+        {
+          "address": "google_service_account.tradvisor_sa"
+        },
+        {
+          "address": "google_service_account_key.tradvisor_sa_key"
+        },
+        {
+          "address": "google_storage_bucket.archive-brvm",
+          "id": "archive-1099228110329"
+        },
+        {
+          "address": "google_storage_bucket.bucket",
+          "id": "tmp-1099228110329"
+        },
+        {
+          "address": "google_storage_bucket.data-brvm",
+          "id": "data-1099228110329"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code[\"insert_dividends\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code[\"insert_shares\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code[\"scrape_dividends\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code[\"scrape_shares\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_extra[\"insert_financials\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_extra[\"insert_ratings\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_extra[\"scrape_financials\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_extra[\"scrape_ratings\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_init[\"scrape_financials_init\"]"
+        },
+        {
+          "address": "google_storage_bucket_object.src_code_init[\"scrape_ratings_init\"]"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_dividends",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/dividends-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_financials",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/financials-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_financials_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/financials-init-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_ratings",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/ratings-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_ratings_init",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/ratings-init-wf"
+        },
+        {
+          "address": "google_workflows_workflow.workflow_shares",
+          "id": "projects/prod-tradvisor/locations/europe-central2/workflows/shares-wf"
+        }
+      ]
+    }
+  ]
+}

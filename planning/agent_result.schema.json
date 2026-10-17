@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {"type": "string", "enum": ["progress", "decision_required", "blocked", "complete"]},
+    "completed_issues": {"type": "array", "items": {"type": "integer"}},
+    "summary": {"type": "string"},
+    "owner_decision": {"type": "string"}
+  },
+  "required": ["status", "completed_issues", "summary", "owner_decision"],
+  "additionalProperties": false
+}

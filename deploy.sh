@@ -12,7 +12,7 @@ targets=(
 )
 
 #for target in "${targets[@]}"; do
-#    docker build -f scripts/Dockerfile scripts/ --no-cache --target $target -t issacamara/$target:latest
+#    docker build -f archive/legacy-ingestion/scripts/Dockerfile archive/legacy-ingestion/scripts/ --no-cache --target $target -t issacamara/$target:latest
 #done
 
 #docker build -t issacamara/tradvisor:latest . --platform linux/amd64
@@ -37,9 +37,8 @@ docker login
 #echo "Applying Terraform configuration..."
 #terraform apply -auto-approve
 #
-## Get the service URL
-#SERVICE_URL=$(terraform output -raw service_url)
-#echo "Application deployed successfully at: $SERVICE_URL"
+## Review Terraform outputs after apply:
+#terraform output
 
 for target in "${targets[@]}"; do
 #    rm -f terraform/$target.zip

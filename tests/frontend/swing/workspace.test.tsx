@@ -1,0 +1,39 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { SwingWorkspace } from "@/features/swing/workspace";
+import type { components } from "@/api/generated/schema";
+
+vi.mock("@/features/swing/swing-chart", () => ({ SwingChart: () => null }));
+
+type Recommendation = components["schemas"]["SwingRecommendation"];
+const score: components["schemas"]["ScoreMetric"] = { basis: null, effective_date: null, evidence_refs: [], reason_codes: [], status: "assessable", unit: "points", value: 74 };
+const item: Recommendation = { symbol: "SAMPLE", entry_action: "no_clear_signal", buy_strength: score, eligibility_guards: [{ code: "current_trade", evidence_refs: [], observed: null, status: "unknown", threshold: null }], indicators: {} };
+
+describe("Swing workspace", () => {
+  it("keeps market entry evidence visible and never labels a non-buy as sell", () => {
+    render(<SwingWorkspace items={[item]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inspect SAMPLE" }));
+    expect(screen.getAllByText("no clear signal")).toHaveLength(2);
+    expect(screen.getByText(/not a Sell instruction/)).toBeInTheDocument();
+  });
+
+  it("filters symbols while keeping the selected recommendation available", () => {
+    render(<SwingWorkspace items={[item]} selectedSymbol="SAMPLE" />);
+    fireEvent.change(screen.getByPlaceholderText("Search symbol"), { target: { value: "OTHER" } });
+    expect(screen.getByText("No symbols match this filter.")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "SAMPLE" })).toHaveLength(2);
+  });
+
+  it("does not render the removed dated evidence table", () => {
+    render(<SwingWorkspace chart={[{ session_date: "2026-09-01", status: "missing_price", open: null, high: null, low: null, close: null, last_traded_close: null, analytical_carried_close: null, indicators: {}, source_evidence: [], volume: null }]} />);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.queryByText("missing price")).not.toBeInTheDocument();
+  });
+
+  it("does not render backend source attribution in the removed table", () => {
+    render(<SwingWorkspace chart={[{ session_date: "2026-09-01", status: "traded", open: null, high: null, low: null, close: null, last_traded_close: null, analytical_carried_close: null, indicators: {}, source_evidence: [{ source_id: "brvm-market-feed", source_url: "https://example.test/source", collected_at: "2026-09-01T16:00:00Z", published_at: "2026-09-01T17:00:00Z", original_unit: null, basis: "actual" }], volume: null }]} />);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.queryByText("brvm-market-feed")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "brvm-market-feed" })).not.toBeInTheDocument();
+  });
+});

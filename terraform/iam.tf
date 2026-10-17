@@ -1,65 +1,58 @@
 # Create a service account for the function
 resource "google_service_account" "tradvisor_sa" {
-  account_id = "tradvisor-sa-${data.google_project.project.number}"
-  depends_on = [data.google_project.project]
+  account_id   = "tradvisor-sa-${data.google_project.project.number}"
+  depends_on   = [data.google_project.project]
   display_name = "Service Account for tradvisor application"
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
+  }
 }
 
-# Create a key for the service account
+# Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
+  count              = var.manage_legacy_service_account_credentials ? 1 : 0
   service_account_id = google_service_account.tradvisor_sa.name
-  keepers = {
-    # Helps to rotate the key by triggering recreation when value changes
-    created_at = timestamp()
+  private_key_type   = "TYPE_GOOGLE_CREDENTIALS_FILE"
+
+  # The legacy state records a timestamp keeper. Ignore it so its historical
+  # value remains stable and cannot trigger an unapproved key replacement.
+  lifecycle {
+    ignore_changes  = [keepers]
+    prevent_destroy = true
   }
-  private_key_type = "TYPE_GOOGLE_CREDENTIALS_FILE"
 }
 
 resource "google_secret_manager_secret" "tradvisor_sa_key_secret" {
+  count     = var.manage_legacy_service_account_credentials ? 1 : 0
   secret_id = "tradvisor_sa_key"
   replication {
     auto {}
   }
   depends_on = [google_service_account.tradvisor_sa]
-}
 
-resource "google_secret_manager_secret" "tradvisor_gmail_acc" {
-  secret_id = "tradvisor_gmail_acc"
-  replication {
-    auto {}
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = all
   }
-  depends_on = [google_service_account.tradvisor_sa]
 }
 
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
-  depends_on = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
-  secret      = google_secret_manager_secret.tradvisor_sa_key_secret.name
-  secret_data = base64decode(google_service_account_key.tradvisor_sa_key.private_key)
+  count       = var.manage_legacy_service_account_credentials ? 1 : 0
+  depends_on  = [google_service_account_key.tradvisor_sa_key, google_secret_manager_secret.tradvisor_sa_key_secret]
+  secret      = google_secret_manager_secret.tradvisor_sa_key_secret[0].name
+  secret_data = base64decode(google_service_account_key.tradvisor_sa_key[0].private_key)
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
-# resource "null_resource" "sa_key_file" {
-# #   content  = google_service_account_key.tradvisor_sa_key.private_key
-# #   filename = "../webapp/.streamlit/tradvisor-sa-key.json"
-# #   file_permission = "0600"
-#   triggers = {
-#     private_key = google_service_account_key.tradvisor_sa_key.private_key
-#   }
-#   provisioner "local-exec" {
-#     command = <<EOT
-#       echo "${google_service_account_key.tradvisor_sa_key.private_key}" | base64 --decode > ../webapp/.streamlit/tradvisor-sa-key.json
-#     EOT
-#     interpreter = ["/bin/bash", "-c"]
-#   }
-# }
-
-# Create a service account for the Cloud Run service
-resource "google_service_account" "brvm_dashboard_sa" {
-  account_id   = "brvm-dashboard-sa"
-  display_name = "BRVM Dashboard Service Account"
-  depends_on   = [google_project_service.apis[7] ]
-}
-
-
+# These legacy binding addresses remain intact for state compatibility. Ignoring
+# membership changes prevents an authoritative binding from removing principals
+# managed outside this configuration. A future additive-member migration needs
+# verified state ownership and a separately approved preservation plan.
 resource "google_project_iam_binding" "build_sa_roles" {
   depends_on = [google_service_account.tradvisor_sa]
   project    = var.project_id
@@ -68,6 +61,10 @@ resource "google_project_iam_binding" "build_sa_roles" {
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "function_invoker" {
@@ -75,9 +72,13 @@ resource "google_project_iam_binding" "function_invoker" {
   depends_on = [google_service_account.tradvisor_sa]
   role       = "roles/cloudfunctions.invoker"
   members = [
-      "serviceAccount:${google_service_account.tradvisor_sa.email}",
+    "serviceAccount:${google_service_account.tradvisor_sa.email}",
     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "all_buckets_viewer" {
@@ -86,8 +87,12 @@ resource "google_project_iam_binding" "all_buckets_viewer" {
   role       = "roles/storage.objectViewer"
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
-#   "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #   "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "log_writer" {
@@ -98,6 +103,10 @@ resource "google_project_iam_binding" "log_writer" {
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 # Grant the necessary roles to the service account
@@ -107,8 +116,12 @@ resource "google_project_iam_binding" "cloud_run_sa_invoker" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "workflow_executor" {
@@ -117,8 +130,30 @@ resource "google_project_iam_binding" "workflow_executor" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
+}
+
+resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer" {
+  for_each = var.manage_legacy_schedules ? google_cloud_tasks_queue.workflow_writers : {}
+  project  = var.project_id
+  location = each.value.location
+  name     = each.value.name
+  role     = "roles/cloudtasks.enqueuer"
+  member   = "serviceAccount:${google_service_account.tradvisor_sa.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "workflow_dispatcher_invoker" {
+  count    = var.manage_legacy_schedules ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_service.workflow_dispatcher[0].location
+  name     = google_cloud_run_v2_service.workflow_dispatcher[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.tradvisor_sa.email}"
 }
 
 
@@ -130,16 +165,24 @@ resource "google_project_iam_binding" "sa_user" {
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "sms_accessor" {
   project    = var.project_id
   role       = "roles/secretmanager.secretAccessor"
-  depends_on = [google_service_account.brvm_dashboard_sa]
+  depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 
@@ -149,8 +192,12 @@ resource "google_project_iam_binding" "bq_viewer" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}",
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "bq_data_editor" {
@@ -159,8 +206,12 @@ resource "google_project_iam_binding" "bq_data_editor" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "bq_job_user" {
@@ -169,8 +220,12 @@ resource "google_project_iam_binding" "bq_job_user" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "run_admin" {
@@ -179,8 +234,12 @@ resource "google_project_iam_binding" "run_admin" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
+
+  lifecycle {
+    ignore_changes = [members]
+  }
 }
 
 resource "google_project_iam_binding" "storage_admin" {
@@ -189,14 +248,10 @@ resource "google_project_iam_binding" "storage_admin" {
   depends_on = [google_service_account.tradvisor_sa]
   members = [
     "serviceAccount:${google_service_account.tradvisor_sa.email}"
-#     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+    #     "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   ]
-}
 
-resource "google_cloud_run_service_iam_policy" "noauth" {
-  location    = google_cloud_run_v2_service.tradvisor_service.location
-  project     = google_cloud_run_v2_service.tradvisor_service.project
-  service     = google_cloud_run_v2_service.tradvisor_service.name
-
-  policy_data = data.google_iam_policy.noauth.policy_data
+  lifecycle {
+    ignore_changes = [members]
+  }
 }

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradvisor-backend"
+version = "0.1.0"
+description = "Tradvisor V1 backend package foundation"
+requires-python = ">=3.11"
+dependencies = [
+    "firebase-admin==6.6.0",
+    "fastapi==0.115.8",
+    "google-cloud-firestore==2.19.0",
+    "google-cloud-bigquery==3.29.0",
+    "pydantic==2.10.6",
+    "uvicorn[standard]==0.34.0",
+]
+
+[project.optional-dependencies]
+test = ["httpx==0.28.1", "numpy==2.4.6", "pandas==2.2.2", "pytest==8.3.5"]
+type = ["mypy==1.15.0"]
+lock = ["pip==24.0", "pip-tools==7.4.1"]
+firestore = []
+
+[tool.setuptools]
+package-dir = { backend = "." }
+packages = ["backend", "backend.admin", "backend.analysis", "backend.auth", "backend.commands", "backend.contracts", "backend.jobs", "backend.observability", "backend.publication", "backend.recovery", "backend.store"]
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
