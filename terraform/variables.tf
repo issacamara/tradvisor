@@ -54,6 +54,23 @@ variable "functions" {
   "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
 }
 
+variable "v1_ingestion_source_urls" {
+  description = "Validated HTTPS source URLs injected into ingestion processes"
+  type        = map(string)
+  default = {
+    TRADVISOR_INGESTION_SOURCE_SHARES_URL          = "https://www.sikafinance.com/marches/aaz"
+    TRADVISOR_INGESTION_SOURCE_BRVM_SESSION_URL    = "https://www.brvm.org/fr/jours-feries"
+    TRADVISOR_INGESTION_SOURCE_BONDS_URL           = "https://www.brvm.org/en/cours-obligations/0"
+    TRADVISOR_INGESTION_SOURCE_CAPITALIZATIONS_URL = "https://www.brvm.org/en/capitalisations/0"
+    TRADVISOR_INGESTION_SOURCE_VOLUMES_URL         = "https://www.brvm.org/en/volumes/0"
+    TRADVISOR_INGESTION_SOURCE_INDICES_URL         = "https://www.brvm.org/en/indices"
+    TRADVISOR_INGESTION_SOURCE_DIVIDENDS_URL       = "https://www.richbourse.com/common/dividende/index"
+    TRADVISOR_INGESTION_SOURCE_FINANCIALS_URL      = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
+    TRADVISOR_INGESTION_SOURCE_RATINGS_URL         = "https://www.richbourse.com/common/notation/index"
+    TRADVISOR_INGESTION_SOURCE_COMPANY_LISTING_URL = "https://www.brvm.org/fr/rapports-societes-cotees"
+  }
+}
+
 variable "initialization_functions" {
   description = "One-time initialization functions retained from the production ingestion topology"
   type        = set(string)

@@ -6,7 +6,6 @@ from curl_cffi import requests
 import functions_framework
 from ingestion_observability import emit_event, observed_entrypoint
 import pandas as pd
-import yaml
 from helper import save_dataframe_as_csv
 
 
@@ -212,15 +211,14 @@ def scrape_dividends(url):
 @functions_framework.http
 @observed_entrypoint("ingestion.dividends.scrape")
 def entry_point(request=None):
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
-    with open("config.yml", "r") as file:
-        endpoints = source_endpoints(yaml.safe_load(file))
+    endpoints = configuration.endpoints
 
     df = scrape_dividends(endpoints["dividends"])
     return save_dataframe_as_csv(df, "dividends", configuration)
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

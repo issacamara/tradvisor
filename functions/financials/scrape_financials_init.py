@@ -1,5 +1,4 @@
 from curl_cffi import requests
-import yaml
 from google.auth import default
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -15,7 +14,6 @@ from company_reference import build_company_records, read_mapping
 
 
 # BRVM URLs
-BRVM_LISTING_URL = "https://www.brvm.org/fr/rapports-societes-cotees"
 FINANCIALS_REPORT_TYPE = 57  # field_type_rapport_tid=57 for "Etats Financiers"
 
 
@@ -23,10 +21,10 @@ def load_company_mapping(csv_path):
     """Load the complete company reference mapping without external calls."""
     if os.path.exists(csv_path):
         mapping = read_mapping(csv_path)
-        print(f"Loaded {len(mapping)} company mappings from {csv_path}")
+        emit_event("ingestion.financials.mapping", "loaded", count=len(mapping))
     else:
         mapping = []
-        print(f"Warning: Company mapping file not found at {csv_path}")
+        emit_event("ingestion.financials.mapping", "missing")
 
     return mapping
 
@@ -74,7 +72,7 @@ def extract_year_from_title(title):
     return None
 
 
-def get_companies_from_brvm():
+def get_companies_from_brvm(listing_url):
     """Fetch all companies from BRVM listing page.
     
     Returns:
@@ -91,7 +89,7 @@ def get_companies_from_brvm():
     page = 0
     
     while True:
-        url = BRVM_LISTING_URL if page == 0 else f"{BRVM_LISTING_URL}?page={page}"
+        url = listing_url if page == 0 else f"{listing_url}?page={page}"
         
         try:
             response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
@@ -140,11 +138,14 @@ def get_companies_from_brvm():
     return companies
 
 
-def discover_company_references(mapping_csv_path):
+def discover_company_references(mapping_csv_path, listing_url=None):
     """Discover BRVM listings and adapt all of them into reference records."""
-    print("Fetching all companies from BRVM...")
-    companies = get_companies_from_brvm()
-    print(f"Found {len(companies)} companies on BRVM.")
+    companies = (
+        get_companies_from_brvm()
+        if listing_url is None
+        else get_companies_from_brvm(listing_url)
+    )
+    emit_event("ingestion.financials.companies", "succeeded", count=len(companies))
 
     corrections = load_company_mapping(mapping_csv_path)
     symbols_by_name = {}
@@ -332,7 +333,7 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         blob = bucket.blob(blob_name)
         blob.upload_from_string(pdf_content, content_type='application/pdf')
         
-        print(f"      Uploaded to gs://{bucket_name}/{blob_name}")
+        emit_event("ingestion.financials.pdf_upload", "succeeded")
         return True
         
     except Exception as e:
@@ -351,17 +352,20 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
     current_year = datetime.now().year
     max_year = current_year - 5  # Last 5 years
     
-    print(f"Collecting financial PDFs from BRVM (last 5 years: {max_year}-{current_year})...")
+    emit_event("ingestion.financials.reports", "started")
     
     # Build company references from discovery and the local evidence mapping.
     mapping_csv_path = os.path.join(os.path.dirname(__file__), 'mapping.csv')
-    company_records = discover_company_references(mapping_csv_path)
+    company_records = (
+        discover_company_references(mapping_csv_path)
+        if configuration is None
+        else discover_company_references(mapping_csv_path, url)
+    )
     
     # Get storage bucket name
     bucket_name = (
         get_bucket_name(configuration) if configuration is not None else get_bucket_name()
     )
-    print(f"Using storage bucket: {bucket_name}")
     
     total_downloaded = 0
     total_failed = 0
@@ -374,10 +378,7 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
         company_name = company.name
         symbol = company.symbol
         if not symbol:
-            print(
-                f"  Warning: No verified symbol mapping for slug '{slug}' "
-                f"({company_name}); retained as unsupported."
-            )
+            emit_event("ingestion.financials.company", "unsupported")
             continue
 
         listing_key = (slug, symbol)
@@ -385,13 +386,12 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
             continue
         processed_listings.add(listing_key)
         
-        print(f"Processing {symbol} ({company_name})...")
         
         # Get financial reports for this company
         reports = get_financial_reports_for_company(slug, max_year)
         
         if not reports:
-            print(f"  No financial reports found for {symbol}")
+            emit_event("ingestion.financials.company", "no_reports")
             continue
         
         # Deduplicate by fiscal_year (keep latest/most complete)
@@ -402,7 +402,7 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
                 reports_by_year[fiscal_year] = report
         
         for fiscal_year, report in reports_by_year.items():
-            print(f"  Found: {report['title']} (FY {fiscal_year})")
+            emit_event("ingestion.financials.report", "found")
             
             # Download and upload to storage
             success = download_pdf_to_storage(
@@ -419,20 +419,19 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
         
         gc.collect()
 
-    print(f"\nInitialization complete.")
-    print(f"  Total PDFs downloaded: {total_downloaded}")
-    print(f"  Total failures: {total_failed}")
+    emit_event("ingestion.financials.reports", "completed", count=total_downloaded)
+    if total_failed:
+        emit_event("ingestion.financials.reports", "partial", count=total_failed)
     return total_downloaded
 
 
 @functions_framework.http
 @observed_entrypoint("ingestion.financials.initialize")
 def entry_point(request=None):
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
-    with open('config.yml', 'r') as file:
-        endpoints = source_endpoints(yaml.safe_load(file))
+    endpoints = configuration.endpoints
     
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     scrape_financials_init(
@@ -445,4 +444,4 @@ def entry_point(request=None):
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

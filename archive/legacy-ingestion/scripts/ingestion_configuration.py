@@ -2,8 +2,8 @@
 
 The module is deliberately dependency-free so it can be included in every
 Cloud Function archive.  Entry points validate this contract before importing
-or constructing a cloud client; source URLs remain in the checked-in,
-secret-free ``config.yml`` asset.
+or constructing a cloud client; source URLs are supplied by the process
+environment.
 """
 
 from __future__ import annotations
@@ -20,6 +20,19 @@ _BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$")
 _DATASET = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TABLE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SERVICE_ACCOUNT = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]@")
+
+_ENDPOINT_FIELDS = {
+    "shares": "TRADVISOR_INGESTION_SOURCE_SHARES_URL",
+    "brvm_session": "TRADVISOR_INGESTION_SOURCE_BRVM_SESSION_URL",
+    "bonds": "TRADVISOR_INGESTION_SOURCE_BONDS_URL",
+    "capitalizations": "TRADVISOR_INGESTION_SOURCE_CAPITALIZATIONS_URL",
+    "volumes": "TRADVISOR_INGESTION_SOURCE_VOLUMES_URL",
+    "indices": "TRADVISOR_INGESTION_SOURCE_INDICES_URL",
+    "dividends": "TRADVISOR_INGESTION_SOURCE_DIVIDENDS_URL",
+    "financials": "TRADVISOR_INGESTION_SOURCE_FINANCIALS_URL",
+    "ratings": "TRADVISOR_INGESTION_SOURCE_RATINGS_URL",
+    "company_listing": "TRADVISOR_INGESTION_SOURCE_COMPANY_LISTING_URL",
+}
 
 _TABLE_FIELDS = {
     "shares": "TRADVISOR_INGESTION_SHARES_TABLE",
@@ -44,6 +57,7 @@ class IngestionConfiguration:
     archive_bucket: str
     dataset: str
     tables: Mapping[str, str]
+    endpoints: Mapping[str, str]
 
     @classmethod
     def from_environment(
@@ -113,6 +127,16 @@ class IngestionConfiguration:
             asset: _table_id(values[field].strip(), project_id, dataset, field)
             for asset, field in _TABLE_FIELDS.items()
         }
+        endpoints = {
+            name: _endpoint(values[field].strip(), field)
+            for name, field in _ENDPOINT_FIELDS.items()
+            if values.get(field, "").strip()
+        }
+        companies_table = values.get("TRADVISOR_INGESTION_COMPANIES_TABLE", "").strip()
+        if companies_table:
+            tables["companies"] = _table_id(
+                companies_table, project_id, dataset, "TRADVISOR_INGESTION_COMPANIES_TABLE"
+            )
         return cls(
             environment=environment,
             project_id=project_id,
@@ -121,6 +145,7 @@ class IngestionConfiguration:
             archive_bucket=archive_bucket,
             dataset=dataset,
             tables=tables,
+            endpoints=endpoints,
         )
 
     def table_for(self, asset: str) -> str:
@@ -128,6 +153,12 @@ class IngestionConfiguration:
             return self.tables[asset]
         except KeyError as error:
             raise IngestionConfigurationError("ingestion table target is unsupported") from error
+
+    def endpoint_for(self, source: str) -> str:
+        try:
+            return self.endpoints[source]
+        except KeyError as error:
+            raise IngestionConfigurationError("ingestion source endpoint is unsupported") from error
 
     def validate_application_default_project(self, actual_project: str | None) -> None:
         """Reject ADC project drift before a Storage or BigQuery client is built."""
@@ -141,39 +172,17 @@ class IngestionConfiguration:
             )
 
 
-def source_endpoints(config: Mapping[str, object]) -> Mapping[str, str]:
-    """Validate the checked-in source endpoint map before any source request."""
-    raw_urls = config.get("url")
-    if not isinstance(raw_urls, Mapping):
-        raise IngestionConfigurationError("source endpoint configuration is missing")
-    required = (
-        "shares",
-        "brvm_session",
-        "bonds",
-        "capitalizations",
-        "volumes",
-        "indices",
-        "dividends",
-        "financials",
-        "ratings",
-    )
-    endpoints: dict[str, str] = {}
-    for name in required:
-        value = raw_urls.get(name)
-        if not isinstance(value, str) or not value.strip():
-            raise IngestionConfigurationError(f"source endpoint is missing: {name}")
-        endpoint = value.strip()
-        parsed = urlsplit(endpoint)
-        if (
-            parsed.scheme != "https"
-            or not parsed.netloc
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.fragment
-        ):
-            raise IngestionConfigurationError(f"source endpoint is invalid: {name}")
-        endpoints[name] = endpoint
-    return endpoints
+def _endpoint(value: str, field: str) -> str:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise IngestionConfigurationError(f"{field} is invalid")
+    return value
 
 
 def _table_id(value: str, project_id: str, dataset: str, field: str) -> str:
@@ -193,5 +202,4 @@ def _table_id(value: str, project_id: str, dataset: str, field: str) -> str:
 __all__ = [
     "IngestionConfiguration",
     "IngestionConfigurationError",
-    "source_endpoints",
 ]

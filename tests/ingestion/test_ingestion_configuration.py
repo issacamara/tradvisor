@@ -41,10 +41,23 @@ def _environment() -> dict[str, str]:
         "TRADVISOR_INGESTION_ARCHIVE_BUCKET": "fixture-archive-bucket",
         "TRADVISOR_INGESTION_DATASET": "stocks",
     }
-    for asset in ("shares", "dividends", "financials", "ratings"):
+    for asset in ("companies", "shares", "dividends", "financials", "ratings"):
         values[f"TRADVISOR_INGESTION_{asset.upper()}_TABLE"] = (
             f"fixture-project.stocks.{asset}"
         )
+    endpoints = {
+        "SHARES": "https://source.example.test/shares",
+        "BRVM_SESSION": "https://source.example.test/sessions",
+        "BONDS": "https://source.example.test/bonds",
+        "CAPITALIZATIONS": "https://source.example.test/capitalizations",
+        "VOLUMES": "https://source.example.test/volumes",
+        "INDICES": "https://source.example.test/indices",
+        "DIVIDENDS": "https://source.example.test/dividends",
+        "FINANCIALS": "https://source.example.test/financials",
+        "RATINGS": "https://source.example.test/ratings",
+        "COMPANY_LISTING": "https://source.example.test/companies",
+    }
+    values.update({f"TRADVISOR_INGESTION_SOURCE_{name}_URL": url for name, url in endpoints.items()})
     return values
 
 
@@ -56,6 +69,7 @@ def test_explicit_configuration_exposes_only_project_bound_targets() -> None:
     assert configuration.data_bucket == "fixture-data-bucket"
     assert configuration.archive_bucket == "fixture-archive-bucket"
     assert configuration.table_for("financials") == "fixture-project.stocks.financials"
+    assert configuration.endpoint_for("shares") == "https://source.example.test/shares"
 
 
 def test_mismatched_project_fails_before_a_provider_client_can_be_created() -> None:
@@ -77,11 +91,8 @@ def test_adc_project_drift_is_rejected_before_storage_or_bigquery_client_creatio
 
 def test_source_endpoints_require_explicit_safe_https_targets() -> None:
     module = _module()
-    sources = {"url": {name: f"https://source.example.test/{name}" for name in (
-        "shares", "brvm_session", "bonds", "capitalizations", "volumes", "indices",
-        "dividends", "financials", "ratings",
-    )}}
-    sources["url"]["ratings"] = "http://source.example.test/ratings"
+    values = _environment()
+    values["TRADVISOR_INGESTION_SOURCE_RATINGS_URL"] = "http://source.example.test/ratings"
 
-    with pytest.raises(module.IngestionConfigurationError, match="ratings"):
-        module.source_endpoints(sources)
+    with pytest.raises(module.IngestionConfigurationError, match="RATINGS"):
+        module.IngestionConfiguration.from_environment(values)

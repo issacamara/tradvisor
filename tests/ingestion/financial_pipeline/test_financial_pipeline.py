@@ -149,6 +149,8 @@ class _MemoryBigQueryClient:
 
 
 def _load_module(path: Path, name: str) -> ModuleType:
+    if path.name == "helper.py":
+        _load_module(path.with_name("ingestion_observability.py"), "ingestion_observability")
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -11,4 +11,4 @@ def entry_point(request=None):
     return "Data insertion successfully completed !\n"
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()
