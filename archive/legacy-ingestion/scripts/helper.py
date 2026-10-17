@@ -59,7 +59,7 @@ def get_symbols_from_richbourse(url):
         if response.status_code == 200:
             break
         elif response.status_code == 202:
-            print(f"Received 202 (Accepted). Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+            emit_event("ingestion.source", "retry", count=attempt + 1)
             time.sleep(retry_delay)
         else:
             raise ValueError(f"Failed to fetch page: {response.status_code}")
@@ -83,7 +83,7 @@ def get_symbols_from_richbourse(url):
     return symbols
 
 
-def table_exists(table_name='ratings'):
+def table_exists(table_name='ratings', project_id=None, dataset='stocks'):
     """Check if the BigQuery table exists.
     
     Parameters:
@@ -95,11 +95,15 @@ def table_exists(table_name='ratings'):
     from google.auth import default
     from google.cloud import bigquery
     
-    credentials, project_id = default()
+    credentials, detected_project_id = default()
+    project_id = project_id or detected_project_id
     client = bigquery.Client(credentials=credentials, project=project_id)
     
     try:
-        dataset_ref = client.dataset('stocks')
+        parts = table_name.split('.')
+        if len(parts) == 3:
+            project_id, dataset, table_name = parts
+        dataset_ref = client.dataset(dataset, project=project_id)
         table_ref = dataset_ref.table(table_name)
         client.get_table(table_ref)
         return True
@@ -211,7 +215,7 @@ def move_csv_files_gcp(source_bucket_name, destination_bucket_name, pattern):
         # Delete the blob from the source bucket
         source_blob.delete()
 
-        print(f'Moved {blob.name} from {source_bucket_name} to {destination_bucket_name}')
+        emit_event("ingestion.archive", "succeeded")
 
 def move_csv_file_gcp(source_bucket_name, destination_bucket_name, filename):
     from google.cloud import storage
@@ -222,7 +226,7 @@ def move_csv_file_gcp(source_bucket_name, destination_bucket_name, filename):
     source_blob = source_bucket.blob(filename)
     source_bucket.copy_blob(source_blob, destination_bucket, filename)
     source_blob.delete()
-    print(f'Moved {filename} from {source_bucket_name} to {destination_bucket_name}')
+    emit_event("ingestion.archive", "succeeded")
 
 # Define a function to insert data into BigQuery
 def insert_into_bigquery(df, project_id, dataset, table):

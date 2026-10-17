@@ -326,13 +326,11 @@ def _save_raw_observations(frame, collected_at: datetime, configuration=None) ->
 
 @observed_entrypoint("ingestion.shares.scrape")
 def entry_point(request=None):
-    import yaml
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
 
-    with open("config.yml", "r") as file:
-        endpoints = source_endpoints(yaml.safe_load(file))
+    endpoints = configuration.endpoints
     collected_at = datetime.now(timezone.utc)
     df = scrape_brvm_shares(
         endpoints["shares"],
@@ -343,4 +341,4 @@ def entry_point(request=None):
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

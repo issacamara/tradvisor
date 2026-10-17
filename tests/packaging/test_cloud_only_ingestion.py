@@ -113,8 +113,8 @@ def _build_artifact(tmp_path: Path, artifact_kind: str, name: str) -> Path:
     package.mkdir(parents=True)
     for common in (
         "helper.py",
-        "config.yml",
         "ingestion_configuration.py",
+        "ingestion_observability.py",
         "requirements.txt",
     ):
         shutil.copy2(SCRIPTS / common, package / common)
@@ -176,7 +176,6 @@ def test_declared_artifacts_build_and_import_with_cloud_fakes(tmp_path: Path, mo
             module = _import_artifact(monkeypatch, package, f"{artifact_kind}_{entrypoint}")
             assert callable(module.entry_point)
             assert (package / "helper.py").is_file()
-            assert (package / "config.yml").is_file()
             assert (package / "ingestion_configuration.py").is_file()
             assert (package / "requirements.txt").is_file()
             assert (package / "mapping.csv").is_file() is (
@@ -193,9 +192,6 @@ def test_share_scraper_artifact_runs_against_fake_gcs_without_marker_variables(
     _set_ingestion_environment(monkeypatch)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-    yaml = ModuleType("yaml")
-    yaml.safe_load = lambda _stream: _source_config()  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "yaml", yaml)
 
     scraper_package = _build_artifact(tmp_path / "scraper", "managed", "scrape_shares")
     monkeypatch.chdir(scraper_package)
@@ -227,9 +223,6 @@ def test_share_loader_artifact_rejects_missing_adc_project_without_local_fallbac
     _set_ingestion_environment(monkeypatch)
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FUNCTION_TARGET", raising=False)
-    yaml = ModuleType("yaml")
-    yaml.safe_load = lambda _stream: _source_config()  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "yaml", yaml)
 
     loader_package = _build_artifact(tmp_path / "loader", "managed", "insert_shares")
     monkeypatch.chdir(loader_package)
@@ -250,15 +243,12 @@ def test_share_loader_artifact_rejects_missing_adc_project_without_local_fallbac
 
 
 def test_cloud_references_are_documented_without_secrets_or_local_storage() -> None:
-    config = (SCRIPTS / "config.yml").read_text()
     example = (ROOT / ".env.example").read_text()
 
-    assert config.lstrip().startswith("url:\n")
-    assert "\nduckdb:" not in config
-    assert "\ncsv_directory:" not in config
     assert "TRADVISOR_RUNTIME_TARGET=ingestion" in example
     assert "TRADVISOR_INGESTION_DATA_BUCKET" in example
     assert "TRADVISOR_INGESTION_SERVICE_ACCOUNT" in example
+    assert "TRADVISOR_INGESTION_SOURCE_SHARES_URL" in example
     assert "workload identity" in example
     assert "/Users/" not in example
 
@@ -276,10 +266,21 @@ def _set_ingestion_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TRADVISOR_INGESTION_DATA_BUCKET", "fixture-data-bucket")
     monkeypatch.setenv("TRADVISOR_INGESTION_ARCHIVE_BUCKET", "fixture-archive-bucket")
     monkeypatch.setenv("TRADVISOR_INGESTION_DATASET", "stocks")
+    monkeypatch.setenv(
+        "TRADVISOR_INGESTION_COMPANIES_TABLE", "fixture-project.stocks.brvm_companies"
+    )
     for asset in ("SHARES", "DIVIDENDS", "FINANCIALS", "RATINGS"):
         monkeypatch.setenv(
             f"TRADVISOR_INGESTION_{asset}_TABLE",
             f"fixture-project.stocks.{asset.lower()}",
+        )
+    for name in (
+        "SHARES", "BRVM_SESSION", "BONDS", "CAPITALIZATIONS", "VOLUMES",
+        "INDICES", "DIVIDENDS", "FINANCIALS", "RATINGS", "COMPANY_LISTING",
+    ):
+        monkeypatch.setenv(
+            f"TRADVISOR_INGESTION_SOURCE_{name}_URL",
+            f"https://source.example.test/{name.lower()}",
         )
 
 

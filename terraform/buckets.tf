@@ -32,10 +32,6 @@ data "archive_file" "assets" {
     filename = "helper.py"
   }
   source {
-    content  = file("${local.legacy_function_root}/config.yml")
-    filename = "config.yml"
-  }
-  source {
     content  = file("${local.legacy_function_root}/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
   }
@@ -103,10 +99,6 @@ data "archive_file" "new_function_assets" {
     filename = "helper.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/config.yml")
-    filename = "config.yml"
-  }
-  source {
     content  = file("../archive/legacy-ingestion/scripts/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
   }
@@ -165,10 +157,6 @@ data "archive_file" "initialization_assets" {
   source {
     content  = file("../archive/legacy-ingestion/scripts/helper.py")
     filename = "helper.py"
-  }
-  source {
-    content  = file("../archive/legacy-ingestion/scripts/config.yml")
-    filename = "config.yml"
   }
   source {
     content  = file("../archive/legacy-ingestion/scripts/ingestion_configuration.py")

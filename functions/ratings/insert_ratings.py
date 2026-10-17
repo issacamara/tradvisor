@@ -53,4 +53,4 @@ def entry_point(request=None):
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

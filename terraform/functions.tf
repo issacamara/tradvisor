@@ -19,7 +19,7 @@ resource "google_cloudfunctions2_function" "functions" {
     available_memory      = "512Mi"
     timeout_seconds       = 180
     service_account_email = google_service_account.tradvisor_sa.email
-    environment_variables = {
+    environment_variables = merge({
       TRADVISOR_RUNTIME_TARGET             = "ingestion"
       TRADVISOR_ENVIRONMENT                = var.environment
       GOOGLE_CLOUD_PROJECT                 = var.project_id
@@ -29,11 +29,12 @@ resource "google_cloudfunctions2_function" "functions" {
       TRADVISOR_INGESTION_DATA_BUCKET      = google_storage_bucket.data-brvm.name
       TRADVISOR_INGESTION_ARCHIVE_BUCKET   = google_storage_bucket.archive-brvm.name
       TRADVISOR_INGESTION_DATASET          = "stocks"
+      TRADVISOR_INGESTION_COMPANIES_TABLE  = "${var.project_id}.stocks.brvm_companies"
       TRADVISOR_INGESTION_SHARES_TABLE     = "${var.project_id}.stocks.shares"
       TRADVISOR_INGESTION_DIVIDENDS_TABLE  = "${var.project_id}.stocks.dividends"
       TRADVISOR_INGESTION_FINANCIALS_TABLE = "${var.project_id}.stocks.financials"
       TRADVISOR_INGESTION_RATINGS_TABLE    = "${var.project_id}.stocks.ratings"
-    }
+    }, var.v1_ingestion_source_urls)
   }
 
   lifecycle {
@@ -68,7 +69,7 @@ resource "google_cloudfunctions2_function" "initialization_functions" {
     available_cpu         = each.key == "scrape_financials_init" ? "1" : null
     timeout_seconds       = each.key == "scrape_financials_init" ? 600 : 180
     service_account_email = google_service_account.tradvisor_sa.email
-    environment_variables = {
+    environment_variables = merge({
       TRADVISOR_RUNTIME_TARGET             = "ingestion"
       TRADVISOR_ENVIRONMENT                = var.environment
       GOOGLE_CLOUD_PROJECT                 = var.project_id
@@ -78,11 +79,12 @@ resource "google_cloudfunctions2_function" "initialization_functions" {
       TRADVISOR_INGESTION_DATA_BUCKET      = google_storage_bucket.data-brvm.name
       TRADVISOR_INGESTION_ARCHIVE_BUCKET   = google_storage_bucket.archive-brvm.name
       TRADVISOR_INGESTION_DATASET          = "stocks"
+      TRADVISOR_INGESTION_COMPANIES_TABLE  = "${var.project_id}.stocks.brvm_companies"
       TRADVISOR_INGESTION_SHARES_TABLE     = "${var.project_id}.stocks.shares"
       TRADVISOR_INGESTION_DIVIDENDS_TABLE  = "${var.project_id}.stocks.dividends"
       TRADVISOR_INGESTION_FINANCIALS_TABLE = "${var.project_id}.stocks.financials"
       TRADVISOR_INGESTION_RATINGS_TABLE    = "${var.project_id}.stocks.ratings"
-    }
+    }, var.v1_ingestion_source_urls)
   }
 
   lifecycle {

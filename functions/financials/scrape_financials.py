@@ -1,5 +1,4 @@
 from curl_cffi import requests
-import yaml
 import pandas as pd
 from helper import (
     save_dataframe_as_csv,
@@ -23,7 +22,7 @@ from google.auth import default
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 
 
-def get_existing_symbols_and_years():
+def get_existing_symbols_and_years(table_id=None):
     """Read existing canonical rows to avoid unnecessary report processing.
     
     Returns a dict mapping (symbol, fiscal_year) tuples to announcement_date.
@@ -33,10 +32,11 @@ def get_existing_symbols_and_years():
     from google.auth import default
     
     credentials, project_id = default()
+    table_id = table_id or f"{project_id}.stocks.financials"
     client = bigquery.Client(credentials=credentials, project=project_id)
     query = f"""
         SELECT symbol, fiscal_year, announcement_date, document_link
-        FROM `{project_id}.stocks.financials`
+        FROM `{table_id}`
     """
     try:
         results = client.query(query).result()
@@ -48,14 +48,14 @@ def get_existing_symbols_and_years():
         return {}
 
 
-def get_symbols_from_company_reference(project_id):
+def get_symbols_from_company_reference(table_id, project_id):
     """Load the tracked BRVM symbols without scraping the provider dropdown."""
     from google.cloud import bigquery
 
     client = bigquery.Client(project=project_id)
     query = f"""
         SELECT symbol
-        FROM `{project_id}.stocks.brvm_companies`
+        FROM `{table_id}`
         WHERE symbol IS NOT NULL AND TRIM(symbol) != ''
         ORDER BY symbol
     """
@@ -235,7 +235,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
                     break
         
         if not pdf_link:
-            print(f"    Could not find PDF link in details page")
+            emit_event("ingestion.financials.pdf_url", "missing")
             return None
         
         # Convert to absolute URL if needed
@@ -246,7 +246,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
         else:
             pdf_url = f"https://www.richbourse.com/common/actualite/{pdf_link}"
         
-        print(f"    Extracted PDF URL: {pdf_url[:80]}...")
+        emit_event("ingestion.financials.pdf_url", "resolved")
         return pdf_url
         
     except Exception as e:
@@ -297,15 +297,14 @@ def _legacy_extract_financials_from_pdf(pdf_content, openrouter_api_key, max_ret
         Dictionary with extracted financial data or None if all attempts fail
     """
     # First, try to extract text from PDF to avoid image limit issues
-    print("    Extracting text from PDF...")
     pdf_text = extract_text_from_pdf(pdf_content)
     
     use_text_mode = pdf_text and len(pdf_text) > 100  # Use text if we got meaningful content
     
     if use_text_mode:
-        print(f"    Using text extraction ({len(pdf_text)} chars)")
+        emit_event("ingestion.financials.pdf_text", "extracted")
     else:
-        print("    Text extraction failed or too short, falling back to PDF file (may hit image limit)")
+        emit_event("ingestion.financials.pdf_text", "fallback")
     
     prompt = """You are a financial data extraction expert. Extract structured financial data from a BRVM annual financial statement PDF.
 
@@ -379,10 +378,10 @@ Output format:
     for tier_idx, (models, is_free, model_name) in enumerate(model_tiers):
         # Skip paid models if we've reached max_retries with free models
         if tier_idx > max_retries and not is_free:
-            print(f"    Max retries reached, skipping paid models")
+            emit_event("ingestion.financials.provider", "retry_limit")
             break
         
-        print(f"    Trying model: {model_name}")
+        emit_event("ingestion.financials.provider", "trying")
         
         if use_text_mode:
             # Send text instead of PDF to avoid image limit
@@ -442,10 +441,10 @@ Output format:
                     
                     # Check if data is complete enough
                     if not is_data_incomplete(data):
-                        print(f"    ✓ Successfully extracted with {model_name}")
+                        emit_event("ingestion.financials.provider", "succeeded")
                         return data
                     else:
-                        print(f"    ✗ Incomplete data from {model_name}, trying better model...")
+                        emit_event("ingestion.financials.provider", "incomplete")
                         # Continue to try better model
                         continue
             else:
@@ -456,7 +455,7 @@ Output format:
     
     # Return best result we got, even if incomplete
     if best_result:
-        print(f"    Returning best result (may be incomplete)")
+        emit_event("ingestion.financials.provider", "incomplete")
     else:
         emit_event("ingestion.financials.provider", "failed", error_class="AllModelsFailed")
     
@@ -511,8 +510,22 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
     previous_year = current_year - 1
     
     # Get existing data from BigQuery
-    table_exists_flag = table_exists('financials')
-    existing_data = get_existing_symbols_and_years() if table_exists_flag else {}
+    financials_table = (
+        configuration.table_for("financials")
+        if configuration is not None
+        else f"{project_id}.stocks.financials"
+    )
+    companies_table = (
+        configuration.table_for("companies")
+        if configuration is not None
+        else f"{project_id}.stocks.brvm_companies"
+    )
+    if configuration is None:
+        table_exists_flag = table_exists("financials")
+        existing_data = get_existing_symbols_and_years() if table_exists_flag else {}
+    else:
+        table_exists_flag = table_exists(financials_table, project_id=project_id)
+        existing_data = get_existing_symbols_and_years(financials_table) if table_exists_flag else {}
     
     # Initialization is a separate storage-first workflow. Do not fall back to
     # it here: this recurring function is packaged without its initializer-only
@@ -523,24 +536,28 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
             "the recurring financials-wf"
         )
     
-    print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs in database.")
+    emit_event("ingestion.financials.existing", "loaded", count=len(existing_data))
     
     # Use the managed company reference table. RichBourse's symbol dropdown
     # is protected by anti-bot rules and is not needed for this workflow.
-    all_symbols = get_symbols_from_company_reference(project_id)
+    all_symbols = (
+        get_symbols_from_company_reference(project_id)
+        if configuration is None
+        else get_symbols_from_company_reference(companies_table, project_id)
+    )
     if not all_symbols:
         raise RuntimeError("stocks.brvm_companies has no symbols to process")
-    print(f"Found {len(all_symbols)} total tracked symbols.")
+    emit_event("ingestion.financials.symbols", "loaded", count=len(all_symbols))
     
     total_processed = 0
     
     for symbol in all_symbols:
-        print(f"Processing {symbol}...")
+        emit_event("ingestion.financials.symbol", "processing")
         
         announcements = get_announcements_for_symbol(symbol)
         
         if not announcements:
-            print(f"  No announcements found for {symbol}")
+            emit_event("ingestion.financials.announcements", "none")
             continue
         
         # Deduplicate: keep only the most recent announcement per (symbol, fiscal_year)
@@ -583,7 +600,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                 # Handle new URL format: /details/ URLs return HTML with PDF link
                 pdf_url = ann['url']
                 if '/details/' in pdf_url:
-                    print(f"    Detected /details/ URL, extracting actual PDF URL...")
+                    emit_event("ingestion.financials.pdf_details", "detected")
                     pdf_url = extract_pdf_url_from_details_page(pdf_url, session, headers)
                     if not pdf_url:
                         raise Exception("Failed to extract PDF URL from details page")
@@ -598,7 +615,15 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                 document_revision = hashlib.sha256(pdf_content).hexdigest()
                 shared_adapter = _load_shared_extraction_module()
                 try:
-                    artifact_bucket = shared_adapter.get_extraction_artifact_bucket(project_id)
+                    if configuration is not None:
+                        artifact_bucket_name = configuration.data_bucket
+                    else:
+                        from helper import get_project_number
+
+                        artifact_bucket_name = f"data-{get_project_number(project_id)}"
+                    artifact_bucket = shared_adapter.get_extraction_artifact_bucket(
+                        project_id, artifact_bucket_name
+                    )
                     artifact = shared_adapter.load_extraction_artifact(
                         artifact_bucket, document_revision
                     )
@@ -664,13 +689,13 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                     and financial_data is not None
                     and annual_revision is not None
                 ):
-                    print(f"  FY {fiscal_year} - already up to date, skipping")
+                    emit_event("ingestion.financials.report", "unchanged")
                     session.close()
                     continue
                 
                 # New or updated data - upsert
                 # Smart download ensures we only get here if announcement_date is different
-                print(f"  FY {fiscal_year} - upserting (newer announcement)")
+                emit_event("ingestion.financials.report", "upserting")
                 # Convert announcement_date string to date object for BigQuery
                 # Keep announcement_date as string in YYYY-MM-DD format - BigQuery will parse it as DATE
                 symbol_data.append({
@@ -686,7 +711,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                     'document_revision': document_revision,
                 'collected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 })
-                print(f"    Extracted: revenue={financial_data.get('revenue')}, net_income={financial_data.get('net_income')}")
+                emit_event("ingestion.financials.extraction", "succeeded")
                 
                 # Free financial data memory
                 del financial_data
@@ -703,7 +728,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
             df_symbol = pd.DataFrame(symbol_data)
             try:
                 upsert_financial_report_current_and_revision(df_symbol, project_id)
-                print(f"  Upserted {len(df_symbol)} records to BigQuery.")
+                emit_event("ingestion.financials.upsert", "succeeded", count=len(df_symbol))
                 total_processed += len(df_symbol)
             except Exception as e:
                 emit_event("ingestion.financials.upsert", "failed", error_class=type(e).__name__)
@@ -715,18 +740,17 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
         # Force garbage collection after each symbol
         gc.collect()
     
-    print(f"\nMonthly run complete. Total records upserted: {total_processed}")
+    emit_event("ingestion.financials.scrape", "completed", count=total_processed)
     return pd.DataFrame()
 
 
 @functions_framework.http
 @observed_entrypoint("ingestion.financials.scrape")
 def entry_point(request=None):
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
-    with open('config.yml', 'r') as file:
-        endpoints = source_endpoints(yaml.safe_load(file))
+    endpoints = configuration.endpoints
     
     # Get OpenRouter API key from environment
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
@@ -743,4 +767,4 @@ def entry_point(request=None):
 
 # Local testing (only run when executed directly)
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

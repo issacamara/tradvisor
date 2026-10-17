@@ -71,7 +71,7 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
     ]
     assert 'filename = "main.py"' in buckets
     assert 'filename = "helper.py"' in buckets
-    assert 'filename = "config.yml"' in buckets
+    assert 'filename = "config.yml"' not in buckets
     assert 'filename = "ingestion_configuration.py"' in buckets
     assert 'filename = "ingestion_observability.py"' in buckets
     assert 'filename = "requirements.txt"' in buckets
@@ -92,13 +92,8 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
 
 def test_archive_inputs_exclude_duckdb_and_persistent_local_paths() -> None:
     requirements = (SCRIPTS / "requirements.in").read_text().lower()
-    config = (SCRIPTS / "config.yml").read_text()
-
     assert "duckdb" not in requirements
-    assert "duckdb:" not in config
-    assert "csv_directory:" not in config
-    assert "archive: processed_data" not in config
-    assert "/users/" not in config.lower()
+    assert "config.yml" not in (TERRAFORM / "buckets.tf").read_text().lower()
 
 
 def test_archive_requirements_are_complete_hashed_locks() -> None:

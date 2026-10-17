@@ -3,7 +3,6 @@ FROM python:3.9-slim-buster as base
 
 WORKDIR tradvisor/scripts/
 COPY requirements.txt .
-COPY config.yml .
 COPY helper.py .
 RUN pip install --no-cache-dir -r requirements.txt
 

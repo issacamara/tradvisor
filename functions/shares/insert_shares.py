@@ -296,17 +296,14 @@ def process_share_files(
 
 @observed_entrypoint("ingestion.shares.insert")
 def entry_point(request=None):
-    import yaml
     from helper import load_files
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
 
-    with open("config.yml", "r") as file:
-        source_endpoints(yaml.safe_load(file))
     process_share_files(load_files(configuration, "shares"), configuration)
     return "Share observations archived; only verified rows were loaded.\n"
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

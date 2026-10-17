@@ -39,7 +39,8 @@ def cleanup_old_dividends(project_id, dataset, table, years_to_keep=5):
     query_job = client.query(delete_query)
     query_job.result()
     
-    print(f"Cleaned up dividend records older than {years_to_keep} years")
+    from ingestion_observability import emit_event
+    emit_event("ingestion.dividends.cleanup", "succeeded", count=years_to_keep)
 
 
 def process_dividends(configuration, asset):
@@ -77,8 +78,9 @@ def process_dividends(configuration, asset):
             upsert_and_archive(
                 df, project_id, dataset, table, ["payment_id"], archive_csv
             )
-            print(f"Upserted {len(df)} rows into {asset} table")
+            from ingestion_observability import emit_event
+            emit_event("ingestion.dividends.upsert", "succeeded", count=len(df))
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

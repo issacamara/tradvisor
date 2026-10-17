@@ -8,7 +8,6 @@ import importlib.util
 import sys
 import functions_framework
 from ingestion_observability import emit_event, observed_entrypoint
-import yaml
 import pandas as pd
 from google.auth import default
 from google.cloud import bigquery
@@ -243,11 +242,11 @@ def extract_relevant_pdf_pages(pdf_content, max_pages=40):
                 selected_pages.add(idx)
 
         if len(selected_pages) <= 5:
-            print(f"    No keywords matched. Selecting first {max_pages} pages.")
+            emit_event("ingestion.financials.pdf_slice", "defaulted", count=max_pages)
             selected_pages.update(range(min(max_pages, total_pages)))
 
         sorted_pages = sorted(list(selected_pages))[:max_pages]
-        print(f"    Filtered PDF from {total_pages} down to {len(sorted_pages)} targeted pages.")
+        emit_event("ingestion.financials.pdf_slice", "selected", count=len(sorted_pages))
 
         writer = PdfWriter()
         for page_idx in sorted_pages:
@@ -409,10 +408,10 @@ Each evidenced amount object has source-reported numeric "value", "currency", ex
                         evidence_callback(evidence)
                     
                     if not is_data_incomplete(data):
-                        print(f"    ✓ Successfully extracted with {model_name}")
+                        emit_event("ingestion.financials.provider", "succeeded")
                         return data
                     else:
-                        print(f"    ✗ Incomplete data from {model_name}, trying next model...")
+                        emit_event("ingestion.financials.provider", "incomplete")
             else:
                 emit_event("ingestion.financials.provider", "failed", error_class="ProviderError")
         except Exception as e:
@@ -448,12 +447,11 @@ def extract_financials_from_pdf(
     attempt_budget = [0]
     import base64
 
-    print("    Extracting text from PDF...")
     pdf_text = extract_text_from_pdf(pdf_content)
     
     # 1. Standard Path: Text Extraction
     if pdf_text and len(pdf_text) > 100:
-        print(f"    Using full document text extraction ({len(pdf_text)} chars)")
+        emit_event("ingestion.financials.pdf_text", "extracted", count=len(pdf_text))
         text_content = [{"type": "text", "text": f"\n\n--- PDF TEXT CONTENT ---\n\n{pdf_text}"}]
         result = send_openrouter_payload(
             text_content,
@@ -466,7 +464,7 @@ def extract_financials_from_pdf(
             return result
 
     # 2. Scanned / Image Fallback: Smart Keyword Slicing
-    print("    Text extraction empty or incomplete. Applying Smart Keyword PDF slicing...")
+    emit_event("ingestion.financials.pdf_text", "fallback")
     sliced_pdf_bytes = extract_relevant_pdf_pages(pdf_content, max_pages=40)
     pdf_base64 = base64.b64encode(sliced_pdf_bytes).decode('utf-8')
     
@@ -495,12 +493,12 @@ def extract_financials_from_pdf(
         total_pages = len(reader.pages)
         
         if total_pages > 40:
-            print(f"    Attempting sequential chunk processing across {total_pages} pages...")
+            emit_event("ingestion.financials.pdf_chunks", "started", count=total_pages)
             for start in range(0, total_pages, 40):
                 if attempt_budget[0] >= max_provider_attempts:
                     break
                 end = min(start + 40, total_pages)
-                print(f"    Scanning page chunk {start + 1} to {end}...")
+                emit_event("ingestion.financials.pdf_chunk", "processing", count=end - start)
 
                 writer = PdfWriter()
                 for i in range(start, end):
@@ -563,21 +561,21 @@ def save_extraction_artifact(bucket, pdf_sha256, evidence):
     return artifact
 
 
-def get_extraction_artifact_bucket(project_id):
+def get_extraction_artifact_bucket(project_id, bucket_name):
     from helper import get_project_number
     from google.cloud import storage
 
     credentials, _ = default()
     client = storage.Client(credentials=credentials, project=project_id)
-    return client.bucket(f"data-{get_project_number(project_id)}")
+    return client.bucket(bucket_name)
 
 
-def get_existing_data_in_bigquery(project_id):
+def get_existing_data_in_bigquery(project_id, table_id):
     """Query BigQuery to get existing (symbol, fiscal_year) pairs."""
     client = bigquery.Client(project=project_id)
     query = f"""
         SELECT symbol, fiscal_year
-        FROM `{project_id}.stocks.financials`
+        FROM `{table_id}`
     """
     
     try:
@@ -604,7 +602,7 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
         # Delete from source bucket
         source_blob.delete()
         
-        print(f"    ✓ Moved to archive: gs://archive-{project_number}/{destination_blob_name}")
+        emit_event("ingestion.financials.pdf_archive", "succeeded")
         return True
         
     except Exception as e:
@@ -635,15 +633,19 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
     bucket = storage_client.bucket(bucket_name)
     
     # Get existing data in BigQuery to avoid duplicates
-    print("Checking existing data in BigQuery...")
-    existing_data = get_existing_data_in_bigquery(project_id)
-    print(f"Found {len(existing_data)} existing (symbol, fiscal_year) pairs.")
+    existing_data = (
+        get_existing_data_in_bigquery(project_id)
+        if configuration is None
+        else get_existing_data_in_bigquery(
+            project_id, configuration.table_for("financials")
+        )
+    )
+    emit_event("ingestion.financials.existing", "loaded", count=len(existing_data))
     
     # List all PDF files in financials/ prefix
-    print("Listing PDF files in GCS...")
     blobs = list(bucket.list_blobs(prefix='financials/'))
     pdf_blobs = [b for b in blobs if b.name.endswith('.pdf')]
-    print(f"Found {len(pdf_blobs)} PDF files.")
+    emit_event("ingestion.financials.pdfs", "listed", count=len(pdf_blobs))
     
     total_processed = 0
     total_skipped = 0
@@ -666,15 +668,15 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                 try:
                     fiscal_year = int(filename_parts[1])
                 except ValueError:
-                    print(f"  Skipping {blob.name}: could not parse symbol/year")
+                    emit_event("ingestion.financials.pdf", "invalid_name")
                     total_skipped += 1
                     continue
             else:
-                print(f"  Skipping {blob.name}: could not parse filename")
+                emit_event("ingestion.financials.pdf", "invalid_name")
                 total_skipped += 1
                 continue
         
-        print(f"  Processing {symbol} FY{fiscal_year}...")
+        emit_event("ingestion.financials.report", "processing")
         
         try:
             # Download PDF
@@ -813,7 +815,7 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                 archive_pdf,
                 run_id=run_id,
             )
-            print(f"    ✓ Upserted current result and report revision for {symbol} FY{fiscal_year}")
+            emit_event("ingestion.financials.upsert", "succeeded")
             
             total_processed += 1
             
@@ -827,10 +829,11 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
         
         gc.collect()
     
-    print(f"\nProcessing complete.")
-    print(f"  Total processed: {total_processed}")
-    print(f"  Total skipped (existing): {total_skipped}")
-    print(f"  Total failed: {total_failed}")
+    emit_event("ingestion.financials.process", "completed", count=total_processed)
+    if total_skipped:
+        emit_event("ingestion.financials.process", "skipped", count=total_skipped)
+    if total_failed:
+        emit_event("ingestion.financials.process", "partial", count=total_failed)
     
     return total_processed
 
@@ -838,11 +841,9 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
 @functions_framework.http
 @observed_entrypoint("ingestion.financials.insert")
 def entry_point(request=None):
-    from ingestion_configuration import IngestionConfiguration, source_endpoints
+    from ingestion_configuration import IngestionConfiguration
 
     configuration = IngestionConfiguration.from_environment()
-    with open("config.yml", "r") as file:
-        source_endpoints(yaml.safe_load(file))
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     
     if not openrouter_api_key:
@@ -854,4 +855,4 @@ def entry_point(request=None):
 
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()

@@ -1,7 +1,7 @@
-import yaml
 import pandas as pd
 from helper import save_dataframe_as_csv
 from ingestion_observability import emit_event, observed_entrypoint
+from ingestion_configuration import IngestionConfiguration
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -62,10 +62,9 @@ def scrape_brvm_bonds(url):
 @functions_framework.http
 @observed_entrypoint("ingestion.bonds.scrape")
 def entry_point(request=None):
-    with open('config.yml', 'r') as file:
-        config = yaml.safe_load(file)
-    df = scrape_brvm_bonds(config['url']['bonds'])
-    return save_dataframe_as_csv(df, 'bonds', config)
+    configuration = IngestionConfiguration.from_environment()
+    df = scrape_brvm_bonds(configuration.endpoint_for("bonds"))
+    return save_dataframe_as_csv(df, 'bonds', configuration)
 
 if __name__ == "__main__":
-    print(entry_point())
+    entry_point()
