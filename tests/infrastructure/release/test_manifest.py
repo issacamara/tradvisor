@@ -61,12 +61,12 @@ def test_manifest_rejects_mutable_or_unverifiable_identity(tmp_path: Path, field
         validate_manifest(manifest)
 
 
-def test_manifest_rejects_missing_environment_artifact(tmp_path: Path) -> None:
+def test_manifest_allows_backend_only_release(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
-    del manifest["frontend"]["production"]
+    manifest["frontend"] = {}
+    manifest["configuration"] = {}
 
-    with pytest.raises(ManifestError, match="development and production"):
-        validate_manifest(manifest)
+    validate_manifest(manifest)
 
 
 def test_manifest_rejects_wrong_target_label(tmp_path: Path) -> None:

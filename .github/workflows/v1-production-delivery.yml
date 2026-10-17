@@ -41,7 +41,6 @@ jobs:
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
       TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
-      TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -71,14 +70,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Verify and unpack production frontend artifact
-        run: |
-          python3 scripts/release/manifest.py \
-            --verify-manifest release/manifest/release-manifest.json \
-            --artifact-root release
-          rm -rf frontend/out
-          mkdir -p frontend/out
-          tar -xf release/frontend/production.tar -C frontend/out
       - name: Require a reviewed Terraform plan run
         if: inputs.action == 'apply'
         env:
@@ -209,6 +200,26 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
         run: terraform apply -auto-approve ../reviewed-plan/tfplan
+      - name: Build production frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [ "$ACTION" = "apply" ]; then
+            NEXT_PUBLIC_TRADVISOR_API_URL="$(gcloud run services describe tradvisor-v1-api \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --format='value(status.url)' \
+              --quiet)"
+          else
+            NEXT_PUBLIC_TRADVISOR_API_URL="${{ vars.PROD_TRADVISOR_API_URL }}"
+          fi
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          npm ci --ignore-scripts --no-audit --no-fund
+          NEXT_PUBLIC_TRADVISOR_API_URL="$NEXT_PUBLIC_TRADVISOR_API_URL" npm run build
 
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'

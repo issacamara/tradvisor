@@ -24,11 +24,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.14.0
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: 3.11.11
@@ -65,41 +60,11 @@ jobs:
               --target "function:$function" \
               --output "dist/functions/$function.tar"
           done
-      - name: Build development frontend artifact
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.DEV_TRADVISOR_API_URL }}
-        run: |
-          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
-          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build
-          python3 ../scripts/release/package_artifact.py \
-            --source out --target development --output ../dist/frontend/development.tar
-      - name: Build production frontend artifact
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.PROD_TRADVISOR_API_URL }}
-        run: |
-          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
-          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
-          rm -rf .next out
-          npm run build
-          python3 ../scripts/release/package_artifact.py \
-            --source out --target production --output ../dist/frontend/production.tar
       - name: Create release manifest
         env:
           RELEASE_ID: ${{ inputs.release_id }}
           API_IMAGE: ${{ inputs.api_image }}
-          DEV_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
-          DEV_TRADVISOR_API_URL: ${{ vars.DEV_TRADVISOR_API_URL }}
-          PROD_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
-          PROD_TRADVISOR_API_URL: ${{ vars.PROD_TRADVISOR_API_URL }}
         run: |
-          dev_config="$(printf '%s' "$DEV_FIREBASE_API_KEY|$DEV_TRADVISOR_API_URL" | sha256sum | cut -d' ' -f1)"
-          prod_config="$(printf '%s' "$PROD_FIREBASE_API_KEY|$PROD_TRADVISOR_API_URL" | sha256sum | cut -d' ' -f1)"
           python3 scripts/release/manifest.py \
             --release-id "$RELEASE_ID" \
             --commit "$GITHUB_SHA" \
@@ -108,14 +73,9 @@ jobs:
             --function-archive dividends=dist/functions/dividends.tar \
             --function-archive financials=dist/functions/financials.tar \
             --function-archive ratings=dist/functions/ratings.tar \
-            --frontend-artifact development=dist/frontend/development.tar \
-            --frontend-artifact production=dist/frontend/production.tar \
             --rule-version swing=swing-v1 \
             --rule-version long_term=long-term-v1 \
             --toolchain "python=$(python --version | awk '{print $2}')" \
-            --toolchain "node=$(node --version | sed 's/^v//')" \
-            --config-fingerprint "development=$dev_config" \
-            --config-fingerprint "production=$prod_config" \
             --output dist/manifest/release-manifest.json
       - name: Upload immutable release artifacts
         uses: actions/upload-artifact@v4

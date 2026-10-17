@@ -1,7 +1,9 @@
 """Create and validate the immutable V1 release manifest.
 
 The manifest contains only public release metadata and SHA-256 fingerprints. It
-never stores artifact contents, credentials, or environment values.
+never stores artifact contents, credentials, or environment values. Frontend
+artifacts are optional because each deployment builds its environment-specific
+frontend after the backend URL is available.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 RELEASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
-REQUIRED_ENVIRONMENTS = frozenset({"development", "production"})
+FRONTEND_ENVIRONMENTS = frozenset({"development", "production"})
 REQUIRED_FUNCTIONS = frozenset({"shares", "dividends", "financials", "ratings"})
 
 
@@ -99,22 +101,16 @@ def build_manifest(
         raise ManifestError("commit must be a full 40-character SHA-1")
     if not IMAGE_DIGEST.fullmatch(backend_digest):
         raise ManifestError("backend_digest must be an immutable sha256:<digest>")
-    if REQUIRED_ENVIRONMENTS - frontend_artifacts.keys():
-        missing = ", ".join(sorted(REQUIRED_ENVIRONMENTS - frontend_artifacts.keys()))
-        raise ManifestError(f"frontend artifacts missing required environments: {missing}")
     if REQUIRED_FUNCTIONS - function_archives.keys():
         missing = ", ".join(sorted(REQUIRED_FUNCTIONS - function_archives.keys()))
         raise ManifestError(f"function archives missing required targets: {missing}")
-    if REQUIRED_ENVIRONMENTS - config_fingerprints.keys():
-        missing = ", ".join(sorted(REQUIRED_ENVIRONMENTS - config_fingerprints.keys()))
-        raise ManifestError(f"configuration fingerprints missing required environments: {missing}")
     if not rule_versions:
         raise ManifestError("at least one rule version is required")
     if not toolchains:
         raise ManifestError("at least one toolchain version is required")
 
     def artifact_entry(name: str, path: Path) -> dict[str, str]:
-        expected_target = name if name in REQUIRED_ENVIRONMENTS else f"function:{name}"
+        expected_target = name if name in FRONTEND_ENVIRONMENTS else f"function:{name}"
         if artifact_target(path) != expected_target:
             raise ManifestError(f"artifact target does not match {name}: {path}")
         return {"sha256": sha256_file(path), "target": expected_target}
@@ -162,8 +158,8 @@ def validate_manifest(manifest: Mapping[str, Any]) -> None:
         raise ManifestError("manifest backend digest is not immutable")
     for section in ("functions", "frontend"):
         entries = manifest[section]
-        if not isinstance(entries, Mapping) or not entries:
-            raise ManifestError(f"manifest {section} must not be empty")
+        if not isinstance(entries, Mapping) or (section == "functions" and not entries):
+            raise ManifestError(f"manifest {section} must be a mapping")
         for name, entry in entries.items():
             expected_target = name if section == "frontend" else f"function:{name}"
             if (not isinstance(name, str) or not isinstance(entry, Mapping)
@@ -172,9 +168,6 @@ def validate_manifest(manifest: Mapping[str, Any]) -> None:
                 raise ManifestError(f"manifest {section} entry {name!r} has no valid checksum")
     if REQUIRED_FUNCTIONS - set(manifest["functions"]):
         raise ManifestError("manifest functions must include shares, dividends, financials, and ratings")
-    frontend_names = set(manifest["frontend"])
-    if REQUIRED_ENVIRONMENTS - frontend_names:
-        raise ManifestError("manifest frontend section must include development and production")
     rules = manifest["rules"]
     if not isinstance(rules, Mapping) or not rules or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in rules.items()):
         raise ManifestError("manifest rules must contain non-empty versions")
@@ -184,8 +177,6 @@ def validate_manifest(manifest: Mapping[str, Any]) -> None:
     configuration = manifest["configuration"]
     if not isinstance(configuration, Mapping):
         raise ManifestError("manifest configuration must contain fingerprints")
-    if REQUIRED_ENVIRONMENTS - set(configuration):
-        raise ManifestError("manifest configuration must include development and production")
     if any(not isinstance(value, str) or not SHA256.fullmatch(value) for value in configuration.values()):
         raise ManifestError("manifest configuration contains an invalid fingerprint")
     if "terraform_plan" in manifest:

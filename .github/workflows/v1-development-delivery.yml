@@ -66,14 +66,6 @@ jobs:
           node-version: 22.14.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Verify and unpack development frontend artifact
-        run: |
-          python3 scripts/release/manifest.py \
-            --verify-manifest release/manifest/release-manifest.json \
-            --artifact-root release
-          rm -rf frontend/out
-          mkdir -p frontend/out
-          tar -xf release/frontend/development.tar -C frontend/out
       - name: Require a reviewed Terraform plan run
         if: inputs.action == 'apply'
         env:
@@ -226,6 +218,17 @@ jobs:
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: terraform apply -auto-approve ../reviewed-plan/tfplan
+      - name: Build development frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
+        run: |
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
