@@ -7,6 +7,7 @@ from typing import NoReturn
 import pytest
 
 from backend.configuration import (
+    PublicationControlConfiguration,
     RuntimeConfiguration,
     RuntimeConfigurationError,
     WorkflowDispatchConfiguration,
@@ -121,6 +122,20 @@ def test_workflow_dispatcher_requires_an_explicit_consistent_target() -> None:
 
     with pytest.raises(RuntimeConfigurationError, match="does not match"):
         WorkflowDispatchConfiguration.from_environment(values)
+
+
+@pytest.mark.parametrize("value", ["", "0", "-1", "1.5", "301"])
+def test_publication_control_debounce_is_required_positive_and_bounded(value: str) -> None:
+    with pytest.raises(RuntimeConfigurationError, match="TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS"):
+        PublicationControlConfiguration.from_environment(
+            {"TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS": value}
+        )
+
+
+def test_publication_control_debounce_accepts_a_bounded_release_value() -> None:
+    assert PublicationControlConfiguration.from_environment(
+        {"TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS": "60"}
+    ).debounce_seconds == 60
 
 
 def test_runtime_role_must_match_the_requested_config() -> None:

@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 RuntimeTarget = Literal["api", "daily_job", "admin"]
 Environment = Literal["development", "production"]
+MAX_PUBLICATION_DEBOUNCE_SECONDS = 300
 
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 _DATASET_ID = re.compile(r"^[A-Za-z0-9_]+$")
@@ -93,6 +94,31 @@ class WorkflowDispatchConfiguration:
             environment_project_id=environment_project_id,
             workflow_region=workflow_region,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationControlConfiguration:
+    """Release configuration for the serialized publication-control process."""
+
+    debounce_seconds: int
+
+    @classmethod
+    def from_environment(
+        cls,
+        environ: Mapping[str, str] | None = None,
+    ) -> "PublicationControlConfiguration":
+        values = os.environ if environ is None else environ
+        raw_value = values.get("TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS", "").strip()
+        if not raw_value:
+            raise RuntimeConfigurationError("TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS is required")
+        if not raw_value.isdecimal():
+            raise RuntimeConfigurationError("TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS must be a whole number")
+        debounce_seconds = int(raw_value)
+        if not 1 <= debounce_seconds <= MAX_PUBLICATION_DEBOUNCE_SECONDS:
+            raise RuntimeConfigurationError(
+                "TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS must be positive and bounded"
+            )
+        return cls(debounce_seconds=debounce_seconds)
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,5 +310,6 @@ __all__ = [
     "RuntimeConfiguration",
     "RuntimeConfigurationError",
     "RuntimeTarget",
+    "PublicationControlConfiguration",
     "WorkflowDispatchConfiguration",
 ]

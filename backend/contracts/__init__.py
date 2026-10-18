@@ -25,6 +25,13 @@ from backend.contracts.scalars import (
     Money,
     NonNegativeMoney,
 )
+from backend.contracts.publication_control import (
+    ManagedImportCompletion,
+    ManagedWriteReceipt,
+    PublicationControlOutcome,
+    ReadySourceInput,
+    SourceInputIdentity,
+)
 
 __all__ = [
     "AnalyticalBatch",
@@ -39,6 +46,9 @@ __all__ = [
     "MAX_SAFE_INTEGER",
     "Money",
     "NonNegativeMoney",
+    "ManagedImportCompletion",
+    "ManagedWriteReceipt",
+    "PublicationControlOutcome",
     "NormalizedCapital",
     "NormalizedCompany",
     "NormalizedDividend",
@@ -50,5 +60,7 @@ __all__ = [
     "Provenance",
     "ResponseEnvelope",
     "ResponseMeta",
+    "ReadySourceInput",
     "Revision",
+    "SourceInputIdentity",
 ]
