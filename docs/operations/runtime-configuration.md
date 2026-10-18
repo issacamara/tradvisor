@@ -62,6 +62,14 @@ The workflow dispatcher requires `TRADVISOR_ENVIRONMENT`,
 Its project IDs must agree and its region must be explicit before token
 verification or workflow dispatch.
 
+## Publication-control debounce
+
+`TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS` is the explicit release configuration
+for the completion-driven publication controller. It is a whole number from 1
+through 300 seconds; missing, non-positive, fractional, or larger values fail
+before any controller client is constructed. It coalesces eligible successful
+imports only and neither changes analytical rules nor activates a schedule.
+
 ## Source precedence and local use
 
 The process environment is the only configuration source. There is no implicit
