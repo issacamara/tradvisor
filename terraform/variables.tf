@@ -238,6 +238,17 @@ variable "v1_runtime_service_account_id" {
   default     = "tradvisor-v1-api"
 }
 
+variable "publication_control_service_account_id" {
+  description = "Dedicated least-privilege identity for V1 publication control"
+  type        = string
+  default     = "tradvisor-publication-control"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.publication_control_service_account_id))
+    error_message = "The publication-control service account ID must be a valid Google service-account ID."
+  }
+}
+
 variable "v1_cursor_secret_id" {
   description = "Metadata-only secret name referenced by the V1 runtime for cursor signing"
   type        = string
