@@ -43,7 +43,7 @@ class RecordingInvoker:
         self.calls: list[SourceInputIdentity] = []
         self.failures = failures
 
-    def invoke(self, input_identity: SourceInputIdentity) -> None:
+    def invoke_and_wait(self, input_identity: SourceInputIdentity) -> None:
         self.calls.append(input_identity)
         if self.failures:
             self.failures -= 1
@@ -126,14 +126,18 @@ def test_changed_financial_revision_requests_correction_through_same_invoker() -
     store = MemoryStore()
     invoker = RecordingInvoker()
     control = controller(store, invoker)
+    control.accept(completion("shares", "b"), received_at=START)
     control.accept(completion("financials", "a"), received_at=START)
     first = control.dispatch_ready(now=START + timedelta(seconds=10))
-    control.accept(completion("financials", "b"), received_at=START + timedelta(seconds=11))
+    control.accept(completion("financials", "c"), received_at=START + timedelta(seconds=11))
     second = control.dispatch_ready(now=START + timedelta(seconds=21))
 
     assert first is not None and second is not None
     assert first.outcome == second.outcome == "published"
     assert first.input_identity != second.input_identity
+    assert first.input_identity is not None and second.input_identity is not None
+    assert first.input_identity.digest != second.input_identity.digest
+    assert {item.source for item in second.input_identity.inputs} == {"shares", "financials"}
     assert invoker.calls == [first.input_identity, second.input_identity]
 
 
@@ -143,8 +147,8 @@ def test_concurrent_dispatchers_claim_one_invocation() -> None:
     release = threading.Event()
 
     class BlockingInvoker(RecordingInvoker):
-        def invoke(self, input_identity: SourceInputIdentity) -> None:
-            super().invoke(input_identity)
+        def invoke_and_wait(self, input_identity: SourceInputIdentity) -> None:
+            super().invoke_and_wait(input_identity)
             started.set()
             assert release.wait(timeout=2)
 

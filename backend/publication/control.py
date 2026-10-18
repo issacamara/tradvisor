@@ -122,10 +122,10 @@ class PublicationControlStore(Protocol):
 
 
 class ExistingAnalyticalJobInvoker(Protocol):
-    """Idempotent adapter for invoking the already-existing analytical job."""
+    """Idempotent adapter for invoking and waiting on the existing job."""
 
-    def invoke(self, input_identity: SourceInputIdentity) -> None:
-        """Request publication once; the identity is the adapter's idempotency key."""
+    def invoke_and_wait(self, input_identity: SourceInputIdentity) -> None:
+        """Wait for terminal publication; the identity is the idempotency key."""
         ...
 
 
@@ -175,7 +175,15 @@ class PublicationRequestController:
                 return None
             if state.coalescing_started_at is None:
                 state.coalescing_started_at = received_at
-            inputs = {item.source: item for item in state.ready_inputs}
+            previous_inputs = (
+                state.ready_inputs
+                or (
+                    state.last_requested_identity.inputs
+                    if state.last_requested_identity is not None
+                    else ()
+                )
+            )
+            inputs = {item.source: item for item in previous_inputs}
             inputs[source] = ReadySourceInput(
                 source=source,
                 revision_fingerprint=receipt.revision_fingerprint,
@@ -197,7 +205,7 @@ class PublicationRequestController:
 
         for attempt in range(active_claim.attempt, MAX_ANALYTICAL_ATTEMPTS + 1):
             try:
-                self._invoker.invoke(active_claim.identity)
+                self._invoker.invoke_and_wait(active_claim.identity)
             except Exception:
                 failed = PublicationControlOutcome(
                     state="completed",
