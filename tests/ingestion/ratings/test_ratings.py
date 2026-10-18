@@ -5,8 +5,12 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "ratings" / "scrape_ratings.py"
+SUPPORT_SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+sys.path.insert(0, str(SUPPORT_SCRIPTS))
 
 bs4 = types.ModuleType("bs4")
 bs4.BeautifulSoup = object
@@ -72,3 +76,25 @@ def test_revision_identity_is_stable_across_replay_collection_times() -> None:
 
     assert first["source_revision_id"] == replay["source_revision_id"]
     assert first["collected_at"] != replay["collected_at"]
+
+
+def test_ratings_success_and_failure_have_no_publication_completion_path(monkeypatch) -> None:
+    completion_calls: list[object] = []
+    monkeypatch.setattr(
+        ratings,
+        "managed_import_completion",
+        lambda *args, **kwargs: completion_calls.append((args, kwargs)),
+        raising=False,
+    )
+    monkeypatch.setattr(ratings, "get_symbols_from_richbourse", lambda _url: [])
+
+    assert ratings.scrape_ratings("fixture://ratings").empty
+    monkeypatch.setattr(
+        ratings,
+        "get_symbols_from_richbourse",
+        lambda _url: (_ for _ in ()).throw(RuntimeError("fixture failure")),
+    )
+    with pytest.raises(RuntimeError, match="fixture failure"):
+        ratings.scrape_ratings("fixture://ratings")
+
+    assert completion_calls == []

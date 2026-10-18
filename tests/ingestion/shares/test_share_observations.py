@@ -15,6 +15,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "shares"
 LEGACY_SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(LEGACY_SCRIPTS))
 
 
 def _load_script(name: str, filename: str):
@@ -536,6 +537,68 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
         ),
         ("gcs-archive", "data-123", "archive-123", "shares.csv"),
     ]
+
+
+def test_share_completion_follows_the_managed_write_and_is_sanitized(monkeypatch) -> None:
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "123"
+    helper.move_csv_file_gcp = lambda *_args: None
+    helper.upsert_shares_and_archive = lambda *_args, **_kwargs: "a" * 64
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+
+    revisions: list[str] = []
+    loader._load_then_archive(
+        SimpleNamespace(name="shares.csv"), pd.DataFrame([_row()]), completion_revisions=revisions
+    )
+    completion = loader.managed_import_completion(
+        "shares", revisions, completed_at=datetime(2026, 10, 18, tzinfo=timezone.utc)
+    )
+
+    assert completion == {
+        "source": "shares",
+        "status": "succeeded",
+        "managed_write": {
+            "revision_fingerprint": hashlib.sha256(b'["' + b"a" * 64 + b'"]').hexdigest(),
+            "completed_at": "2026-10-18T00:00:00Z",
+        },
+    }
+    replay = loader.managed_import_completion(
+        "shares", list(reversed(revisions)), completed_at=datetime(2026, 10, 18, tzinfo=timezone.utc)
+    )
+    assert replay["managed_write"]["revision_fingerprint"] == completion["managed_write"]["revision_fingerprint"]
+
+
+def test_share_archive_failure_never_records_a_completion_revision(monkeypatch) -> None:
+    helper = ModuleType("helper")
+    helper.get_project_number = lambda _project: "123"
+
+    def upsert(_frame, _project, _dataset, archive, *, run_id):
+        archive()
+        return "a" * 64
+
+    helper.upsert_shares_and_archive = upsert
+    helper.move_csv_file_gcp = lambda *_args: (_ for _ in ()).throw(OSError("archive failed"))
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    google = ModuleType("google")
+    google_auth = ModuleType("google.auth")
+    google_auth.default = lambda: ("credentials", "project")
+    google.auth = google_auth
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
+
+    revisions: list[str] = []
+    with pytest.raises(OSError, match="archive failed"):
+        loader._load_then_archive(
+            SimpleNamespace(name="shares.csv"), pd.DataFrame([_row()]), completion_revisions=revisions
+        )
+
+    assert revisions == []
 
 
 def test_cloud_load_withholds_incomplete_target_row_but_archives(monkeypatch) -> None:

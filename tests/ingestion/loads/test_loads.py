@@ -734,7 +734,8 @@ def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch
     )
 
     client.merge_error = RuntimeError("current-table merge failed")
-    scraper.scrape_financials("https://reports.example", "test-key")
+    with pytest.raises(RuntimeError, match="current-table merge failed"):
+        scraper.scrape_financials("https://reports.example", "test-key")
     assert "project.stocks.financial_report_revisions" not in client.tables
 
     client.merge_error = None

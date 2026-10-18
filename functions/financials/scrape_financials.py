@@ -8,7 +8,7 @@ from helper import (
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 import functions_framework
-from ingestion_observability import emit_event, observed_entrypoint
+from ingestion_observability import emit_event, managed_import_completion, observed_entrypoint
 import os
 import re
 import json
@@ -550,6 +550,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
     emit_event("ingestion.financials.symbols", "loaded", count=len(all_symbols))
     
     total_processed = 0
+    completion_revisions = []
     
     for symbol in all_symbols:
         emit_event("ingestion.financials.symbol", "processing")
@@ -727,11 +728,14 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
         if symbol_data:
             df_symbol = pd.DataFrame(symbol_data)
             try:
-                upsert_financial_report_current_and_revision(df_symbol, project_id)
+                completion_revisions.append(
+                    upsert_financial_report_current_and_revision(df_symbol, project_id)
+                )
                 emit_event("ingestion.financials.upsert", "succeeded", count=len(df_symbol))
                 total_processed += len(df_symbol)
             except Exception as e:
                 emit_event("ingestion.financials.upsert", "failed", error_class=type(e).__name__)
+                raise
             
             # Free memory
             del df_symbol
@@ -741,7 +745,9 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
         gc.collect()
     
     emit_event("ingestion.financials.scrape", "completed", count=total_processed)
-    return pd.DataFrame()
+    if completion_revisions:
+        return managed_import_completion("financials", completion_revisions)
+    return None
 
 
 @functions_framework.http
@@ -756,13 +762,13 @@ def entry_point(request=None):
     openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
     
     # Scrape and upsert to BigQuery (memory-efficient, processes each symbol individually)
-    scrape_financials(
+    completion = scrape_financials(
         endpoints['financials'],
         openrouter_api_key,
         configuration,
     )
     
-    return "Monthly run complete.\n"
+    return completion or "Monthly run complete.\n"
 
 
 # Local testing (only run when executed directly)
