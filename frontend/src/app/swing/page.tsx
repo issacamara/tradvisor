@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { InvestorNav } from "@/components/investor-nav";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { SwingWorkspace } from "@/features/swing/workspace";
+import { chartAvailability, chartFailureAvailability, type ChartAvailability } from "@/features/swing/chart-state";
 import { apiState, safeApiMessage, type RuntimeDataState } from "@/features/auth/api-error";
 import { createApiTransport } from "@/api/transport";
 import type { components } from "@/api/generated/schema";
@@ -18,6 +19,7 @@ function SwingController() {
   const [items, setItems] = useState<components["schemas"]["SwingRecommendation"][]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [chart, setChart] = useState<components["schemas"]["ChartPoint"][]>([]);
+  const [chartState, setChartState] = useState<ChartAvailability>("empty");
   const [marketSession, setMarketSession] = useState("Unavailable");
   const [state, setState] = useState<RuntimeDataState>("ready");
   const [message, setMessage] = useState("");
@@ -34,14 +36,17 @@ function SwingController() {
   useEffect(() => { void (async () => {
     if (!selectedSymbol || marketSession === "Unavailable") {
       setChart([]);
+      setChartState("empty");
       return;
     }
     try {
+      setChartState("empty");
       const from = new Date(`${marketSession}T00:00:00Z`);
       from.setUTCDate(from.getUTCDate() - 365);
       const chartResult = await api.request({ method: "get", path: "/v1/stocks/{symbol}/chart", parameters: { path: { symbol: selectedSymbol }, query: { from: from.toISOString().slice(0, 10), to: marketSession, series: ["ohlcv"] } } });
       setChart(chartResult.data.points);
-    } catch (error) { setChart([]); setState(apiState(error)); setMessage(safeApiMessage(error)); }
+      setChartState(chartAvailability(chartResult.data.points));
+    } catch (error) { setChart([]); setChartState(chartFailureAvailability(error)); }
   })(); }, [api, marketSession, selectedSymbol]);
-  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} marketSession={marketSession} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
+  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} chartState={chartState} marketSession={marketSession} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
 }

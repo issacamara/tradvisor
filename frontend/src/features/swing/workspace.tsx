@@ -6,14 +6,15 @@ import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-tabl
 import type { ColumnDef } from "@tanstack/react-table";
 import type { components } from "@/api/generated/schema";
 import { SwingChart } from "./swing-chart";
+import type { ChartAvailability } from "./chart-state";
 
 type Recommendation = components["schemas"]["SwingRecommendation"];
 type ChartPoint = components["schemas"]["ChartPoint"];
-type Props = { items?: Recommendation[]; chart?: ChartPoint[]; marketSession?: string; selectedSymbol?: string | null; onSymbolChange?: (symbol: string) => void };
+type Props = { items?: Recommendation[]; chart?: ChartPoint[]; chartState?: ChartAvailability; marketSession?: string; selectedSymbol?: string | null; onSymbolChange?: (symbol: string) => void };
 const label = (value: string) => value.replaceAll("_", " ");
 const strength = (item: Recommendation) => item.buy_strength.value === null ? "—" : `${item.buy_strength.value.toFixed(0)} / 100`;
 
-export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavailable", selectedSymbol = null, onSymbolChange }: Props) {
+export function SwingWorkspace({ items = [], chart = [], chartState = "empty", marketSession = "Unavailable", selectedSymbol = null, onSymbolChange }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "buy">("all");
   const selected = selectedSymbol ?? items[0]?.symbol ?? null;
@@ -51,7 +52,7 @@ export function SwingWorkspace({ items = [], chart = [], marketSession = "Unavai
       <div className="research-detail">
         <section className="price-section" aria-label="Price history">
           <div className="detail-heading"><div><p className="eyebrow">PRICE HISTORY</p><h2>{selected ?? "Select a stock"}</h2></div><label className="symbol-select">Symbol<select aria-label="Chart symbol" value={selected ?? ""} onChange={(event) => onSymbolChange?.(event.target.value)} disabled={!items.length}>{!items.length && <option value="">No symbols</option>}{items.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol}</option>)}</select></label></div>
-          <SwingChart points={chart} />
+          <SwingChart points={chart} availability={chartState} />
         </section>
         <section className="evidence-section" aria-label="Selected recommendation detail">
           <div className="detail-heading"><div><p className="eyebrow">RECOMMENDATION EVIDENCE</p><h2>{detail?.symbol ?? "No stock selected"}</h2></div>{detail && <span className={`signal signal-${detail.entry_action}`}>{label(detail.entry_action)}</span>}</div>

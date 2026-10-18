@@ -3,11 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@/api/generated/schema";
 import type { IChartApi, Time } from "lightweight-charts";
+import type { ChartAvailability } from "./chart-state";
 
 type ChartPoint = components["schemas"]["ChartPoint"];
 const numeric = (value: { amount: string } | null) => value === null ? null : Number(value.amount);
 
-export function SwingChart({ points }: { points: ChartPoint[] }) {
+const unavailableMessage: Record<Exclude<ChartAvailability, "published">, string> = {
+  empty: "No close-price history is available for this stock and period.",
+  warming: "Price history is still being prepared for this stock.",
+  transport_error: "Price history is temporarily unavailable. Try again shortly.",
+};
+
+export function SwingChart({ points, availability = "empty" }: { points: ChartPoint[]; availability?: ChartAvailability }) {
   const root = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [range, setRange] = useState("1Y");
@@ -57,7 +64,7 @@ export function SwingChart({ points }: { points: ChartPoint[] }) {
     <div className="chart-toolbar"><div><span className="eyebrow">CLOSE PRICE</span><div className="chart-value"><strong>{summary.latest === null ? "—" : summary.latest.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong><span>XOF</span>{summary.changePercent !== null && <span className={`price-change ${summary.changePercent >= 0 ? "positive" : "negative"}`}>{summary.changePercent >= 0 ? "+" : ""}{summary.changePercent.toFixed(2)}%</span>}</div></div>
       <div className="segmented" aria-label="Chart period">{["1W", "1M", "3M", "1Y"].map((option) => <button key={option} type="button" aria-pressed={range === option} onClick={() => setRange(option)}>{option}</button>)}</div>
     </div>
-    {visiblePoints.length ? <div className="chart-canvas" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session.</span></div> : <div className="chart-empty" role="status">No close-price history is available for this stock and period.</div>}
+    {visiblePoints.length ? <div className="chart-canvas" ref={root} aria-label="Closing price chart" role="img"><span className="sr-only">Close price by trading session.</span></div> : <div className="chart-empty" role="status" data-state={availability}>{unavailableMessage[availability === "published" ? "empty" : availability]}</div>}
     <div className="chart-footer"><span>Last session <strong>{visiblePoints.at(-1)?.date ?? "—"}</strong></span><span>High <strong>{summary.high === null ? "—" : summary.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span><span>Low <strong>{summary.low === null ? "—" : summary.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span></div>
   </section>;
 }
