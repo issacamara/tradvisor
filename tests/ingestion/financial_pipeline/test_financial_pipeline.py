@@ -642,7 +642,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     }]
     assert bigquery_client.tables.get(revision_table, []) == []
 
-    scraper.scrape_financials("fixture://source", "fixture-key")
+    completion = scraper.scrape_financials("fixture://source", "fixture-key")
     assert any(row.get("symbol") == "ABC" for row in bigquery_client.tables[current_table])
     assert len(bigquery_client.tables[revision_table]) == 1
     scraper.scrape_financials("fixture://source", "fixture-key")
@@ -698,6 +698,15 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
         ].payload or "{}"
     )
     assert artifact["result"] == result
+    assert completion == {
+        "source": "financials",
+        "status": "succeeded",
+        "managed_write": {
+            "revision_fingerprint": completion["managed_write"]["revision_fingerprint"],
+            "completed_at": completion["managed_write"]["completed_at"],
+        },
+    }
+    assert len(completion["managed_write"]["revision_fingerprint"]) == 64
 
 
 def test_missing_table_requires_explicit_initialization_workflow(

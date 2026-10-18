@@ -7,7 +7,7 @@ import gc
 import importlib.util
 import sys
 import functions_framework
-from ingestion_observability import emit_event, observed_entrypoint
+from ingestion_observability import emit_event, managed_import_completion, observed_entrypoint
 import pandas as pd
 from google.auth import default
 from google.cloud import bigquery
@@ -610,7 +610,7 @@ def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_na
         return False
 
 
-def process_financial_pdfs(openrouter_api_key, configuration=None):
+def process_financial_pdfs(openrouter_api_key, configuration=None, completion_revisions=None):
     """Process PDF files from GCS and extract financial data to BigQuery."""
     from google.cloud import storage
 
@@ -807,7 +807,7 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                     raise RuntimeError(f"failed to archive {blob.name}")
 
             run_id = "financials-" + hashlib.sha256(blob.name.encode("utf-8")).hexdigest()
-            upsert_financials_and_archive(
+            revision = upsert_financials_and_archive(
                 df,
                 revision_df,
                 project_id,
@@ -815,6 +815,8 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
                 archive_pdf,
                 run_id=run_id,
             )
+            if completion_revisions is not None:
+                completion_revisions.append(revision)
             emit_event("ingestion.financials.upsert", "succeeded")
             
             total_processed += 1
@@ -834,6 +836,8 @@ def process_financial_pdfs(openrouter_api_key, configuration=None):
         emit_event("ingestion.financials.process", "skipped", count=total_skipped)
     if total_failed:
         emit_event("ingestion.financials.process", "partial", count=total_failed)
+        if completion_revisions is not None:
+            raise RuntimeError("financial ingestion did not complete")
     
     return total_processed
 
@@ -849,7 +853,10 @@ def entry_point(request=None):
     if not openrouter_api_key:
         return "Error: OPENROUTER_API_KEY environment variable not set\n", 500
     
-    process_financial_pdfs(openrouter_api_key, configuration)
+    completion_revisions = []
+    process_financial_pdfs(openrouter_api_key, configuration, completion_revisions)
+    if completion_revisions:
+        return managed_import_completion("financials", completion_revisions)
     
     return "Financial data extraction complete.\n"
 

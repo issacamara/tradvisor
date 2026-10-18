@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 
 import pandas as pd
-from ingestion_observability import observed_entrypoint
+from ingestion_observability import managed_import_completion, observed_entrypoint
 from scrape_shares import parse_localized_decimal
 
 
@@ -201,6 +201,7 @@ def _load_then_archive(
     file,
     raw_frame: pd.DataFrame,
     configuration=None,
+    completion_revisions: list[str] | None = None,
 ) -> dict[str, int]:
     from helper import (
         get_project_number,
@@ -235,13 +236,15 @@ def _load_then_archive(
 
     if not market_rows.empty:
         run_id = "shares-" + hashlib.sha256(file.name.encode("utf-8")).hexdigest()
-        upsert_shares_and_archive(
+        revision = upsert_shares_and_archive(
             market_rows,
             project_id,
             dataset,
             archive,
             run_id=run_id,
         )
+        if completion_revisions is not None:
+            completion_revisions.append(revision)
     else:
         archive()
     return evidence
@@ -282,7 +285,7 @@ def project_market_rows(raw_frame: pd.DataFrame, normalized: pd.DataFrame) -> pd
 
 
 def process_share_files(
-    files: Iterable[object], configuration=None
+    files: Iterable[object], configuration=None, completion_revisions: list[str] | None = None
 ) -> list[dict[str, int]]:
     """Archive each complete raw file, loading only verified observations."""
     import pandas as pd
@@ -290,7 +293,9 @@ def process_share_files(
     evidence = []
     for file in files:
         raw_frame = pd.read_csv(io.StringIO(file.download_as_text()), sep="|")
-        evidence.append(_load_then_archive(file, raw_frame, configuration))
+        evidence.append(
+            _load_then_archive(file, raw_frame, configuration, completion_revisions)
+        )
     return evidence
 
 
@@ -301,7 +306,12 @@ def entry_point(request=None):
 
     configuration = IngestionConfiguration.from_environment()
 
-    process_share_files(load_files(configuration, "shares"), configuration)
+    completion_revisions: list[str] = []
+    process_share_files(
+        load_files(configuration, "shares"), configuration, completion_revisions
+    )
+    if completion_revisions:
+        return managed_import_completion("shares", completion_revisions)
     return "Share observations archived; only verified rows were loaded.\n"
 
 
