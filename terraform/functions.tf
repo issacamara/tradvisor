@@ -212,10 +212,13 @@ resource "google_cloud_scheduler_job" "jobs" {
     headers     = { "Content-Type" = "application/json" }
     body = base64encode(jsonencode({
       task = {
-        http_request = {
-          http_method = "POST"
-          uri         = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
-          oauth_token = { service_account_email = google_service_account.tradvisor_sa.email }
+        # This object is sent to the Cloud Tasks REST API, not interpreted as
+        # Terraform provider configuration. Keep its JSON field names in the
+        # API's camelCase form before Scheduler base64-encodes the payload.
+        httpRequest = {
+          httpMethod = "POST"
+          uri        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
+          oauthToken = { serviceAccountEmail = google_service_account.tradvisor_sa.email }
         }
       }
     }))
