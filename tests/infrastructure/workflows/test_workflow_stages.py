@@ -67,3 +67,17 @@ def test_configured_source_schedules_are_enabled_and_managed() -> None:
     assert "paused = contains(local.paused_schedule_keys, each.key)" in FUNCTIONS
     assert "prevent_destroy = true" in FUNCTIONS
     assert "ignore_changes  = [description, schedule, time_zone, http_target, paused]" not in FUNCTIONS
+
+
+def test_scheduler_cloud_tasks_body_uses_rest_api_json_field_names() -> None:
+    scheduler = FUNCTIONS.split('resource "google_cloud_scheduler_job" "jobs"', 1)[1]
+    payload = scheduler.split("body = base64encode(jsonencode({", 1)[1].split("    }))", 1)[0]
+
+    assert "body = base64encode(jsonencode({" in scheduler
+    assert "httpRequest = {" in payload
+    assert "httpMethod = \"POST\"" in payload
+    assert "oauthToken = { serviceAccountEmail" in payload
+    assert "http_request" not in payload
+    assert "http_method" not in payload
+    assert "oauth_token" not in payload
+    assert "service_account_email" not in payload
