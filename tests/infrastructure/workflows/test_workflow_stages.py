@@ -43,10 +43,13 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert 'resource "google_project_iam_member" "workflow_queue_enqueuer"' not in IAM
     assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in RUNTIME
     assert 'INGRESS_TRAFFIC_INTERNAL_ONLY' in RUNTIME
-    assert 'name  = "WORKER_AUDIENCE"' in RUNTIME
-    assert 'value = google_cloud_run_v2_service.workflow_dispatcher[0].uri' in RUNTIME
-    assert 'name  = "WORKER_SERVICE_ACCOUNT"' in RUNTIME
-    assert 'value = google_service_account.tradvisor_sa.email' in RUNTIME
+    dispatcher = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[1]
+    api = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[0]
+    assert 'name  = "WORKER_AUDIENCE"' in dispatcher
+    assert 'value = google_cloud_run_v2_service.workflow_dispatcher[0].uri' in dispatcher
+    assert 'name  = "WORKER_SERVICE_ACCOUNT"' in dispatcher
+    assert 'value = google_service_account.tradvisor_sa.email' in dispatcher
+    assert 'name  = "WORKER_AUDIENCE"' not in api
 
 
 def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -> None:
