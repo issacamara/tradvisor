@@ -166,19 +166,6 @@ resource "google_cloud_run_v2_service" "v1_api" {
         value = var.region
       }
 
-      # Cloud Tasks presents a Google-signed OIDC token to this internal
-      # dispatcher. The application verifier must validate the same service
-      # audience and the expected scheduler service identity.
-      env {
-        name  = "WORKER_AUDIENCE"
-        value = google_cloud_run_v2_service.workflow_dispatcher[0].uri
-      }
-
-      env {
-        name  = "WORKER_SERVICE_ACCOUNT"
-        value = google_service_account.tradvisor_sa.email
-      }
-
       env {
         name = "FIRESTORE_CURSOR_SECRET"
         value_source {
@@ -282,6 +269,19 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
       env {
         name  = "WORKFLOW_REGION"
         value = var.region
+      }
+
+      # Cloud Tasks presents a Google-signed OIDC token to this internal
+      # dispatcher. The application verifier must validate the same service
+      # audience and the expected scheduler service identity.
+      env {
+        name  = "WORKER_AUDIENCE"
+        value = google_cloud_run_v2_service.workflow_dispatcher[0].uri
+      }
+
+      env {
+        name  = "WORKER_SERVICE_ACCOUNT"
+        value = google_service_account.tradvisor_sa.email
       }
 
       resources {
