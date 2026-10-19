@@ -217,8 +217,11 @@ resource "google_cloud_scheduler_job" "jobs" {
         # API's camelCase form before Scheduler base64-encodes the payload.
         httpRequest = {
           httpMethod = "POST"
-          uri        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
-          oauthToken = { serviceAccountEmail = google_service_account.tradvisor_sa.email }
+          url        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
+          oidcToken = {
+            serviceAccountEmail = google_service_account.tradvisor_sa.email
+            audience            = google_cloud_run_v2_service.workflow_dispatcher[0].uri
+          }
         }
       }
     }))

@@ -76,8 +76,15 @@ def test_scheduler_cloud_tasks_body_uses_rest_api_json_field_names() -> None:
     assert "body = base64encode(jsonencode({" in scheduler
     assert "httpRequest = {" in payload
     assert "httpMethod = \"POST\"" in payload
-    assert "oauthToken = { serviceAccountEmail" in payload
+    assert (
+        'url        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}'
+        '/internal/workflows/${each.value.name}-wf/dispatch"'
+    ) in payload
+    assert "oidcToken = {" in payload
+    assert "serviceAccountEmail = google_service_account.tradvisor_sa.email" in payload
+    assert "audience            = google_cloud_run_v2_service.workflow_dispatcher[0].uri" in payload
     assert "http_request" not in payload
     assert "http_method" not in payload
     assert "oauth_token" not in payload
     assert "service_account_email" not in payload
+    assert "oauthToken" not in payload
