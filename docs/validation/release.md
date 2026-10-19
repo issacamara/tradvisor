@@ -6,6 +6,20 @@
 
 The implementation and contract gates are delivered, but this record does not silently convert absent live/operator evidence into approval. The application may remain a private development artifact. No production deployment, data seed, schedule activation, or public launch is authorized by closing this issue. Those actions are not authorized here.
 
+## Completion-driven publication evidence
+
+Issue [#258](https://github.com/issacamara/tradvisor/issues/258) verifies the completion-driven publication amendment with credential-free integration evidence. The matrix covers changed shares and financial inputs, ratings and failed imports, debounce coalescing, duplicate delivery, concurrent dispatch claims, bounded analytical retries, and the timing evidence emitted by the serialized control seam:
+
+- `tests/integration/test_completion_driven_publication.py`
+- `tests/workflow_dispatcher/test_publication_control.py`
+- `tests/publication/analysis/test_analysis.py`
+- `tests/jobs/test_daily.py`
+- `tests/api/test_app_contract.py`
+- `frontend/src/app/swing/page.test.tsx`
+- `frontend/src/features/swing/chart-state.test.ts`
+
+These checks are offline and sanitized. They do not activate schedules, execute a batch, call providers, run paid queries, access production state, or make request-time BigQuery calls. The existing immutable publication tests establish that a partial or failed replacement cannot displace the previous complete active batch; the API and frontend tests establish distinct chart-local and publication-wide unavailable states.
+
 ## Twelve-Factor engineering audit
 
 This audit is limited to public, merged V1 implementation evidence. It does not
