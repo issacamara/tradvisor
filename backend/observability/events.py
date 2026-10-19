@@ -22,6 +22,15 @@ _SENSITIVE_VALUE = re.compile(r"authorization|bearer|token|password|secret|api[_
 _COUNT_ATTRIBUTES = frozenset({"count", "rows", "records", "attempt", "retry_count"})
 _CORRELATION_ATTRIBUTES = frozenset({"batch_id", "correlation_id", "release_id", "run_id"})
 _ALLOWED_ATTRIBUTES = _COUNT_ATTRIBUTES | _CORRELATION_ATTRIBUTES | frozenset({"error_class"})
+_PUBLICATION_ATTRIBUTES = frozenset({"source", "sources", "control_outcome"})
+_ALLOWED_ATTRIBUTES |= _PUBLICATION_ATTRIBUTES
+_PUBLICATION_SOURCE = re.compile(r"(?:shares|financials|ratings)\Z")
+_PUBLICATION_SOURCES = re.compile(r"(?:financials,shares|financials|shares)\Z")
+_PUBLICATION_OUTCOME = re.compile(
+    r"(?:eligible_completion|ignored_completion|import_failed_no_request|coalescing|"
+    r"unchanged_input_no_op|invocation_started|published|analytical_failed|"
+    r"retry_exhausted|missing_dispatch_outcome|duplicate_not_collapsed)\Z"
+)
 
 
 def _bounded_name(value: str, *, field: str) -> None:
@@ -68,6 +77,18 @@ class OperationalEvent:
                 if not isinstance(value, str):
                     raise ValueError("operational error_class must be a string")
                 _bounded_text(value, field=key, pattern=_SAFE_ERROR_CLASS)
+            elif key == "source":
+                if not isinstance(value, str):
+                    raise ValueError("operational source must be a string")
+                _bounded_text(value, field=key, pattern=_PUBLICATION_SOURCE)
+            elif key == "sources":
+                if not isinstance(value, str):
+                    raise ValueError("operational sources must be a string")
+                _bounded_text(value, field=key, pattern=_PUBLICATION_SOURCES)
+            elif key == "control_outcome":
+                if not isinstance(value, str):
+                    raise ValueError("operational control outcome must be a string")
+                _bounded_text(value, field=key, pattern=_PUBLICATION_OUTCOME)
 
     def as_log_fields(self) -> dict[str, str | int | float | bool]:
         return {"event": self.name, "outcome": self.outcome, "occurred_at": self.occurred_at.astimezone(timezone.utc).isoformat(), "duration_ms": self.duration_ms or 0, **dict(self.attributes)}
@@ -112,3 +133,21 @@ class SanitizedLogger:
 
     def event(self, name: str, outcome: str, *, duration_ms: int | None = None, attributes: Mapping[str, str | int | float | bool] | None = None, now: datetime | None = None) -> None:
         record_event(self._logger, OperationalEvent(name, outcome, now or datetime.now(timezone.utc), duration_ms, attributes or {}))
+
+
+class PublicationControlEvents:
+    """Bounded event adapter for completion-driven publication control."""
+
+    def __init__(self, logger: SanitizedLogger) -> None:
+        self._logger = logger
+
+    def completion(self, *, source: str, outcome: str, now: datetime) -> None:
+        self._logger.event(
+            "publication.completion", outcome, attributes={"source": source}, now=now
+        )
+
+    def control(self, *, outcome: str, sources: str, attempts: int = 0, now: datetime, duration_ms: int | None = None) -> None:
+        self._logger.event(
+            "publication.control", outcome, duration_ms=duration_ms,
+            attributes={"control_outcome": outcome, "sources": sources, "attempt": attempts}, now=now,
+        )

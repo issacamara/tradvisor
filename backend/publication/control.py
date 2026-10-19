@@ -129,10 +129,29 @@ class ExistingAnalyticalJobInvoker(Protocol):
         ...
 
 
+class PublicationControlObserver(Protocol):
+    """Emit only bounded, sanitized publication-control operational events."""
+
+    def completion(self, *, source: str, outcome: str, now: datetime) -> None:
+        ...
+
+    def control(
+        self,
+        *,
+        outcome: str,
+        sources: str,
+        attempts: int = 0,
+        now: datetime,
+        duration_ms: int | None = None,
+    ) -> None:
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class _Claim:
     identity: SourceInputIdentity
     attempt: int
+    received_at: datetime
 
 
 class PublicationRequestController:
@@ -143,25 +162,33 @@ class PublicationRequestController:
         store: PublicationControlStore,
         invoker: ExistingAnalyticalJobInvoker,
         configuration: PublicationControlConfiguration,
+        observer: PublicationControlObserver,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
         self._invoker = invoker
         self._configuration = configuration
+        self._observer = observer
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def accept(
         self, completion: ManagedImportCompletion, *, received_at: datetime
     ) -> PublicationControlOutcome | None:
         """Persist one completion; failed eligible imports get a no-request outcome."""
         received_at = _utc(received_at)
+        emitted: tuple[str, str] | None = None
 
         def transition(state: PublicationControlState) -> PublicationControlOutcome | None:
+            nonlocal emitted
             if completion.status == "failed" and completion.source in {"shares", "financials"}:
                 outcome = PublicationControlOutcome(
                     state="no_request", outcome="import_failed_no_request"
                 )
                 state.last_outcome = outcome
+                emitted = (completion.source, "import_failed_no_request")
                 return outcome
             if not completion.triggers_publication:
+                emitted = (completion.source, "ignored_completion")
                 return None
             receipt = completion.managed_write
             if receipt is None:
@@ -189,19 +216,35 @@ class PublicationRequestController:
                 revision_fingerprint=receipt.revision_fingerprint,
             )
             state.ready_inputs = tuple(inputs[key] for key in sorted(inputs))
+            emitted = (source, "eligible_completion")
             return None
 
-        return self._store.transact(transition)
+        outcome = self._store.transact(transition)
+        if emitted is not None:
+            source, event_outcome = emitted
+            self._observer.completion(source=source, outcome=event_outcome, now=received_at)
+        return outcome
 
     def dispatch_ready(self, *, now: datetime) -> PublicationControlOutcome | None:
         """Dispatch a debounced ready set with finite, serialized retries."""
         now = _utc(now)
         claim = self._store.transact(lambda state: self._claim_ready(state, now))
         if isinstance(claim, PublicationControlOutcome) or claim is None:
+            if claim is not None and claim.input_identity is not None:
+                self._observer.control(
+                    outcome=claim.outcome,
+                    sources=",".join(item.source for item in claim.input_identity.inputs),
+                    attempts=claim.analytical_attempts,
+                    now=now,
+                )
             return claim
         if not isinstance(claim, _Claim):
             raise AssertionError("publication-control transition returned an invalid claim")
         active_claim = claim
+        sources = ",".join(item.source for item in active_claim.identity.inputs)
+        self._observer.control(
+            outcome="invocation_started", sources=sources, attempts=active_claim.attempt, now=now
+        )
 
         for attempt in range(active_claim.attempt, MAX_ANALYTICAL_ATTEMPTS + 1):
             try:
@@ -217,9 +260,17 @@ class PublicationRequestController:
                     lambda state: self._finish(state, active_claim.identity, failed)
                 )
                 if attempt == MAX_ANALYTICAL_ATTEMPTS:
+                    self._observer.control(
+                        outcome="retry_exhausted", sources=sources, attempts=attempt, now=now
+                    )
                     return failed
+                self._observer.control(
+                    outcome="analytical_failed", sources=sources, attempts=attempt, now=now
+                )
                 next_claim = self._store.transact(
-                    lambda state: self._retry(state, active_claim.identity, attempt)
+                    lambda state: self._retry(
+                        state, active_claim.identity, attempt, active_claim.received_at
+                    )
                 )
                 if next_claim is None:
                     return failed
@@ -234,6 +285,14 @@ class PublicationRequestController:
             )
             self._store.transact(
                 lambda state: self._finish(state, active_claim.identity, published)
+            )
+            completed_at = _utc(self._clock())
+            self._observer.control(
+                outcome="published",
+                sources=sources,
+                attempts=attempt,
+                duration_ms=max(0, int((completed_at - active_claim.received_at).total_seconds() * 1000)),
+                now=completed_at,
             )
             return published
         raise AssertionError("bounded publication retry loop terminated unexpectedly")
@@ -267,10 +326,42 @@ class PublicationRequestController:
 
         state.active_identity = identity
         state.analytical_attempts += 1
-        return _Claim(identity=identity, attempt=state.analytical_attempts)
+        return _Claim(
+            identity=identity, attempt=state.analytical_attempts, received_at=started
+        )
+
+    def observe_missing_dispatch_outcome(self, *, now: datetime) -> bool:
+        """Emit bounded evidence when a debounced ready set has no terminal outcome."""
+        now = _utc(now)
+
+        def transition(state: PublicationControlState) -> tuple[str, int] | None:
+            if (
+                state.coalescing_started_at is None
+                or state.active_identity is not None
+                or not state.ready_inputs
+                or now < state.coalescing_started_at + timedelta(seconds=self._configuration.debounce_seconds)
+            ):
+                return None
+            return (
+                ",".join(item.source for item in state.ready_inputs),
+                int((now - state.coalescing_started_at).total_seconds() * 1000),
+            )
+
+        overdue = self._store.transact(transition)
+        if overdue is None:
+            return False
+        sources, duration_ms = overdue
+        self._observer.control(
+            outcome="missing_dispatch_outcome", sources=sources, duration_ms=duration_ms, now=now
+        )
+        return True
 
     def _retry(
-        self, state: PublicationControlState, identity: SourceInputIdentity, attempt: int
+        self,
+        state: PublicationControlState,
+        identity: SourceInputIdentity,
+        attempt: int,
+        received_at: datetime,
     ) -> _Claim | None:
         if (
             state.active_identity is not None
@@ -281,7 +372,9 @@ class PublicationRequestController:
             return None
         state.active_identity = identity
         state.analytical_attempts += 1
-        return _Claim(identity=identity, attempt=state.analytical_attempts)
+        return _Claim(
+            identity=identity, attempt=state.analytical_attempts, received_at=received_at
+        )
 
     @staticmethod
     def _finish(

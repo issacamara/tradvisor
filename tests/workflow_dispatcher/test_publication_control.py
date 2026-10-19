@@ -50,6 +50,21 @@ class RecordingInvoker:
             raise RuntimeError("private invoker error is not persisted")
 
 
+class RecordingObserver:
+    def __init__(self) -> None:
+        self.completions: list[tuple[str, str]] = []
+        self.controls: list[tuple[str, str, int]] = []
+
+    def completion(self, *, source: str, outcome: str, now: datetime) -> None:
+        self.completions.append((source, outcome))
+
+    def control(
+        self, *, outcome: str, sources: str, attempts: int = 0,
+        now: datetime, duration_ms: int | None = None,
+    ) -> None:
+        self.controls.append((outcome, sources, attempts))
+
+
 def completion(
     source: Literal["shares", "financials", "ratings"],
     revision: str,
@@ -67,9 +82,15 @@ def completion(
     return ManagedImportCompletion(source=source, status=status, managed_write=receipt)
 
 
-def controller(store: MemoryStore, invoker: RecordingInvoker) -> PublicationRequestController:
+def controller(
+    store: MemoryStore, invoker: RecordingInvoker, observer: RecordingObserver | None = None,
+) -> PublicationRequestController:
     return PublicationRequestController(
-        store, invoker, PublicationControlConfiguration(debounce_seconds=10)
+        store,
+        invoker,
+        PublicationControlConfiguration(debounce_seconds=10),
+        observer or RecordingObserver(),
+        clock=lambda: START + timedelta(seconds=11),
     )
 
 
@@ -202,3 +223,31 @@ def test_persisted_state_round_trips_only_sanitized_fields() -> None:
         "active_identity", "analytical_attempts", "last_outcome",
     }
     assert "payload" not in str(record)
+
+
+def test_control_emits_only_bounded_completion_and_terminal_events() -> None:
+    store = MemoryStore()
+    observer = RecordingObserver()
+    control = controller(store, RecordingInvoker(), observer)
+
+    control.accept(completion("ratings", "a"), received_at=START)
+    control.accept(completion("shares", "a"), received_at=START)
+    outcome = control.dispatch_ready(now=START + timedelta(seconds=10))
+
+    assert outcome is not None and outcome.outcome == "published"
+    assert observer.completions == [
+        ("ratings", "ignored_completion"),
+        ("shares", "eligible_completion"),
+    ]
+    assert observer.controls == [("invocation_started", "shares", 1), ("published", "shares", 1)]
+
+
+def test_missing_dispatch_outcome_is_observable_after_debounce() -> None:
+    store = MemoryStore()
+    observer = RecordingObserver()
+    control = controller(store, RecordingInvoker(), observer)
+    control.accept(completion("shares", "a"), received_at=START)
+
+    assert not control.observe_missing_dispatch_outcome(now=START + timedelta(seconds=9))
+    assert control.observe_missing_dispatch_outcome(now=START + timedelta(seconds=10))
+    assert observer.controls == [("missing_dispatch_outcome", "shares", 0)]

@@ -5,7 +5,12 @@ import logging
 
 import pytest
 
-from backend.observability.events import OperationalEvent, SanitizedLogger, configure_json_stdout
+from backend.observability.events import (
+    OperationalEvent,
+    PublicationControlEvents,
+    SanitizedLogger,
+    configure_json_stdout,
+)
 from backend.observability.health import is_stale
 
 
@@ -88,3 +93,31 @@ def test_configured_stdout_drops_unstructured_log_content() -> None:
     assert payload["event"] == "logging.unstructured"
     assert payload["outcome"] == "dropped"
     assert "operator@example.com" not in stream.getvalue()
+
+
+def test_publication_events_allow_only_bounded_sources_and_outcomes() -> None:
+    stream = io.StringIO()
+    events = PublicationControlEvents(
+        SanitizedLogger(configure_json_stdout(logging.getLogger("test-publication-events"), stream=stream))
+    )
+    events.completion(source="shares", outcome="eligible_completion", now=NOW)
+    events.control(outcome="published", sources="financials,shares", attempts=1, now=NOW)
+
+    payloads = [json.loads(line) for line in stream.getvalue().splitlines()]
+    assert payloads[0]["source"] == "shares"
+    assert payloads[1]["control_outcome"] == "published"
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"source": "payload-body"},
+        {"sources": "shares,ratings"},
+        {"control_outcome": "free text identifier"},
+    ],
+)
+def test_publication_event_attributes_reject_payloads_and_free_text(
+    attributes: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError):
+        OperationalEvent("publication.control", "failed", NOW, attributes=attributes)
