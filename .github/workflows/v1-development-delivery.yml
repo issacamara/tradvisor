@@ -166,6 +166,7 @@ jobs:
             --member="serviceAccount:$TERRAFORM_DEPLOYER_SERVICE_ACCOUNT" \
             --role="roles/cloudtasks.admin" \
             --quiet
+          sleep 30
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
