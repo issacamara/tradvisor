@@ -27,7 +27,7 @@ def test_inventory_records_duration_retry_and_overlap_contracts() -> None:
     assert FUNCTIONS.count("timeout_seconds       = 180") == 1
     assert 'resource "google_cloud_scheduler_job" "jobs"' in FUNCTIONS
     assert "oauth_token {" in FUNCTIONS
-    assert 'timeout         = "900s"' in RUNTIME
+    assert 'timeout         = "${var.v1_batch_timeout_seconds}s"' in RUNTIME
     assert "idempotency" in EVIDENCE
     assert "24 hours" in EVIDENCE
     assert "28 days" in EVIDENCE
@@ -42,7 +42,7 @@ def test_publication_control_is_outside_scheduled_retirement_boundary() -> None:
     assert 'resource "google_cloud_tasks_queue" "workflow_writers"' not in FUNCTIONS
     assert 'resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer"' not in IAM
     assert 'resource "google_project_iam_member" "terraform_deployer_cloudtasks_admin"' not in RUNTIME
-    assert 'role     = "roles/run.invoker"' in IAM
+    assert 'role       = "roles/run.invoker"' in IAM
 
 
 def test_schedule_inventory_matches_declared_legacy_jobs() -> None:
