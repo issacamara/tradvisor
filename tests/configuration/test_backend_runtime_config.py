@@ -10,7 +10,6 @@ from backend.configuration import (
     PublicationControlConfiguration,
     RuntimeConfiguration,
     RuntimeConfigurationError,
-    WorkflowDispatchConfiguration,
 )
 from backend.app import _production_analysis_publisher
 from backend.jobs.runtime import build_worker
@@ -30,7 +29,6 @@ def api_environment(target: str = "api") -> dict[str, str]:
         "TRADVISOR_SERVING_TARGET": "firestore",
         "FIRESTORE_CURSOR_SECRET": "fixture-only-secret",
         "TRADVISOR_CORS_ORIGINS": "http://localhost:3000, https://investors.example.test",
-        "WORKFLOW_REGION": "europe-central2",
         "MARKET_DATA_TABLE": "example-dev.stocks.shares",
         "TRADVISOR_RECOVERY_BUCKET": "example-dev-recovery-register",
         "FINANCIALS_TABLE": "example-dev.stocks.financials",
@@ -113,15 +111,6 @@ def test_daily_job_configuration_requires_both_project_bound_tables() -> None:
 
     with pytest.raises(RuntimeConfigurationError, match="FINANCIALS_TABLE"):
         RuntimeConfiguration.from_environment("daily_job", values)
-
-
-def test_workflow_dispatcher_requires_an_explicit_consistent_target() -> None:
-    values = api_environment("workflow_dispatcher")
-    values.pop("FIRESTORE_CURSOR_SECRET")
-    values["TRADVISOR_TARGET_PROJECT_ID"] = "other-project"
-
-    with pytest.raises(RuntimeConfigurationError, match="does not match"):
-        WorkflowDispatchConfiguration.from_environment(values)
 
 
 @pytest.mark.parametrize("value", ["", "0", "-1", "1.5", "301"])

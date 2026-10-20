@@ -23,77 +23,11 @@ _PROJECT_ID = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 _DATASET_ID = re.compile(r"^[A-Za-z0-9_]+$")
 _TABLE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$")
-_REGION = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]$")
 _FIRESTORE_DATABASE = re.compile(r"^(?:\(default\)|[a-z][a-z0-9-]{3,62})$")
 
 
 class RuntimeConfigurationError(ValueError):
     """A safe-to-report configuration error that never includes values."""
-
-
-@dataclass(frozen=True, slots=True)
-class WorkflowDispatchConfiguration:
-    """Minimal explicit target for the internal Workflows dispatch service."""
-
-    environment: Environment
-    project_id: str
-    target_project_id: str
-    environment_project_id: str
-    workflow_region: str
-
-    @classmethod
-    def from_environment(
-        cls,
-        environ: Mapping[str, str] | None = None,
-    ) -> WorkflowDispatchConfiguration:
-        values = os.environ if environ is None else environ
-        required = (
-            "TRADVISOR_RUNTIME_TARGET",
-            "TRADVISOR_ENVIRONMENT",
-            "GOOGLE_CLOUD_PROJECT",
-            "TRADVISOR_TARGET_PROJECT_ID",
-            "TRADVISOR_ENVIRONMENT_PROJECT_ID",
-            "WORKFLOW_REGION",
-        )
-        missing = [name for name in required if not values.get(name, "").strip()]
-        if missing:
-            raise RuntimeConfigurationError(
-                "required runtime configuration is missing: " + ", ".join(missing)
-            )
-
-        if values["TRADVISOR_RUNTIME_TARGET"].strip() != "workflow_dispatcher":
-            raise RuntimeConfigurationError(
-                "TRADVISOR_RUNTIME_TARGET does not match the workflow dispatcher"
-            )
-
-        environment = values["TRADVISOR_ENVIRONMENT"].strip()
-        project_id = values["GOOGLE_CLOUD_PROJECT"].strip()
-        target_project_id = values["TRADVISOR_TARGET_PROJECT_ID"].strip()
-        environment_project_id = values["TRADVISOR_ENVIRONMENT_PROJECT_ID"].strip()
-        workflow_region = values["WORKFLOW_REGION"].strip()
-        if environment not in {"development", "production"}:
-            raise RuntimeConfigurationError(
-                "TRADVISOR_ENVIRONMENT must be development or production"
-            )
-        if not _PROJECT_ID.fullmatch(project_id):
-            raise RuntimeConfigurationError("GOOGLE_CLOUD_PROJECT is invalid")
-        if not _PROJECT_ID.fullmatch(target_project_id):
-            raise RuntimeConfigurationError("TRADVISOR_TARGET_PROJECT_ID is invalid")
-        if not _PROJECT_ID.fullmatch(environment_project_id):
-            raise RuntimeConfigurationError("TRADVISOR_ENVIRONMENT_PROJECT_ID is invalid")
-        if project_id != target_project_id or project_id != environment_project_id:
-            raise RuntimeConfigurationError(
-                "configured project does not match the explicit environment target"
-            )
-        if not _REGION.fullmatch(workflow_region):
-            raise RuntimeConfigurationError("WORKFLOW_REGION is invalid")
-        return cls(
-            environment=environment,  # type: ignore[arg-type]
-            project_id=project_id,
-            target_project_id=target_project_id,
-            environment_project_id=environment_project_id,
-            workflow_region=workflow_region,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +68,6 @@ class RuntimeConfiguration:
     serving_target: Literal["firestore"]
     cursor_secret: str = field(repr=False)
     cors_origins: tuple[str, ...] = ()
-    workflow_region: str | None = None
     market_data_table: str | None = None
     financials_table: str | None = None
     recovery_bucket: str | None = None
@@ -161,7 +94,6 @@ class RuntimeConfiguration:
         if target == "api":
             required += [
                 "TRADVISOR_CORS_ORIGINS",
-                "WORKFLOW_REGION",
                 "MARKET_DATA_TABLE",
                 "TRADVISOR_RECOVERY_BUCKET",
             ]
@@ -232,12 +164,6 @@ class RuntimeConfiguration:
                 values["TRADVISOR_CORS_ORIGINS"], environment=environment
             )
 
-        workflow_region: str | None = None
-        if target == "api":
-            workflow_region = values["WORKFLOW_REGION"].strip()
-            if not _REGION.fullmatch(workflow_region):
-                raise RuntimeConfigurationError("WORKFLOW_REGION is invalid")
-
         recovery_bucket: str | None = None
         if "TRADVISOR_RECOVERY_BUCKET" in required:
             recovery_bucket = values["TRADVISOR_RECOVERY_BUCKET"].strip()
@@ -256,7 +182,6 @@ class RuntimeConfiguration:
             serving_target="firestore",
             cursor_secret=values["FIRESTORE_CURSOR_SECRET"],
             cors_origins=cors_origins,
-            workflow_region=workflow_region,
             market_data_table=market_data_table,
             financials_table=financials_table,
             recovery_bucket=recovery_bucket,
@@ -311,5 +236,4 @@ __all__ = [
     "RuntimeConfigurationError",
     "RuntimeTarget",
     "PublicationControlConfiguration",
-    "WorkflowDispatchConfiguration",
 ]

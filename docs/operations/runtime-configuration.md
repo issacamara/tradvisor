@@ -9,8 +9,7 @@ a development project. The sanitized reference is in
 only and is not a runnable cloud credential file.
 
 The API container declares `TRADVISOR_RUNTIME_TARGET=api`; the batch job declares
-`daily_job`; trusted administrative commands declare `admin`; and the internal
-workflow dispatcher declares `workflow_dispatcher`.
+`daily_job`; and trusted administrative commands declare `admin`.
 
 The administrative entry points are same-release, non-HTTP commands:
 
@@ -26,25 +25,23 @@ They require an explicit target project and recovery bucket, reuse the immutable
 register and Firestore admission contracts, and emit only bounded sanitized
 results. Operation IDs are stable retry keys; they must not contain secrets,
 email addresses, tokens, or credentials.
-The dispatcher has a smaller configuration contract because it only submits
-the explicitly selected workflow and does not access Firestore, BigQuery, or
-Storage. Unsupported runtime-target names fail during application setup.
+Unsupported runtime-target names fail during application setup.
 
 ## Shared fields
 
 | Environment variable | Required for | Meaning and validation |
 | --- | --- | --- |
-| `TRADVISOR_RUNTIME_TARGET` | API, daily job, workflow dispatcher, admin | Explicit process role: `api`, `daily_job`, `workflow_dispatcher`, or `admin`; it must match the validator target. |
+| `TRADVISOR_RUNTIME_TARGET` | API, daily job, admin | Explicit process role: `api`, `daily_job`, or `admin`; it must match the validator target. |
 | `TRADVISOR_ENVIRONMENT` | API, daily job, admin | Explicitly `development` or `production`; it is never inferred from the project ID. |
 | `GOOGLE_CLOUD_PROJECT` | API, daily job, admin | Explicit Google Cloud project used for clients. |
 | `TRADVISOR_TARGET_PROJECT_ID` | API, daily job, admin | Explicit intended project; must exactly match `GOOGLE_CLOUD_PROJECT`. |
-| `TRADVISOR_ENVIRONMENT_PROJECT_ID` | API, daily job, workflow dispatcher, admin | Separately configured project authorized for the selected environment; must match both project fields above. |
+| `TRADVISOR_ENVIRONMENT_PROJECT_ID` | API, daily job, admin | Separately configured project authorized for the selected environment; must match both project fields above. |
 | `GOOGLE_CLOUD_FIRESTORE_DATABASE` | API, daily job, admin | Explicit Firestore database ID, including `(default)` when that database is intended. |
 | `TRADVISOR_SERVING_TARGET` | API, daily job, admin | Must be `firestore`, the approved V1 serving store. |
 | `FIRESTORE_CURSOR_SECRET` | API, daily job, admin | Secret value injected from the runtime secret manager. Never put the value in source control, `.env.example`, command arguments, or logs. |
 
-API configuration also requires `TRADVISOR_CORS_ORIGINS`, `WORKFLOW_REGION`,
-`MARKET_DATA_TABLE`, and `TRADVISOR_RECOVERY_BUCKET`. Daily publication requires
+API configuration also requires `TRADVISOR_CORS_ORIGINS`, `MARKET_DATA_TABLE`,
+and `TRADVISOR_RECOVERY_BUCKET`. Daily publication requires
 `MARKET_DATA_TABLE` and `FINANCIALS_TABLE`. Administrative commands require an
 explicit `TRADVISOR_RECOVERY_BUCKET` as well as the shared project and Firestore
 target. The current command wrappers will consume the `admin` target as they are
@@ -52,15 +49,10 @@ introduced; this module does not add an administration command or UI.
 
 Each BigQuery table must be a complete `project.dataset.table` identifier and
 the project component must equal `TRADVISOR_TARGET_PROJECT_ID`. Bucket names,
-Firestore database IDs, and workflow regions are validated before constructing
-cloud clients. API origins must be origin-only HTTPS URLs. HTTP is accepted only
+Firestore database IDs are validated before constructing cloud clients. API
+origins must be origin-only HTTPS URLs. HTTP is accepted only
 for localhost origins in development; wildcards, paths, credentials, queries,
 and fragments are rejected. An intentionally empty CORS list is allowed.
-
-The workflow dispatcher requires `TRADVISOR_ENVIRONMENT`,
-`GOOGLE_CLOUD_PROJECT`, `TRADVISOR_TARGET_PROJECT_ID`, and `WORKFLOW_REGION`.
-Its project IDs must agree and its region must be explicit before token
-verification or workflow dispatch.
 
 ## Publication-control debounce
 

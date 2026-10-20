@@ -20,11 +20,9 @@ from starlette.middleware.base import RequestResponseEndpoint
 from backend.configuration import (
     RuntimeConfiguration,
     RuntimeConfigurationError,
-    WorkflowDispatchConfiguration,
 )
 from backend.auth.fastapi import verified_identity_dependency
 from backend.auth.identity import AdmissionRepository, AdmittedIdentity, FirebaseIdTokenVerifier, TokenVerifier, FirestoreAdmissionRepository, RegisterAdmissionDenyFence
-from backend.auth.workload import GoogleWorkloadTokenVerifier, WorkloadTokenVerifier, workload_identity_dependency
 from backend.contracts.envelopes import ApiError, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.routes import (
     MeResource, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
@@ -47,7 +45,6 @@ from backend.store.firestore_sdk import FirestoreSdkStore
 from backend.store.repositories import Page
 from backend.publication.analysis import ServingStock
 from backend.observability import SanitizedLogger, configure_json_stdout
-from backend.workflow_dispatcher import WorkflowDispatchError, dispatch_and_wait
 
 PRIVATE_NO_STORE: Final = "private, no-store"
 MAX_BODY_BYTES: Final = 16 * 1024
@@ -99,11 +96,6 @@ def _production_analysis_publisher() -> AnalyticalPublisher:
 @lru_cache(maxsize=1)
 def _api_configuration() -> RuntimeConfiguration:
     return RuntimeConfiguration.from_environment("api")
-
-
-@lru_cache(maxsize=1)
-def _workflow_dispatch_configuration() -> WorkflowDispatchConfiguration:
-    return WorkflowDispatchConfiguration.from_environment()
 
 
 class _LazyAnalysisPublisher:
@@ -175,8 +167,6 @@ def _meta(request: Request, clock: Callable[[], datetime]) -> ResponseMeta:
 
 def create_app(
     *, verifier: TokenVerifier | None = None, admissions: AdmissionRepository | None = None,
-    workload_verifier: WorkloadTokenVerifier | None = None,
-    workload_audience: str | None = None,
     analysis_publisher: AnalyticalPublisher | None = None,
     analysis_cursor_secret: bytes | str | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -184,9 +174,7 @@ def create_app(
 ) -> FastAPI:
     runtime_target = os.environ.get("TRADVISOR_RUNTIME_TARGET", "")
     if runtime_target == "api":
-        runtime_configuration: RuntimeConfiguration | WorkflowDispatchConfiguration | None = _api_configuration()
-    elif runtime_target == "workflow_dispatcher":
-        runtime_configuration = _workflow_dispatch_configuration()
+        runtime_configuration: RuntimeConfiguration | None = _api_configuration()
     elif runtime_target:
         raise RuntimeConfigurationError("TRADVISOR_RUNTIME_TARGET is unsupported")
     elif os.environ.get("TRADVISOR_ENVIRONMENT"):
@@ -195,7 +183,6 @@ def create_app(
         runtime_configuration = None
     selected_verifier = verifier if verifier is not None else FirebaseIdTokenVerifier()
     require_identity = verified_identity_dependency(selected_verifier)
-    require_workload = workload_identity_dependency(workload_verifier or GoogleWorkloadTokenVerifier(), audience=workload_audience)
     selected_analysis: AnalysisPublisher = analysis_publisher or _LazyAnalysisPublisher()
     selected_analysis_secret: bytes | str = (
         analysis_cursor_secret
@@ -258,34 +245,6 @@ def create_app(
     @application.get("/healthz", include_in_schema=False)
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
-
-    @application.post("/internal/workflows/{workflow_name}/dispatch", include_in_schema=False)
-    async def dispatch_workflow(workflow_name: str, _: str = Depends(require_workload)) -> dict[str, str]:
-        try:
-            if os.environ.get("TRADVISOR_RUNTIME_TARGET") == "workflow_dispatcher":
-                configuration = _workflow_dispatch_configuration()
-                project_id = configuration.project_id
-                workflow_region = configuration.workflow_region
-            else:
-                runtime_configuration = _api_configuration()
-                if runtime_configuration.workflow_region is None:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Workflow dispatch is not configured for this runtime.",
-                    )
-                project_id = runtime_configuration.project_id
-                workflow_region = runtime_configuration.workflow_region
-                assert workflow_region is not None
-            execution = await __import__("asyncio").to_thread(
-                dispatch_and_wait,
-                workflow_name,
-                project=project_id,
-                region=workflow_region,
-            )
-        except WorkflowDispatchError as error:
-            EVENTS.event("api.workflow_dispatch", "failed", attributes={"error_class": type(error).__name__})
-            raise HTTPException(status_code=503, detail="service_unavailable") from error
-        return {"execution": execution}
 
     @application.get("/v1/me", response_model=ResponseEnvelope[MeResource])
     async def get_me(request: Request, identity: AdmittedIdentity = Depends(require_identity)) -> ResponseEnvelope[MeResource]:
