@@ -46,7 +46,7 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     dispatcher = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[1]
     api = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[0]
     assert 'name  = "WORKER_AUDIENCE"' in dispatcher
-    assert 'value = google_cloud_run_v2_service.workflow_dispatcher[0].uri' in dispatcher
+    assert 'value = "https://${var.v1_api_service_name}-workflow-dispatcher-${data.google_project.project.number}.${var.region}.run.app"' in dispatcher
     assert 'name  = "WORKER_SERVICE_ACCOUNT"' in dispatcher
     assert 'value = google_service_account.tradvisor_sa.email' in dispatcher
     assert 'name  = "WORKER_AUDIENCE"' not in api
