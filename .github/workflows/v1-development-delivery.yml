@@ -171,11 +171,10 @@ jobs:
             --role="roles/cloudtasks.admin" \
             --quiet
           for attempt in {1..12}; do
-            if gcloud projects get-iam-policy "$GCP_PROJECT_ID" \
-              --flatten='bindings[].members' \
-              --filter="bindings.role:roles/cloudtasks.admin AND bindings.members:serviceAccount:$terraform_principal" \
-              --format='value(bindings.members)' \
-              --quiet | grep -Fxq "serviceAccount:$terraform_principal"; then
+            if gcloud tasks queues describe publication-control-dispatch \
+              --location="$GCP_REGION" \
+              --project="$GCP_PROJECT_ID" \
+              --quiet >/dev/null; then
               exit 0
             fi
             sleep 30
