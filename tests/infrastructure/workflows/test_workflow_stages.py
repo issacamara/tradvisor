@@ -37,8 +37,6 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert 'resource "google_cloud_tasks_queue" "workflow_writers"' in FUNCTIONS
     assert 'max_concurrent_dispatches = 1' in FUNCTIONS
     assert 'max_dispatches_per_second = 1' in FUNCTIONS
-    assert 'cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks' in FUNCTIONS
-    assert 'google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch' in FUNCTIONS
     assert 'resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer"' in IAM
     assert 'resource "google_project_iam_member" "workflow_queue_enqueuer"' not in IAM
     assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in RUNTIME
@@ -76,22 +74,16 @@ def test_configured_source_schedules_are_enabled_and_managed() -> None:
     assert "ignore_changes  = [description, schedule, time_zone, http_target, paused]" not in FUNCTIONS
 
 
-def test_scheduler_cloud_tasks_body_uses_rest_api_json_field_names() -> None:
+def test_scheduler_creates_workflow_execution_with_oauth_and_json_argument() -> None:
     scheduler = FUNCTIONS.split('resource "google_cloud_scheduler_job" "jobs"', 1)[1]
-    payload = scheduler.split("body = base64encode(jsonencode({", 1)[1].split("    }))", 1)[0]
 
     assert "body = base64encode(jsonencode({" in scheduler
-    assert "httpRequest = {" in payload
-    assert "httpMethod = \"POST\"" in payload
     assert (
-        'url        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}'
-        '/internal/workflows/${each.value.name}-wf/dispatch"'
-    ) in payload
-    assert "oidcToken = {" in payload
-    assert "serviceAccountEmail = google_service_account.tradvisor_sa.email" in payload
-    assert "audience            = google_cloud_run_v2_service.workflow_dispatcher[0].uri" in payload
-    assert "http_request" not in payload
-    assert "http_method" not in payload
-    assert "oauth_token" not in payload
-    assert "service_account_email" not in payload
-    assert "oauthToken" not in payload
+        'uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}'
+        '/locations/${var.region}/workflows/${each.value.name}-wf/executions"'
+    ) in scheduler
+    assert "argument = jsonencode({})" in scheduler
+    assert "oauth_token {" in scheduler
+    assert "service_account_email = google_service_account.tradvisor_sa.email" in scheduler
+    assert "cloudtasks.googleapis.com/v2/projects/${var.project_id}" not in scheduler
+    assert "workflow_dispatcher[0].uri}/internal/workflows" not in scheduler

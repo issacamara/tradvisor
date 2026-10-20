@@ -17,9 +17,10 @@ def test_inventory_covers_all_scheduled_workflows_and_callers() -> None:
         assert f'`{source}-wf`' in EVIDENCE
 
     assert 'resource "google_cloud_scheduler_job" "jobs"' in FUNCTIONS
-    assert 'cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks' in FUNCTIONS
-    assert 'google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch' in FUNCTIONS
     assert 'https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions' in FUNCTIONS
+    scheduler = FUNCTIONS.split('resource "google_cloud_scheduler_job" "jobs"', 1)[1]
+    assert 'cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks' not in scheduler
+    assert 'google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch' not in scheduler
 
 
 def test_inventory_records_duration_retry_and_overlap_contracts() -> None:
