@@ -198,7 +198,7 @@ resource "google_cloud_tasks_queue" "workflow_writers" {
 
 
 resource "google_cloud_scheduler_job" "jobs" {
-  depends_on = [google_cloud_tasks_queue.workflow_writers, google_workflows_workflow.workflows, google_project_service.apis]
+  depends_on = [google_workflows_workflow.workflows, google_project_service.apis]
   #   for_each = { for wf in google_workflows_workflow.workflows : wf.name => wf }
   for_each    = var.manage_legacy_schedules ? var.jobs : {}
   name        = "${each.value.name}-job"
@@ -208,31 +208,17 @@ resource "google_cloud_scheduler_job" "jobs" {
   project     = var.project_id
   http_target {
     http_method = "POST"
-    uri         = "https://cloudtasks.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/queues/${each.value.name}-writer/tasks"
+    uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
     headers     = { "Content-Type" = "application/json" }
     body = base64encode(jsonencode({
-      task = {
-        # This object is sent to the Cloud Tasks REST API, not interpreted as
-        # Terraform provider configuration. Keep its JSON field names in the
-        # API's camelCase form before Scheduler base64-encodes the payload.
-        httpRequest = {
-          httpMethod = "POST"
-          url        = "${google_cloud_run_v2_service.workflow_dispatcher[0].uri}/internal/workflows/${each.value.name}-wf/dispatch"
-          oidcToken = {
-            serviceAccountEmail = google_service_account.tradvisor_sa.email
-            audience            = google_cloud_run_v2_service.workflow_dispatcher[0].uri
-          }
-        }
-      }
+      # Workflows Executions API expects the execution argument as a JSON
+      # string. An empty object keeps the existing workflow input contract.
+      argument = jsonencode({})
     }))
 
     oauth_token {
       service_account_email = google_service_account.tradvisor_sa.email
     }
-    #     oidc_token {
-    #       service_account_email = google_service_account.tradvisor_sa.email
-    #       audience = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${each.value.name}-wf/executions"
-    #     }
   }
 
   paused = contains(local.paused_schedule_keys, each.key)
