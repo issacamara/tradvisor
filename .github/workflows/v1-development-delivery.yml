@@ -160,17 +160,29 @@ jobs:
         if: inputs.action == 'plan' || inputs.action == 'apply'
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          TERRAFORM_PRINCIPAL: ${{ secrets.DEV_SERVICE_ACCOUNT }}
         run: |
-          terraform_principal="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' --limit=1)"
+          terraform_principal="$TERRAFORM_PRINCIPAL"
           case "$terraform_principal" in
             *.iam.gserviceaccount.com) ;;
-            *) echo "Active deployment principal is not a service account" >&2; exit 1 ;;
+            *) echo "Configured deployment principal is not a service account" >&2; exit 1 ;;
           esac
           gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
             --member="serviceAccount:$terraform_principal" \
             --role="roles/cloudtasks.admin" \
             --quiet
-          sleep 30
+          for attempt in {1..12}; do
+            if gcloud projects get-iam-policy "$GCP_PROJECT_ID" \
+              --flatten='bindings[].members' \
+              --filter="bindings.role:roles/cloudtasks.admin AND bindings.members:serviceAccount:$terraform_principal" \
+              --format='value(bindings.members)' \
+              --quiet | grep -Fxq "serviceAccount:$terraform_principal"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Temporary Cloud Tasks permission was not visible after 120 seconds" >&2
+          exit 1
       - name: Plan development changes
         if: inputs.action == 'plan'
         working-directory: terraform
@@ -267,11 +279,12 @@ jobs:
         if: always() && (inputs.action == 'plan' || inputs.action == 'apply')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          TERRAFORM_PRINCIPAL: ${{ secrets.DEV_SERVICE_ACCOUNT }}
         run: |
-          terraform_principal="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' --limit=1)"
+          terraform_principal="$TERRAFORM_PRINCIPAL"
           case "$terraform_principal" in
             *.iam.gserviceaccount.com) ;;
-            *) echo "Active deployment principal is not a service account" >&2; exit 1 ;;
+            *) echo "Configured deployment principal is not a service account" >&2; exit 1 ;;
           esac
           gcloud projects remove-iam-policy-binding "$GCP_PROJECT_ID" \
             --member="serviceAccount:$terraform_principal" \
