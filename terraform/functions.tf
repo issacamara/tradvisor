@@ -104,7 +104,6 @@ locals {
     { source = "financials", functions = ["scrape_financials"], targets = ["stocks.financials"], writer_key = "stocks.financials" },
     { source = "ratings", functions = ["scrape_ratings", "insert_ratings"], targets = ["stocks.ratings"], writer_key = "stocks.ratings" },
   ]
-  workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }
   workflow_by_source   = { for stage in local.workflow_stages : stage.source => stage }
   paused_schedule_keys = toset([])
 }
@@ -172,30 +171,6 @@ EOF
     ignore_changes  = all
   }
 }
-
-resource "google_cloud_tasks_queue" "workflow_writers" {
-  for_each = var.manage_legacy_schedules ? local.workflow_writer_keys : {}
-
-  name     = "${each.value}-writer"
-  location = var.region
-  project  = var.project_id
-
-  rate_limits {
-    max_concurrent_dispatches = 1
-    max_dispatches_per_second = 1
-  }
-
-  retry_config {
-    max_attempts = 1
-  }
-
-  lifecycle {
-    prevent_destroy = true
-  }
-
-  depends_on = [google_cloud_run_v2_service.workflow_dispatcher, google_project_iam_member.terraform_deployer_cloudtasks_admin]
-}
-
 
 resource "google_cloud_scheduler_job" "jobs" {
   depends_on = [google_workflows_workflow.workflows, google_project_service.apis]
