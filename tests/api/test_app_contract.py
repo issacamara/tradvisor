@@ -9,15 +9,9 @@ from backend.read_api.analysis import AnalysisNotReady
 from tests.auth.test_app_startup import AdmissionFixture, TokenVerifierFixture
 
 
-class WorkloadFixture:
-    def verify(self, token: str, *, audience: str) -> str:
-        assert token == "worker-token"
-        return "worker@example.iam.gserviceaccount.com"
-
-
 def client() -> TestClient:
     verifier = TokenVerifierFixture(VerifiedIdentity(uid="user-1", email="investor@example.com", email_verified=True))
-    return TestClient(create_app(verifier=verifier, admissions=AdmissionFixture(), workload_verifier=WorkloadFixture(), workload_audience="https://worker"))
+    return TestClient(create_app(verifier=verifier, admissions=AdmissionFixture()))
 
 
 def _block_bigquery(monkeypatch) -> list[object]:
@@ -154,10 +148,9 @@ def test_analysis_routes_remain_protected() -> None:
     assert application.get("/v1/stocks/AAA/chart", params={"from": "2026-01-01", "to": "2026-01-02"}).json()["error"]["code"] == "unauthenticated"
 
 
-def test_internal_dispatch_requires_workload_identity(monkeypatch) -> None:
+def test_dispatcher_route_is_removed() -> None:
     application = client()
-    assert application.post("/internal/workflows/daily-wf/dispatch").status_code == 401
-    assert application.post("/internal/workflows/daily-wf/dispatch", headers={"Authorization": "Bearer user-token"}).status_code == 403
+    assert application.post("/internal/workflows/daily-wf/dispatch").status_code == 404
 
 
 def test_generated_openapi_is_the_application_contract() -> None:
