@@ -234,10 +234,16 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
         run: |
-          gcloud run services update "tradvisor-v1-api-workflow-dispatcher" \
+          gcloud run services describe "tradvisor-v1-api-workflow-dispatcher" \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
-            --no-deletion-protection
+            --format=export > retired-workflow-dispatcher.yaml
+          sed -i.bak 's/deletionProtection: true/deletionProtection: false/' \
+            retired-workflow-dispatcher.yaml
+          gcloud run services replace retired-workflow-dispatcher.yaml \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --quiet
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
         working-directory: terraform
