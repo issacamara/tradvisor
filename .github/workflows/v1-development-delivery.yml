@@ -203,6 +203,16 @@ jobs:
           name: tradvisor-${{ inputs.release_id }}-development-terraform-plan
           path: terraform-plan-artifact/
           if-no-files-found: error
+      - name: Clear protection on retired workflow dispatcher
+        if: inputs.action == 'apply'
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+        run: |
+          gcloud run services update "tradvisor-v1-api-workflow-dispatcher" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --no-deletion-protection
       - name: Apply reviewed development plan
         if: inputs.action == 'apply'
         working-directory: terraform
