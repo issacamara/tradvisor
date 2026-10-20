@@ -24,6 +24,11 @@ on:
         description: "GitHub Actions run ID containing the reviewed Terraform plan (apply only)"
         required: false
         type: string
+      retirement_phase:
+        description: "Retired dispatcher transition phase"
+        required: true
+        type: choice
+        options: [prepare, destroy]
 
 permissions:
   contents: read
@@ -75,7 +80,7 @@ jobs:
         if: inputs.action == 'apply'
         uses: actions/download-artifact@v4
         with:
-          name: tradvisor-${{ inputs.release_id }}-development-terraform-plan
+          name: tradvisor-${{ inputs.release_id }}-${{ inputs.retirement_phase }}-development-terraform-plan
           run-id: ${{ inputs.terraform_plan_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: reviewed-plan
@@ -132,10 +137,37 @@ jobs:
         if: inputs.action != 'frontend'
         working-directory: terraform
         run: terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX"
+      - name: Stage retired dispatcher protection transition
+        if: inputs.action == 'plan' || inputs.action == 'apply'
+        working-directory: terraform
+        env:
+          RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
+        run: |
+          if [ "$RETIREMENT_PHASE" = "prepare" ]; then
+            printf '%s\n' \
+              'resource "google_cloud_run_v2_service" "workflow_dispatcher" {' \
+              '  count               = 1' \
+              '  name                = "${var.v1_api_service_name}-workflow-dispatcher"' \
+              '  location            = var.region' \
+              '  project             = var.project_id' \
+              '  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"' \
+              '  deletion_protection = false' \
+              '  template {' \
+              '    containers {' \
+              '      image = var.v1_api_image' \
+              '    }' \
+              '  }' \
+              '  lifecycle {' \
+              '    prevent_destroy = false' \
+              '    ignore_changes  = [template]' \
+              '  }' \
+              '}' > retired-workflow-dispatcher.tf
+          fi
       - name: Import existing development shares table
         if: inputs.action == 'import' || inputs.action == 'apply'
         working-directory: terraform
         env:
+          RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_manage_legacy_schedules: "true"
@@ -185,6 +217,7 @@ jobs:
         if: inputs.action == 'plan'
         working-directory: terraform
         env:
+          RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
           TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
@@ -225,7 +258,7 @@ jobs:
         if: inputs.action == 'plan'
         uses: actions/upload-artifact@v4
         with:
-          name: tradvisor-${{ inputs.release_id }}-development-terraform-plan
+          name: tradvisor-${{ inputs.release_id }}-${{ inputs.retirement_phase }}-development-terraform-plan
           path: terraform-plan-artifact/
           if-no-files-found: error
       - name: Clear protection on retired workflow dispatcher
