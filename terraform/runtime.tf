@@ -209,13 +209,15 @@ resource "google_cloud_run_v2_service_iam_member" "v1_api_public_invoker" {
   member   = "allUsers"
 }
 
+# Direct Scheduler -> Workflows cutover is validated. Keep the service
+# managed until the separately approved retirement plan removes it.
 resource "google_cloud_run_v2_service" "workflow_dispatcher" {
   count               = var.manage_legacy_schedules ? 1 : 0
   name                = "${var.v1_api_service_name}-workflow-dispatcher"
   location            = var.region
   project             = var.project_id
   ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
-  deletion_protection = true
+  deletion_protection = false
 
   template {
     service_account = google_service_account.tradvisor_sa.email
@@ -288,7 +290,7 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
     precondition {
       condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
       error_message = "Workflow dispatcher requires a supported environment and its separately configured project target."

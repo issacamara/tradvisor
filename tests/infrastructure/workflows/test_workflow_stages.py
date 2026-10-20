@@ -38,7 +38,13 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert 'resource "google_project_iam_member" "terraform_deployer_cloudtasks_admin"' not in RUNTIME
     assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in RUNTIME
     assert 'INGRESS_TRAFFIC_INTERNAL_ONLY' in RUNTIME
-    dispatcher = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[1]
+    dispatcher = RUNTIME.split(
+        'resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1
+    )[1].split('resource "google_cloud_run_v2_job" "v1_batch"', 1)[0]
+    assert "deletion_protection = false" in dispatcher
+    assert "prevent_destroy = false" in dispatcher
+    assert "deletion_protection = true" not in dispatcher
+    assert "prevent_destroy = true" not in dispatcher
     api = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[0]
     assert 'name  = "WORKER_AUDIENCE"' in dispatcher
     assert 'value = "https://${var.v1_api_service_name}-workflow-dispatcher-${data.google_project.project.number}.${var.region}.run.app"' in dispatcher
