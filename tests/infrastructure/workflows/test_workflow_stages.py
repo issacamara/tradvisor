@@ -33,12 +33,9 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert len(target_owners) == len(set(target_owners))
     writer_keys = [writer_key for *_, writer_key in workflows]
     assert writer_keys == target_owners
-    assert 'workflow_writer_keys = { for stage in local.workflow_stages : stage.writer_key => stage.source }' in FUNCTIONS
-    assert 'resource "google_cloud_tasks_queue" "workflow_writers"' in FUNCTIONS
-    assert 'max_concurrent_dispatches = 1' in FUNCTIONS
-    assert 'max_dispatches_per_second = 1' in FUNCTIONS
-    assert 'resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer"' in IAM
-    assert 'resource "google_project_iam_member" "workflow_queue_enqueuer"' not in IAM
+    assert 'resource "google_cloud_tasks_queue" "workflow_writers"' not in FUNCTIONS
+    assert 'resource "google_cloud_tasks_queue_iam_member" "workflow_queue_enqueuer"' not in IAM
+    assert 'resource "google_project_iam_member" "terraform_deployer_cloudtasks_admin"' not in RUNTIME
     assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in RUNTIME
     assert 'INGRESS_TRAFFIC_INTERNAL_ONLY' in RUNTIME
     dispatcher = RUNTIME.split('resource "google_cloud_run_v2_service" "workflow_dispatcher"', 1)[1]
@@ -59,7 +56,7 @@ def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -
     )
     workflow_block = FUNCTIONS.split(
         'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_tasks_queue"', 1)[0]
+    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
     assert "for_each" not in workflow_block
     assert "try:" not in FUNCTIONS
     assert "except:" not in FUNCTIONS
