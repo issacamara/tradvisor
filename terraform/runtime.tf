@@ -276,7 +276,7 @@ resource "google_cloud_run_v2_service" "workflow_dispatcher" {
       # audience and the expected scheduler service identity.
       env {
         name  = "WORKER_AUDIENCE"
-        value = google_cloud_run_v2_service.workflow_dispatcher[0].uri
+        value = "https://${var.v1_api_service_name}-workflow-dispatcher-${data.google_project.project.number}.${var.region}.run.app"
       }
 
       env {
