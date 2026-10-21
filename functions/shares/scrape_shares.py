@@ -294,7 +294,7 @@ def _save_raw_observations(frame, collected_at: datetime, configuration=None) ->
     """Write each scrape as a new GCS object; a retry must never replace evidence."""
     if collected_at.tzinfo is None or collected_at.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
-    stamp = collected_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%S%fZ")
+    stamp = collected_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
     csv_text = frame.to_csv(index=False, sep="|")
     from google.api_core.exceptions import PreconditionFailed
     from google.auth import default

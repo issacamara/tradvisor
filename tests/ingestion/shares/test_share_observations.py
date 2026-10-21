@@ -259,8 +259,8 @@ def test_same_day_scrapes_preserve_each_raw_gcs_evidence_object(monkeypatch) -> 
     )
     assert first_result != second_result
     assert sorted(stored) == [
-        "shares-2026-09-22T080000000000Z-1.csv",
-        "shares-2026-09-22T080000000000Z.csv",
+        "shares-2026-09-22-1.csv",
+        "shares-2026-09-22.csv",
     ]
     assert any("1 050,75" in content for content in stored.values())
     assert any("1 051,00" in content for content in stored.values())
@@ -510,7 +510,7 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
     monkeypatch.setenv("FUNCTION_TARGET", "entry_point")
 
     evidence = loader._load_then_archive(
-        SimpleNamespace(name="shares.csv"),
+        SimpleNamespace(name="shares-2026-09-21.csv"),
         pd.DataFrame([_row()]),
     )
 
@@ -521,7 +521,7 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
             1,
             "project",
             "stocks",
-            "shares-" + hashlib.sha256(b"shares.csv").hexdigest(),
+            "shares-" + hashlib.sha256(b"shares-2026-09-21.csv").hexdigest(),
             [
                 {
                     "symbol": "ABC",
@@ -535,7 +535,7 @@ def test_cloud_load_uses_actual_helper_signature_and_canonical_market_keys(monke
                 }
             ],
         ),
-        ("gcs-archive", "data-123", "archive-123", "shares.csv"),
+        ("gcs-archive", "data-123", "archive-123", "shares-2026-09-21.csv"),
     ]
 
 
