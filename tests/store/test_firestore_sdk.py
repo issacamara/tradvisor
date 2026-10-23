@@ -48,6 +48,29 @@ class _FakeTransaction:
         self.writes.append((reference, value))
 
 
+class _LifecycleTransaction(_FakeTransaction):
+    def __init__(self) -> None:
+        super().__init__(())
+        self.begun = False
+
+    def _begin(self) -> None:
+        assert not self.begun
+        self.begun = True
+        self.events.append("begin")
+
+    def get(self, reference: _Reference) -> Iterator[_Snapshot]:
+        assert self.begun
+        return super().get(reference)
+
+    def set(self, reference: _Reference, value: dict[str, Any]) -> None:
+        assert self.begun
+        super().set(reference, value)
+
+    def commit(self) -> None:
+        assert self.begun
+        self.events.append("commit")
+
+
 class _FakeClient:
     def __init__(self, records: list["_Document"] | None = None) -> None:
         self.records = [] if records is None else records
@@ -59,6 +82,15 @@ class _FakeClient:
     def collection(self, collection: str) -> "_FakeQuery":
         assert collection == "analysis_batches/b1/results"
         return self.query
+
+
+class _TransactionalClient(_FakeClient):
+    def __init__(self, transaction: _LifecycleTransaction) -> None:
+        super().__init__()
+        self._transaction = transaction
+
+    def transaction(self) -> _LifecycleTransaction:
+        return self._transaction
 
 
 class _Document:
@@ -102,6 +134,47 @@ class _FakeQuery:
 
     def stream(self) -> Iterator[_Document]:
         return iter(self.records[: self.requested_limit])
+
+
+def test_sdk_run_begins_transaction_before_callback_reads_and_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RetryableError(Exception):
+        pass
+
+    monkeypatch.setattr(
+        "backend.store.firestore_sdk.importlib.import_module",
+        lambda name: SimpleNamespace(
+            Aborted=RetryableError,
+            Conflict=RetryableError,
+            DeadlineExceeded=RetryableError,
+            ServiceUnavailable=RetryableError,
+        ),
+    )
+    transaction = _LifecycleTransaction()
+    store = FirestoreSdkStore(
+        project_id="local-project",
+        cursor_secret="local-test-cursor-secret",
+        client=_TransactionalClient(transaction),
+    )
+    key = DocumentKey("analysis_batches/b1/results", "result-1")
+
+    def publish(active_transaction: Any) -> str:
+        assert active_transaction is transaction
+        assert store.get_in_transaction(active_transaction, key) is None
+        store.put_in_transaction(
+            active_transaction,
+            VersionedDocument(key, 1, 0, Record(generation="g1", value=7)),
+        )
+        return "published"
+
+    assert store.run(publish, max_attempts=1) == "published"
+    assert [event.split(":", 1)[0] for event in transaction.events] == [
+        "begin",
+        "read",
+        "write",
+        "commit",
+    ]
 
 
 def test_sdk_transactional_read_consumes_snapshot_iterator() -> None:
