@@ -23,7 +23,7 @@ The public V1 API is read-only:
 
 ## Delivery Boundary
 
-Deploy the committed `V1` branch through the repository development-delivery workflow. It builds the static frontend, builds an immutable API image, applies the reviewed development Terraform configuration, and deploys Firebase Hosting. A successful deployment must be followed by authenticated smoke testing of Swing and Long-Term.
+Deploy the committed `development` branch through the repository development-delivery workflow. It builds the static frontend, builds an immutable API image, applies the reviewed development Terraform configuration, and deploys Firebase Hosting in the development Firebase project. A successful deployment must be followed by authenticated smoke testing of Swing and Long-Term.
 
 ## Data Lifecycle
 

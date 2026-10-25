@@ -1,6 +1,8 @@
 name: Development delivery
 
 on:
+  push:
+    branches: [development]
   workflow_dispatch:
     inputs:
       action:
@@ -36,8 +38,12 @@ permissions:
   id-token: write
 
 jobs:
+  prepare:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
   delivery:
-    if: github.ref_name == 'V1'
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'development'
     runs-on: ubuntu-latest
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
@@ -46,7 +52,7 @@ jobs:
       TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/dev' }}
       TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
     environment:
-      name: ${{ (inputs.action == 'apply' || inputs.action == 'frontend') && 'development-apply' || 'development-plan' }}
+      name: development
     steps:
       - uses: actions/checkout@v4
       - name: Download verified release bundle
@@ -63,8 +69,9 @@ jobs:
       - name: Authenticate to Google Cloud with workload identity
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -78,12 +85,16 @@ jobs:
         run: test -n "$TERRAFORM_PLAN_RUN_ID" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
       - name: Download reviewed development Terraform plan
         if: inputs.action == 'apply'
-        uses: actions/download-artifact@v4
-        with:
-          name: tradvisor-${{ inputs.release_id }}-${{ inputs.retirement_phase }}-development-terraform-plan
-          run-id: ${{ inputs.terraform_plan_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: reviewed-plan
+        env:
+          PLAN_RUN_ID: ${{ inputs.terraform_plan_run_id }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
+        run: |
+          [[ "$PLAN_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_ID" =~ ^[a-zA-Z0-9._-]+$ ]]
+          mkdir reviewed-plan
+          gcloud storage cp "gs://$TF_STATE_BUCKET/reviewed-plans/development/$PLAN_RUN_ID/$RELEASE_ID-$RETIREMENT_PHASE.tar.gz" reviewed-plan.tar.gz
+          tar -xzf reviewed-plan.tar.gz -C reviewed-plan
       - name: Validate delivery inputs
         if: inputs.action != 'frontend'
         env:
@@ -99,7 +110,7 @@ jobs:
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           DEPLOY_ENV: development
-          ALLOWED_BRANCH: V1
+          ALLOWED_BRANCH: development
           EXPECTED_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           EXPECTED_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'dev-tradvisor-tfstate' }}
           EXPECTED_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/dev' }}
@@ -219,20 +230,23 @@ jobs:
         env:
           RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
           TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
           TF_VAR_environment: development
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
-        run: terraform plan -out=tfplan
+        run: |
+          terraform plan -out=tfplan -no-color >/dev/null 2>&1 || { echo "Terraform plan failed; inspect the private operator evidence." >&2; exit 1; }
+          terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
       - name: Create reviewed development Terraform plan attestation
         if: inputs.action == 'plan'
         working-directory: terraform
@@ -254,13 +268,15 @@ jobs:
           mkdir -p ../terraform-plan-artifact/function-source-archives
           cp ./*.zip ../terraform-plan-artifact/function-source-archives/
           cp tfplan plan-attestation.json ../terraform-plan-artifact/
-      - name: Upload reviewed development Terraform plan
+      - name: Store reviewed development Terraform plan privately
         if: inputs.action == 'plan'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tradvisor-${{ inputs.release_id }}-${{ inputs.retirement_phase }}-development-terraform-plan
-          path: terraform-plan-artifact/
-          if-no-files-found: error
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          RETIREMENT_PHASE: ${{ inputs.retirement_phase }}
+        run: |
+          [[ "$RELEASE_ID" =~ ^[a-zA-Z0-9._-]+$ ]]
+          tar -czf reviewed-plan.tar.gz -C terraform-plan-artifact .
+          gcloud storage cp --no-clobber reviewed-plan.tar.gz "gs://$TF_STATE_BUCKET/reviewed-plans/development/$GITHUB_RUN_ID/$RELEASE_ID-$RETIREMENT_PHASE.tar.gz"
       - name: Clear protection on retired workflow dispatcher
         if: inputs.action == 'apply'
         env:
@@ -285,13 +301,14 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           TF_VAR_configure_v1_api: "true"
           TF_VAR_configure_v1_runtime: "true"
           TF_VAR_environment: development
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -300,12 +317,12 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: |
           cp ../reviewed-plan/function-source-archives/*.zip .
-          terraform apply -auto-approve ../reviewed-plan/tfplan
+          terraform apply -auto-approve ../reviewed-plan/tfplan >/dev/null 2>&1 || { echo "Terraform apply failed; inspect the private operator evidence." >&2; exit 1; }
       - name: Build development frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         working-directory: frontend
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
         run: |
           test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
