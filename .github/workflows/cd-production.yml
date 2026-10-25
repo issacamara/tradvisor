@@ -379,3 +379,10 @@ jobs:
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+      - name: Check deployed production endpoints
+        if: inputs.action == 'apply'
+        run: |
+          service_url="$(gcloud run services describe tradvisor-v1-api --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format='value(status.url)')"
+          test -n "$service_url"
+          curl --fail --silent --show-error --retry 3 "$service_url/healthz" >/dev/null
+          curl --fail --silent --show-error --retry 3 https://prod-tradvisor.web.app/ >/dev/null
