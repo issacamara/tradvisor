@@ -87,6 +87,41 @@ jobs:
           assert manifest["commit"] == os.environ["DEVELOPMENT_COMMIT"]
           assert re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["backend"]["digest"])
           PY
+      - name: Require successful development deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          run_id="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+            -f name="tradvisor-development-deployed-$DEVELOPMENT_COMMIT" --jq '.artifacts[0].workflow_run.id // empty')"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            --jq '[.name,.event,.head_sha,.conclusion] | @tsv')"
+          test "$metadata" = "$(printf 'Development delivery\tworkflow_dispatch\t%s\tsuccess' "$DEVELOPMENT_COMMIT")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-development-deployed-${{ steps.source.outputs.commit }}
+          run-id: ${{ steps.deployment.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: development-deployment
+      - name: Verify development deployment digest
+        env:
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          manifest = json.loads(Path("release/manifest/release-manifest.json").read_text())
+          deployed = json.loads(Path("development-deployment/development-deployment.json").read_text())
+          assert deployed == {
+              "commit": os.environ["DEVELOPMENT_COMMIT"],
+              "release_id": os.environ["DEVELOPMENT_COMMIT"],
+              "backend_digest": manifest["backend"]["digest"],
+          }
+          PY
       - name: Release gate
         run: echo "Use the verified development digest, review the exact production Terraform plan, then dispatch production apply after environment approval."
   promote:

@@ -35,7 +35,7 @@ def test_delivery_workflows_require_exact_reviewed_terraform_plans() -> None:
         assert "terraform_plan_attestation.py create" in contents
         assert "terraform apply -auto-approve ../reviewed-plan/tfplan" in contents
         assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in contents
-        assert "actions/upload-artifact@v4" not in contents
+        assert "path: terraform-plan-artifact/" not in contents
 
 
 def test_push_prepares_release_without_unreviewed_apply() -> None:
@@ -50,5 +50,7 @@ def test_push_prepares_release_without_unreviewed_apply() -> None:
     assert "github.event_name == 'workflow_dispatch'" in production
     assert "git rev-parse \"$GITHUB_SHA^{tree}\"" in production
     assert '["backend"]["digest"]' in production
+    assert "tradvisor-development-deployed-" in development
+    assert "Require successful development deployment" in production
     assert "workflow_call:" in release
     assert 'grep -Eq \'^sha256:[0-9a-f]{64}$\'' in release

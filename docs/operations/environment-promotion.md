@@ -52,11 +52,14 @@ deployment credentials.
    development image digest. Review the saved plan, then dispatch `apply` with
    its plan run ID. Apply verifies the manifest and saved-plan attestation,
    deploys Cloud Run through Terraform, then builds and deploys the static
-   frontend to development Firebase Hosting. Smoke-test the development app.
+   frontend to development Firebase Hosting. The workflow checks the API
+   health endpoint and Hosting response, then records non-secret deployment
+   evidence. Complete the authenticated Swing and Long-Term smoke review.
 3. Merge the tested development tree into `main` with a merge commit. The
-   production push checks the matching development commit and release manifest,
-   then copies that image digest to the production registry after production
-   environment approval. Hotfixes must pass development first.
+   production push checks the matching development commit, release manifest,
+   and successful development deployment evidence, then copies that image
+   digest to the production registry after production environment approval.
+   Hotfixes must pass development first.
 4. Dispatch production `plan` with the release and promoted production digest.
    Review the saved plan, then dispatch `apply` with its plan run ID. Apply
    verifies the exact plan, deploys Cloud Run through Terraform, and builds the

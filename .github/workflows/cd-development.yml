@@ -62,6 +62,13 @@ jobs:
           run-id: ${{ inputs.release_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: release
+      - name: Bind development delivery to the release commit
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          release_commit="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["commit"])')"
+          test "$RELEASE_ID" = "$release_commit"
+          test "$GITHUB_SHA" = "$release_commit"
       - uses: hashicorp/setup-terraform@v3
         if: inputs.action != 'frontend'
         with:
@@ -346,3 +353,22 @@ jobs:
             --member="serviceAccount:$terraform_principal" \
             --role="roles/cloudtasks.admin" \
             --quiet
+      - name: Check deployed development endpoints
+        if: inputs.action == 'apply'
+        run: |
+          curl --fail --silent --show-error --retry 3 "$TRADVISOR_API_URL/healthz" >/dev/null
+          curl --fail --silent --show-error --retry 3 https://dev-tradvisor.web.app/ >/dev/null
+      - name: Record development deployment evidence
+        if: inputs.action == 'apply'
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          jq -n --arg commit "$GITHUB_SHA" --arg release_id "$RELEASE_ID" \
+            --arg digest "$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')" \
+            '{commit:$commit,release_id:$release_id,backend_digest:$digest}' > development-deployment.json
+      - uses: actions/upload-artifact@v4
+        if: inputs.action == 'apply'
+        with:
+          name: tradvisor-development-deployed-${{ inputs.release_id }}
+          path: development-deployment.json
+          if-no-files-found: error
