@@ -3,9 +3,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import random
 import re
+import time
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from email.utils import parsedate_to_datetime
 from ingestion_observability import observed_entrypoint
 
 RAW_COLUMNS = (
@@ -22,6 +26,10 @@ SOURCE_ID = "sikafinance-shares"
 PARSER_VERSION = "shares-parser-v2"
 PRICE_BASIS_REF = "raw-v1"
 BRVM_SESSION_URL = "https://www.brvm.org/fr/jours-feries"
+REQUEST_TIMEOUT_SECONDS = 20
+RETRY_BUDGET_SECONDS = 120
+MAX_RETRY_ATTEMPTS = 4
+RETRIABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 FRENCH_MONTHS = {
     "janvier": 1,
@@ -37,6 +45,78 @@ FRENCH_MONTHS = {
     "novembre": 11,
     "decembre": 12,
 }
+
+
+class SourceRequestRetryExhausted(RuntimeError):
+    """A transient source failure outlasted the bounded scrape retry budget."""
+
+
+def _retry_after_seconds(headers: object) -> float | None:
+    if not hasattr(headers, "get"):
+        return None
+    try:
+        value = headers.get("Retry-After")
+        delay = float(value)
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+    return delay if delay >= 0 else None
+
+
+def _is_retryable_transport_error(error: Exception) -> bool:
+    return isinstance(error, (ConnectionError, TimeoutError, OSError)) or (
+        error.__class__.__module__.startswith("curl_cffi")
+        and error.__class__.__name__ in {"RequestException", "RequestsError", "Timeout"}
+    )
+
+
+def _request_with_retry(
+    request: Callable[[float], object],
+    *,
+    deadline: float,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+    uniform: Callable[[float, float], float] = random.uniform,
+):
+    """Make a source request without exceeding the scrape's shared deadline."""
+    last_error: Exception | None = None
+    for attempt in range(MAX_RETRY_ATTEMPTS):
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        try:
+            response = request(min(REQUEST_TIMEOUT_SECONDS, remaining))
+        except Exception as error:
+            if not _is_retryable_transport_error(error):
+                raise
+            last_error = error
+            retry_after = None
+        else:
+            status_code = getattr(response, "status_code", None)
+            if status_code not in RETRIABLE_STATUS_CODES:
+                response.raise_for_status()
+                return response
+            last_error = RuntimeError(f"transient source response: {status_code}")
+            retry_after = _retry_after_seconds(getattr(response, "headers", None))
+
+        if attempt == MAX_RETRY_ATTEMPTS - 1:
+            break
+        delay = (
+            retry_after
+            if retry_after is not None
+            else uniform(1, min(2 ** (attempt + 1), 30))
+        )
+        remaining = deadline - monotonic()
+        if delay >= remaining:
+            break
+        sleep(delay)
+
+    raise SourceRequestRetryExhausted("source retry budget exhausted") from last_error
 
 
 def parse_localized_decimal(value: str) -> Decimal | None:
@@ -161,17 +241,22 @@ def resolve_brvm_session(page_text: str) -> tuple[date | None, str]:
     return session_date, "verified"
 
 
-def scrape_brvm_session(url: str = BRVM_SESSION_URL) -> tuple[date | None, str]:
+def scrape_brvm_session(
+    url: str = BRVM_SESSION_URL, *, retry_deadline: float | None = None
+) -> tuple[date | None, str]:
     from curl_cffi import requests
 
-    page = requests.get(
-        url=url,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=30,
-        impersonate="chrome",
-        allow_redirects=True,
+    deadline = retry_deadline or time.monotonic() + RETRY_BUDGET_SECONDS
+    page = _request_with_retry(
+        lambda timeout: requests.get(
+            url=url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=timeout,
+            impersonate="chrome",
+            allow_redirects=True,
+        ),
+        deadline=deadline,
     )
-    page.raise_for_status()
     return resolve_brvm_session(page.text)
 
 
@@ -191,7 +276,7 @@ def build_source_revision_id(row: dict[str, object]) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
-def scrape(url: str):
+def scrape(url: str, *, retry_deadline: float | None = None):
     from bs4 import BeautifulSoup
     from curl_cffi import requests
 
@@ -200,15 +285,18 @@ def scrape(url: str):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     }
     session = requests.Session()
-    page = session.get(
-        url=url,
-        params=params,
-        headers=headers,
-        timeout=30,
-        impersonate="chrome",
-        allow_redirects=True,
+    deadline = retry_deadline or time.monotonic() + RETRY_BUDGET_SECONDS
+    page = _request_with_retry(
+        lambda timeout: session.get(
+            url=url,
+            params=params,
+            headers=headers,
+            timeout=timeout,
+            impersonate="chrome",
+            allow_redirects=True,
+        ),
+        deadline=deadline,
     )
-    page.raise_for_status()
     soup = BeautifulSoup(page.content, "html.parser")
     table = soup.find("table", {"class": "tablesorter tbl100_6 tbl1"})
     if table is None or table.find("tbody") is None:
@@ -248,11 +336,14 @@ def scrape_brvm_shares(
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("collected_at must be timezone-aware")
     collected_text = instant.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    session_date, session_date_status = scrape_brvm_session(session_evidence_url)
+    retry_deadline = time.monotonic() + RETRY_BUDGET_SECONDS
+    session_date, session_date_status = scrape_brvm_session(
+        session_evidence_url, retry_deadline=retry_deadline
+    )
     session_date_text = session_date.isoformat() if session_date else ""
 
     observations = []
-    for source_row in scrape(url):
+    for source_row in scrape(url, retry_deadline=retry_deadline):
         row: dict[str, object] = {
             **source_row,
             "source_id": SOURCE_ID,
