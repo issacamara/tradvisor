@@ -336,16 +336,21 @@ jobs:
           if [ "$apply_status" -ne 0 ]; then
             {
               echo "Terraform apply failed (exit code $apply_status). Sanitized diagnostics:"
-              awk '
-                /(^|[[:space:]│])Error:/ { capture=1; lines=0 }
-                capture && lines < 8 { print; lines++ }
-                capture && lines >= 8 { capture=0 }
-              ' terraform-apply.log \
-                | sed -E \
-                    -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?<redacted>#g' \
-                    -e 's#([[:space:]]|^)(token|password|secret|api[_-]?key|credential)([=:])[^[:space:]]+#\1\2\3<redacted>#Ig'
-              if ! grep -Eq '(^|[[:space:]│])Error:' terraform-apply.log; then
+              sanitize() {
+                sed -E \
+                  -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?<redacted>#g' \
+                  -e 's#([[:space:]]|^)(token|password|secret|api[_-]?key|credential)([=:])[^[:space:]]+#\1\2\3<redacted>#Ig'
+              }
+              if grep -Eq '(^|[[:space:]│])Error:' terraform-apply.log; then
+                awk '
+                  /(^|[[:space:]│])Error:/ { capture=1; lines=0 }
+                  capture && lines < 8 { print; lines++ }
+                  capture && lines >= 8 { capture=0 }
+                ' terraform-apply.log | sanitize
+              else
                 echo "No structured Terraform diagnostic was emitted; inspect the private apply-diagnostic artifact."
+                echo "Last 80 lines of sanitized Terraform output:"
+                tail -80 terraform-apply.log | sanitize
               fi
             } | tee terraform-apply-diagnostic.txt >&2
             exit "$apply_status"
