@@ -344,20 +344,6 @@ jobs:
       - name: Deploy static frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
-      - name: Remove temporary Terraform Cloud Tasks permission
-        if: always() && (inputs.action == 'plan' || inputs.action == 'apply')
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
-        run: |
-          terraform_principal="$(jq -r '.service_account_impersonation_url // empty | capture("serviceAccounts/(?<email>[^:]+)").email' "$GOOGLE_GHA_CREDS_PATH")"
-          case "$terraform_principal" in
-            *.iam.gserviceaccount.com) ;;
-            *) echo "Authenticated deployment principal is not a service account" >&2; exit 1 ;;
-          esac
-          gcloud projects remove-iam-policy-binding "$GCP_PROJECT_ID" \
-            --member="serviceAccount:$terraform_principal" \
-            --role="roles/cloudtasks.admin" \
-            --quiet
       - name: Check deployed development endpoints
         if: inputs.action == 'apply'
         run: |
