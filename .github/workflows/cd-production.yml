@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
         run: |
-          run_id="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/cd-development.yml/runs" \
+          run_id="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
             -f head_sha="$DEVELOPMENT_COMMIT" -f status=success --jq '.workflow_runs[0].id // empty')"
           [[ "$run_id" =~ ^[0-9]+$ ]]
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
@@ -98,7 +98,7 @@ jobs:
           [[ "$run_id" =~ ^[0-9]+$ ]]
           metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
             --jq '[.name,.event,.head_sha,.conclusion] | @tsv')"
-          test "$metadata" = "$(printf 'Development delivery\tworkflow_dispatch\t%s\tsuccess' "$DEVELOPMENT_COMMIT")"
+          test "$metadata" = "$(printf 'CI\tpush\t%s\tsuccess' "$DEVELOPMENT_COMMIT")"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
@@ -142,8 +142,8 @@ jobs:
           path: release
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.PROD_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Copy the verified backend digest to production registry
         shell: bash
@@ -155,8 +155,8 @@ jobs:
           test -n "$ARTIFACT_REPOSITORY"
           source_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
           [[ "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          source_image="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/tradvisor-backend"
-          target_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/tradvisor-backend"
+          source_image="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/api"
+          target_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api"
           actual_digest="$(gcloud artifacts docker images describe "$source_image:$DEVELOPMENT_COMMIT" --format='value(image_summary.digest)')"
           test "$actual_digest" = "$source_digest"
           gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
@@ -206,8 +206,8 @@ jobs:
       - name: Authenticate to Google Cloud with workload identity
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.PROD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.PROD_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
 
       - name: Set up Node.js
@@ -359,7 +359,7 @@ jobs:
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         working-directory: frontend
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.PROD_FIREBASE_API_KEY }}
           ACTION: ${{ inputs.action }}
         run: |
           if [ "$ACTION" = "apply" ]; then

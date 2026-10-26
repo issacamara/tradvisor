@@ -17,7 +17,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
-      name: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && 'production' || 'development' }}
+      name: ${{ github.event_name == 'pull_request' && ((github.base_ref == 'main') && 'production-plan' || 'development-plan') || ((github.ref_name == 'main') && 'production' || 'development') }}
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
@@ -32,7 +32,7 @@ jobs:
       TF_VAR_manage_legacy_project_services: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && 'false' || 'true' }}
       TF_VAR_manage_legacy_schedules: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && 'false' || 'true' }}
       TF_VAR_manage_legacy_workflows: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && 'false' || 'true' }}
-      TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      TF_VAR_terraform_deployer_service_account: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
       TF_VAR_v1_api_image: ${{ vars.APPROVED_API_IMAGE }}
       TF_VAR_v1_batch_image: ${{ vars.APPROVED_API_IMAGE }}
       TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
@@ -60,8 +60,8 @@ jobs:
           terraform_version: 1.9.8
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
       - name: Plan without publishing state or plan contents
         working-directory: terraform
         run: |

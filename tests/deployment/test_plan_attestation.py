@@ -24,7 +24,7 @@ def _context(tmp_path: Path) -> dict:
         "project_id": "dev-tradvisor",
         "state_bucket": "dev-tradvisor-tfstate",
         "state_prefix": "state/dev",
-        "api_image": "europe-central2-docker.pkg.dev/dev-tradvisor/api@sha256:" + "b" * 64,
+        "api_image": "europe-central2-docker.pkg.dev/dev-tradvisor/tradvisor-v1/api@sha256:" + "b" * 64,
     }
 
 
