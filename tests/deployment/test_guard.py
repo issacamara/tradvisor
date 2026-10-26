@@ -8,8 +8,8 @@ def test_development_delivery_is_manual_and_guarded() -> None:
     assert "terraform apply -auto-approve" in workflow
     assert "environment:" in workflow
     assert "google-github-actions/auth@v2" in workflow
-    assert "WIF_PROVIDER" in workflow
-    assert "GCP_SERVICE_ACCOUNT" in workflow
+    assert "DEV_WORKLOAD_IDENTITY_PROVIDER" in workflow
+    assert "DEV_SERVICE_ACCOUNT" in workflow
     assert "github.ref_name == 'development'" in workflow
     assert "EXPECTED_PROJECT_ID" in guard
     assert "EXPECTED_STATE_BUCKET" in guard
