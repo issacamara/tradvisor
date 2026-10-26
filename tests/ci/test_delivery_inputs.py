@@ -41,10 +41,13 @@ def test_delivery_workflows_require_exact_reviewed_terraform_plans() -> None:
 def test_push_prepares_release_without_unreviewed_apply() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     development = (root / "cd-development.yml").read_text()
+    ci = (root / "ci.yml").read_text()
     production = (root / "cd-production.yml").read_text()
     release = (root / "release.yml").read_text()
     assert "branches: [development]" in development
     assert "uses: ./.github/workflows/release.yml" in development
+    assert "github.event_name == 'push' && github.ref_name == 'development'" in ci
+    assert "uses: ./.github/workflows/release.yml" in ci
     assert "github.event_name == 'workflow_dispatch'" in development
     assert "branches: [main]" in production
     assert "github.event_name == 'workflow_dispatch'" in production
