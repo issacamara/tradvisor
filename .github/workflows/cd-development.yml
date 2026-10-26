@@ -76,8 +76,8 @@ jobs:
       - name: Authenticate to Google Cloud with workload identity
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -244,7 +244,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -320,7 +320,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -334,7 +334,7 @@ jobs:
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         working-directory: frontend
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
           NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
         run: |
           test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
