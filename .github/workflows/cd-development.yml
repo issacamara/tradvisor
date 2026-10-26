@@ -76,8 +76,8 @@ jobs:
       - name: Authenticate to Google Cloud with workload identity
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -244,7 +244,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -252,7 +252,11 @@ jobs:
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: |
-          terraform plan -out=tfplan -no-color >/dev/null 2>&1 || { echo "Terraform plan failed; inspect the private operator evidence." >&2; exit 1; }
+          set -o pipefail
+          terraform plan -out=tfplan -no-color 2>&1 | tee terraform-plan.log || {
+            echo "Terraform plan failed. The sanitized diagnostic is in terraform-plan.log." >&2
+            exit 1
+          }
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
       - name: Create reviewed development Terraform plan attestation
         if: inputs.action == 'plan'
@@ -275,6 +279,7 @@ jobs:
           mkdir -p ../terraform-plan-artifact/function-source-archives
           cp ./*.zip ../terraform-plan-artifact/function-source-archives/
           cp tfplan plan-attestation.json ../terraform-plan-artifact/
+          cp terraform-plan.log ../terraform-plan-artifact/
       - name: Store reviewed development Terraform plan privately
         if: inputs.action == 'plan'
         env:
@@ -315,7 +320,7 @@ jobs:
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS || 'https://dev-tradvisor.web.app,https://dev-tradvisor.firebaseapp.com' }}
           TF_VAR_manage_new_function_sources: "true"
           TF_VAR_manage_legacy_project_services: "true"
-          TF_VAR_terraform_deployer_service_account: ${{ secrets.DEV_SERVICE_ACCOUNT }}
+          TF_VAR_terraform_deployer_service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           TF_VAR_manage_legacy_schedules: "true"
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
@@ -329,7 +334,7 @@ jobs:
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         working-directory: frontend
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.DEV_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           NEXT_PUBLIC_TRADVISOR_API_URL: ${{ vars.TRADVISOR_API_URL || 'https://tradvisor-v1-api-evatyq2akq-lm.a.run.app' }}
         run: |
           test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
