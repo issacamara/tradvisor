@@ -221,7 +221,7 @@ jobs:
             --role="roles/cloudtasks.admin" \
             --quiet
           for attempt in {1..12}; do
-            if gcloud tasks queues describe publication-control-dispatch \
+            if gcloud tasks queues get-iam-policy publication-control-dispatch \
               --location="$GCP_REGION" \
               --project="$GCP_PROJECT_ID" \
               --quiet >/dev/null; then
@@ -229,7 +229,7 @@ jobs:
             fi
             sleep 30
           done
-          echo "Temporary Cloud Tasks permission was not visible after 360 seconds" >&2
+          echo "Cloud Tasks IAM policy permission was not visible after 360 seconds" >&2
           exit 1
       - name: Plan development changes
         if: inputs.action == 'plan'
