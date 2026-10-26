@@ -17,7 +17,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment:
-      name: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && 'production' || 'development' }}
+      name: ${{ github.event_name == 'pull_request' && ((github.base_ref == 'main') && 'production-plan' || 'development-plan') || ((github.ref_name == 'main') && 'production' || 'development') }}
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
