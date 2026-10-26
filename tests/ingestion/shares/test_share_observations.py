@@ -65,11 +65,103 @@ def test_malformed_separator_grouping_is_rejected(value: str) -> None:
         scraper.parse_localized_decimal(value)
 
 
+class _SourceResponse:
+    def __init__(self, status_code: int, *, retry_after: str | None = None) -> None:
+        self.status_code = status_code
+        self.headers = {} if retry_after is None else {"Retry-After": retry_after}
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"http {self.status_code}")
+
+
+def test_source_request_retries_429_after_retry_after_header() -> None:
+    clock = [0.0]
+    sleeps: list[float] = []
+    responses = iter([_SourceResponse(429, retry_after="7"), _SourceResponse(200)])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    result = scraper._request_with_retry(
+        lambda _timeout: next(responses),
+        deadline=120,
+        monotonic=lambda: clock[0],
+        sleep=sleep,
+        uniform=lambda _low, _high: pytest.fail("Retry-After should take precedence"),
+    )
+
+    assert result.status_code == 200
+    assert sleeps == [7]
+
+
+def test_source_request_retries_429_with_jitter_when_retry_after_is_absent() -> None:
+    clock = [0.0]
+    sleeps: list[float] = []
+    responses = iter([_SourceResponse(429), _SourceResponse(200)])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    result = scraper._request_with_retry(
+        lambda _timeout: next(responses),
+        deadline=120,
+        monotonic=lambda: clock[0],
+        sleep=sleep,
+        uniform=lambda low, high: (low + high) / 2,
+    )
+
+    assert result.status_code == 200
+    assert sleeps == [1.5]
+
+
+def test_source_request_fails_safely_after_retry_budget_exhaustion() -> None:
+    attempts = 0
+
+    def request(_timeout: float):
+        nonlocal attempts
+        attempts += 1
+        return _SourceResponse(429, retry_after="0")
+
+    with pytest.raises(scraper.SourceRequestRetryExhausted, match="retry budget exhausted"):
+        scraper._request_with_retry(
+            request,
+            deadline=120,
+            monotonic=lambda: 0,
+            sleep=lambda _delay: None,
+            uniform=lambda _low, _high: 0,
+        )
+
+    assert attempts == scraper.MAX_RETRY_ATTEMPTS
+
+
+def test_source_request_does_not_retry_non_retriable_http_status() -> None:
+    attempts = 0
+
+    def request(_timeout: float):
+        nonlocal attempts
+        attempts += 1
+        return _SourceResponse(403)
+
+    with pytest.raises(RuntimeError, match="http 403"):
+        scraper._request_with_retry(
+            request,
+            deadline=120,
+            monotonic=lambda: 0,
+            sleep=lambda _delay: pytest.fail("non-retriable response must not sleep"),
+            uniform=lambda _low, _high: pytest.fail("non-retriable response must not retry"),
+        )
+
+    assert attempts == 1
+
+
 def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkeypatch) -> None:
     monkeypatch.setattr(
         scraper,
         "scrape",
-        lambda _url: [
+        lambda _url, **_: [
             {
                 "symbol": "ABC",
                 "name": "Example",
@@ -81,7 +173,7 @@ def test_scraper_preserves_raw_values_collection_time_and_unknown_session(monkey
             }
         ],
     )
-    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url, **_: (None, "unknown"))
     first = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, 8, tzinfo=timezone.utc)
     )
@@ -108,7 +200,7 @@ def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> 
     monkeypatch.setattr(
         scraper,
         "scrape",
-        lambda _url: [
+        lambda _url, **_: [
             {
                 "symbol": "ABC",
                 "name": "Example",
@@ -120,7 +212,7 @@ def test_scraper_archival_payload_retains_unparseable_raw_value(monkeypatch) -> 
             }
         ],
     )
-    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url, **_: (None, "unknown"))
     row = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, tzinfo=timezone.utc)
     ).iloc[0]
@@ -134,7 +226,7 @@ def test_scraper_preserves_raw_malformed_grouping_as_invalid(monkeypatch) -> Non
     monkeypatch.setattr(
         scraper,
         "scrape",
-        lambda _url: [
+        lambda _url, **_: [
             {
                 "symbol": "ABC",
                 "name": "Example",
@@ -146,7 +238,7 @@ def test_scraper_preserves_raw_malformed_grouping_as_invalid(monkeypatch) -> Non
             }
         ],
     )
-    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url: (None, "unknown"))
+    monkeypatch.setattr(scraper, "scrape_brvm_session", lambda _url, **_: (None, "unknown"))
     row = scraper.scrape_brvm_shares(
         "fixture://shares", collected_at=datetime(2026, 9, 22, tzinfo=timezone.utc)
     ).iloc[0]
@@ -161,7 +253,7 @@ def test_official_closed_weekday_session_is_attached_to_sika_observations(monkey
     monkeypatch.setattr(
         scraper,
         "scrape",
-        lambda _url: [
+        lambda _url, **_: [
             {
                 "symbol": "ABC",
                 "name": "Example",
@@ -176,7 +268,7 @@ def test_official_closed_weekday_session_is_attached_to_sika_observations(monkey
     monkeypatch.setattr(
         scraper,
         "scrape_brvm_session",
-        lambda _url: (datetime(2026, 10, 2, tzinfo=timezone.utc).date(), "verified"),
+        lambda _url, **_: (datetime(2026, 10, 2, tzinfo=timezone.utc).date(), "verified"),
     )
 
     row = scraper.scrape_brvm_shares(
