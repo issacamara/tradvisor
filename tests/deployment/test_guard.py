@@ -6,6 +6,9 @@ def test_development_delivery_is_manual_and_guarded() -> None:
     guard = Path("scripts/deployment/guard.sh").read_text()
     assert "workflow_dispatch" in workflow
     assert "terraform apply -auto-approve" in workflow
+    assert "terraform-apply-diagnostic.txt" in workflow
+    assert "Sanitized diagnostics:" in workflow
+    assert "if: failure() && inputs.action == 'apply'" in workflow
     assert "environment:" in workflow
     assert "google-github-actions/auth@v2" in workflow
     assert "DEV_WORKLOAD_IDENTITY_PROVIDER" in workflow
