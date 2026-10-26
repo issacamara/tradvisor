@@ -1,0 +1,388 @@
+name: Production delivery
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Production action; apply requires production environment approval"
+        required: true
+        type: choice
+        options: [plan, apply, frontend]
+      api_image:
+        description: "Immutable API image URI, preferably the digest promoted from development"
+        required: false
+        type: string
+      release_id:
+        description: "Release artifact bundle identifier"
+        required: true
+        type: string
+      release_run_id:
+        description: "GitHub Actions run ID that produced the release bundle"
+        required: true
+        type: string
+      terraform_plan_run_id:
+        description: "GitHub Actions run ID containing the reviewed Terraform plan (apply only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  prepare:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      development_commit: ${{ steps.source.outputs.commit }}
+      release_run_id: ${{ steps.release.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a development-tested tree
+        id: source
+        shell: bash
+        run: |
+          git fetch origin development
+          read -r merge_commit base_commit development_commit extra < <(git rev-list --parents -n 1 "$GITHUB_SHA")
+          test "$merge_commit" = "$GITHUB_SHA"
+          test -n "$base_commit"
+          test -n "$development_commit"
+          test -z "${extra:-}"
+          git merge-base --is-ancestor "$development_commit" origin/development
+          test "$(git rev-parse "$GITHUB_SHA^{tree}")" = "$(git rev-parse "$development_commit^{tree}")"
+          echo "commit=$development_commit" >> "$GITHUB_OUTPUT"
+          echo "Production candidate $GITHUB_SHA matches development commit $development_commit"
+      - name: Find successful development release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          run_id="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/cd-development.yml/runs" \
+            -f head_sha="$DEVELOPMENT_COMMIT" -f status=success --jq '.workflow_runs[0].id // empty')"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ steps.source.outputs.commit }}
+          run-id: ${{ steps.release.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: release
+      - name: Verify release manifest for production candidate
+        env:
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          manifest = json.loads(Path("release/manifest/release-manifest.json").read_text())
+          assert manifest["release_id"] == os.environ["DEVELOPMENT_COMMIT"]
+          assert manifest["commit"] == os.environ["DEVELOPMENT_COMMIT"]
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["backend"]["digest"])
+          PY
+      - name: Require successful development deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          run_id="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+            -f name="tradvisor-development-deployed-$DEVELOPMENT_COMMIT" --jq '.artifacts[0].workflow_run.id // empty')"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            --jq '[.name,.event,.head_sha,.conclusion] | @tsv')"
+          test "$metadata" = "$(printf 'Development delivery\tworkflow_dispatch\t%s\tsuccess' "$DEVELOPMENT_COMMIT")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-development-deployed-${{ steps.source.outputs.commit }}
+          run-id: ${{ steps.deployment.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: development-deployment
+      - name: Verify development deployment digest
+        env:
+          DEVELOPMENT_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          manifest = json.loads(Path("release/manifest/release-manifest.json").read_text())
+          deployed = json.loads(Path("development-deployment/development-deployment.json").read_text())
+          assert deployed == {
+              "commit": os.environ["DEVELOPMENT_COMMIT"],
+              "release_id": os.environ["DEVELOPMENT_COMMIT"],
+              "backend_digest": manifest["backend"]["digest"],
+          }
+          PY
+      - name: Release gate
+        run: echo "Use the verified development digest, review the exact production Terraform plan, then dispatch production apply after environment approval."
+  promote:
+    if: github.event_name == 'push'
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ needs.prepare.outputs.development_commit }}
+          run-id: ${{ needs.prepare.outputs.release_run_id }}
+          github-token: ${{ github.token }}
+          path: release
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Copy the verified backend digest to production registry
+        shell: bash
+        env:
+          DEVELOPMENT_COMMIT: ${{ needs.prepare.outputs.development_commit }}
+        run: |
+          test "$GCP_PROJECT_ID" = prod-tradvisor
+          test -n "$GCP_REGION"
+          test -n "$ARTIFACT_REPOSITORY"
+          source_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
+          [[ "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          source_image="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/tradvisor-backend"
+          target_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/tradvisor-backend"
+          actual_digest="$(gcloud artifacts docker images describe "$source_image:$DEVELOPMENT_COMMIT" --format='value(image_summary.digest)')"
+          test "$actual_digest" = "$source_digest"
+          gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+          docker pull "$source_image@$source_digest"
+          docker tag "$source_image@$source_digest" "$target_image:$GITHUB_SHA"
+          docker push "$target_image:$GITHUB_SHA"
+          target_digest="$(gcloud artifacts docker images describe "$target_image:$GITHUB_SHA" --format='value(image_summary.digest)')"
+          test "$target_digest" = "$source_digest"
+          echo "Production image: $target_image@$target_digest" >> "$GITHUB_STEP_SUMMARY"
+  delivery:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+      TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: tradvisor-${{ inputs.release_id }}
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
+      - name: Bind main to the development release source
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          release_commit="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["commit"])')"
+          test "$RELEASE_ID" = "$release_commit"
+          git fetch origin development
+          git merge-base --is-ancestor "$release_commit" origin/development
+          test "$(git rev-parse "$GITHUB_SHA^{tree}")" = "$(git rev-parse "$release_commit^{tree}")"
+
+      - uses: hashicorp/setup-terraform@v3
+        if: inputs.action != 'frontend'
+        with:
+          terraform_version: 1.9.8
+
+      - name: Authenticate to Google Cloud with workload identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Require a reviewed Terraform plan run
+        if: inputs.action == 'apply'
+        env:
+          TERRAFORM_PLAN_RUN_ID: ${{ inputs.terraform_plan_run_id }}
+        run: test -n "$TERRAFORM_PLAN_RUN_ID" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
+      - name: Download reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        env:
+          PLAN_RUN_ID: ${{ inputs.terraform_plan_run_id }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          [[ "$PLAN_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_ID" =~ ^[a-zA-Z0-9._-]+$ ]]
+          mkdir reviewed-plan
+          gcloud storage cp "gs://$TF_STATE_BUCKET/reviewed-plans/production/$PLAN_RUN_ID/$RELEASE_ID.tar.gz" reviewed-plan.tar.gz
+          tar -xzf reviewed-plan.tar.gz -C reviewed-plan
+
+      - name: Validate production delivery inputs
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          test -n "$API_IMAGE" || { echo "api_image is required for production Terraform delivery" >&2; exit 1; }
+          case "$API_IMAGE" in
+            "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID"/*@sha256:*) ;;
+            *) echo "api_image must be an immutable digest in the production Artifact Registry" >&2; exit 1;;
+          esac
+
+      - name: Validate production delivery context
+        if: inputs.action != 'frontend'
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          DEPLOY_ENV: production
+          ALLOWED_BRANCH: main
+          EXPECTED_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          EXPECTED_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
+          EXPECTED_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          DEPLOY_ACTION: ${{ inputs.action }}
+        run: bash scripts/deployment/guard.sh
+      - name: Bind delivery image to the verified release manifest
+        if: inputs.action != 'frontend'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          expected_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
+          case "$API_IMAGE" in
+            *@"$expected_digest") ;;
+            *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
+          esac
+      - name: Verify reviewed production Terraform plan
+        if: inputs.action == 'apply'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          python3 scripts/deployment/terraform_plan_attestation.py verify \
+            --plan reviewed-plan/tfplan \
+            --attestation reviewed-plan/plan-attestation.json \
+            --release-manifest release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE"
+
+      - name: Initialize Terraform backend
+        if: inputs.action != 'frontend'
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX"
+
+      - name: Plan production changes
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: |
+          terraform plan -out=tfplan -no-color >/dev/null 2>&1 || { echo "Terraform plan failed; inspect the private operator evidence." >&2; exit 1; }
+          terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
+      - name: Create reviewed production Terraform plan attestation
+        if: inputs.action == 'plan'
+        working-directory: terraform
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          API_IMAGE: ${{ inputs.api_image }}
+        run: |
+          python3 ../scripts/deployment/terraform_plan_attestation.py create \
+            --plan tfplan \
+            --release-manifest ../release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment production \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE" \
+            --output plan-attestation.json
+          mkdir -p ../terraform-plan-artifact
+          cp tfplan plan-attestation.json ../terraform-plan-artifact/
+      - name: Store reviewed production Terraform plan privately
+        if: inputs.action == 'plan'
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          [[ "$RELEASE_ID" =~ ^[a-zA-Z0-9._-]+$ ]]
+          tar -czf reviewed-plan.tar.gz -C terraform-plan-artifact .
+          gcloud storage cp --no-clobber reviewed-plan.tar.gz "gs://$TF_STATE_BUCKET/reviewed-plans/production/$GITHUB_RUN_ID/$RELEASE_ID.tar.gz"
+
+      - name: Apply approved production plan
+        if: inputs.action == 'apply'
+        working-directory: terraform
+        env:
+          TF_VAR_v1_environment_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
+          TF_VAR_environment: production
+          TF_VAR_configure_v1_api: "true"
+          TF_VAR_configure_v1_runtime: "true"
+          TF_VAR_manage_new_function_sources: "false"
+          TF_VAR_manage_legacy_schedules: "false"
+          TF_VAR_manage_legacy_workflows: "false"
+          TF_VAR_v1_api_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
+          TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
+          TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
+        run: terraform apply -auto-approve ../reviewed-plan/tfplan >/dev/null 2>&1 || { echo "Terraform apply failed; inspect the private operator evidence." >&2; exit 1; }
+      - name: Build production frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [ "$ACTION" = "apply" ]; then
+            NEXT_PUBLIC_TRADVISOR_API_URL="$(gcloud run services describe tradvisor-v1-api \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --format='value(status.url)' \
+              --quiet)"
+          else
+            NEXT_PUBLIC_TRADVISOR_API_URL="${{ vars.PROD_TRADVISOR_API_URL }}"
+          fi
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          test -n "$NEXT_PUBLIC_TRADVISOR_API_URL"
+          npm ci --ignore-scripts --no-audit --no-fund
+          NEXT_PUBLIC_TRADVISOR_API_URL="$NEXT_PUBLIC_TRADVISOR_API_URL" npm run build
+
+      - name: Deploy static frontend
+        if: inputs.action == 'apply' || inputs.action == 'frontend'
+        run: npx --yes firebase-tools@13.29.1 deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+      - name: Check deployed production endpoints
+        if: inputs.action == 'apply'
+        run: |
+          service_url="$(gcloud run services describe tradvisor-v1-api --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format='value(status.url)')"
+          test -n "$service_url"
+          curl --fail --silent --show-error --retry 3 "$service_url/healthz" >/dev/null
+          curl --fail --silent --show-error --retry 3 https://prod-tradvisor.web.app/ >/dev/null

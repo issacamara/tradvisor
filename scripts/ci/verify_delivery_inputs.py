@@ -18,10 +18,10 @@ PYTHON_BASE = (
 
 def validate(root: Path) -> None:
     ci = (root / ".github/workflows/ci.yml").read_text()
-    development = (root / ".github/workflows/v1-development-delivery.yml").read_text()
-    production = (root / ".github/workflows/v1-production-delivery.yml").read_text()
+    development = (root / ".github/workflows/cd-development.yml").read_text()
+    production = (root / ".github/workflows/cd-production.yml").read_text()
     plan_attestation = (root / "scripts/deployment/terraform_plan_attestation.py").read_text()
-    release = (root / ".github/workflows/v1-release.yml").read_text()
+    release = (root / ".github/workflows/release.yml").read_text()
     dockerfile = (root / "backend/Dockerfile").read_text()
     manifest = (root / "scripts/release/manifest.py").read_text()
 
