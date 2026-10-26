@@ -329,7 +329,27 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
         run: |
           cp ../reviewed-plan/function-source-archives/*.zip .
-          terraform apply -auto-approve ../reviewed-plan/tfplan >/dev/null 2>&1 || { echo "Terraform apply failed; inspect the private operator evidence." >&2; exit 1; }
+          set +e
+          terraform apply -auto-approve ../reviewed-plan/tfplan > terraform-apply.log 2>&1
+          apply_status=$?
+          set -e
+          if [ "$apply_status" -ne 0 ]; then
+            {
+              echo "Terraform apply failed (exit code $apply_status). Sanitized diagnostics:"
+              awk '
+                /(^|[[:space:]│])Error:/ { capture=1; lines=0 }
+                capture && lines < 8 { print; lines++ }
+                capture && lines >= 8 { capture=0 }
+              ' terraform-apply.log \
+                | sed -E \
+                    -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?<redacted>#g' \
+                    -e 's#([[:space:]]|^)(token|password|secret|api[_-]?key|credential)([=:])[^[:space:]]+#\1\2\3<redacted>#Ig'
+              if ! grep -Eq '(^|[[:space:]│])Error:' terraform-apply.log; then
+                echo "No structured Terraform diagnostic was emitted; inspect the private apply-diagnostic artifact."
+              fi
+            } | tee terraform-apply-diagnostic.txt >&2
+            exit "$apply_status"
+          fi
       - name: Build development frontend
         if: inputs.action == 'apply' || inputs.action == 'frontend'
         working-directory: frontend
@@ -365,3 +385,9 @@ jobs:
           name: tradvisor-development-deployed-${{ inputs.release_id }}
           path: development-deployment.json
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure() && inputs.action == 'apply'
+        with:
+          name: tradvisor-development-apply-diagnostic-${{ github.run_id }}
+          path: terraform/terraform-apply-diagnostic.txt
+          if-no-files-found: ignore
