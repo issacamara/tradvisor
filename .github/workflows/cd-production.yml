@@ -155,8 +155,8 @@ jobs:
           test -n "$ARTIFACT_REPOSITORY"
           source_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
           [[ "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          source_image="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/tradvisor-backend"
-          target_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/tradvisor-backend"
+          source_image="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/api"
+          target_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api"
           actual_digest="$(gcloud artifacts docker images describe "$source_image:$DEVELOPMENT_COMMIT" --format='value(image_summary.digest)')"
           test "$actual_digest" = "$source_digest"
           gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet

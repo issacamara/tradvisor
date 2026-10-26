@@ -36,7 +36,7 @@ jobs:
           test "$GCP_PROJECT_ID" = dev-tradvisor
           test -n "$GCP_REGION"
           test -n "$ARTIFACT_REPOSITORY"
-          API_IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/tradvisor-backend:$GITHUB_SHA"
+          API_IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api:$GITHUB_SHA"
           gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
           docker build --tag "$API_IMAGE" --iidfile dist/backend-image.id backend
           docker push "$API_IMAGE"
