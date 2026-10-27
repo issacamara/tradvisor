@@ -87,6 +87,6 @@ def test_eligible_workflows_handoff_successful_completion_to_publication_control
     )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
     assert "publication_completion" in workflow_block
     assert "google_cloud_run_v2_service.publication_control[0].uri" in workflow_block
-    assert "body: $${insert_shares.body}" in workflow_block
-    assert "body: $${scrape_financials.body}" in workflow_block
+    assert "body: $${insert_shares_response.body}" in workflow_block
+    assert "body: $${scrape_financials_response.body}" in workflow_block
     assert "/internal/publication-control/completion" in workflow_block
