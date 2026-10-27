@@ -127,7 +127,7 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
-        result: ${function_name}
+        result: ${function_name}_response
 %{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")}
     - publication_completion:
         call: http.post
@@ -137,9 +137,9 @@ main:
             type: OIDC
             audience: ${google_cloud_run_v2_service.publication_control[0].uri}
 %{if local.workflow_stages[count.index].source == "shares"}
-          body: $${insert_shares.body}
+          body: $${insert_shares_response.body}
 %{else}
-          body: $${scrape_financials.body}
+          body: $${scrape_financials_response.body}
 %{endif}
 %{endif}
 %{endfor}
