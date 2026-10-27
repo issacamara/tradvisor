@@ -251,6 +251,7 @@ jobs:
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
+          TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
           set -o pipefail
           terraform plan -out=tfplan -no-color 2>&1 | tee terraform-plan.log || {
@@ -327,6 +328,7 @@ jobs:
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
+          TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
           cp ../reviewed-plan/function-source-archives/*.zip .
           set +e
