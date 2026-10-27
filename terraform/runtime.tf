@@ -209,6 +209,100 @@ resource "google_cloud_run_v2_service_iam_member" "v1_api_public_invoker" {
   member   = "allUsers"
 }
 
+resource "google_cloud_run_v2_service" "publication_control" {
+  count               = local.publication_control_enabled ? 1 : 0
+  name                = "${var.v1_api_service_name}-publication-control"
+  location            = var.region
+  project             = var.project_id
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  deletion_protection = true
+
+  template {
+    service_account = google_service_account.publication_control[0].email
+    timeout         = "900s"
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 1
+    }
+    max_instance_request_concurrency = 1
+    containers {
+      image = var.v1_api_image
+      ports { container_port = 8080 }
+      env {
+        name  = "TRADVISOR_RUNTIME_TARGET"
+        value = "publication_control"
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+      env {
+        name  = "TRADVISOR_ENVIRONMENT"
+        value = var.environment
+      }
+      env {
+        name  = "WORKFLOW_REGION"
+        value = var.region
+      }
+      env {
+        name  = "TRADVISOR_PUBLICATION_CONTROL_BUCKET"
+        value = google_storage_bucket.publication_control[0].name
+      }
+      env {
+        name  = "TRADVISOR_PUBLICATION_CONTROL_QUEUE"
+        value = google_cloud_tasks_queue.publication_control_dispatch[0].name
+      }
+      env {
+        name  = "TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL"
+        value = var.publication_control_service_url
+      }
+      env {
+        name  = "TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT"
+        value = google_service_account.publication_control[0].email
+      }
+      env {
+        name  = "TRADVISOR_BATCH_JOB_NAME"
+        value = var.v1_batch_job_name
+      }
+      env {
+        name  = "TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS"
+        value = tostring(var.publication_control_debounce_seconds)
+      }
+    }
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    precondition {
+      condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
+      error_message = "Publication control requires a supported environment and its separately configured project target."
+    }
+    precondition {
+      condition     = length(trimspace(var.v1_api_image)) > 0
+      error_message = "Set an approved API image before enabling publication control."
+    }
+  }
+  depends_on = [google_cloud_run_v2_job.v1_batch]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "publication_control_workflow_invoker" {
+  count    = local.publication_control_enabled ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_service.publication_control[0].location
+  name     = google_cloud_run_v2_service.publication_control[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.tradvisor_sa.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "publication_control_task_invoker" {
+  count    = local.publication_control_enabled ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_service.publication_control[0].location
+  name     = google_cloud_run_v2_service.publication_control[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.publication_control[0].email}"
+}
+
 resource "google_cloud_run_v2_job" "v1_batch" {
   count               = local.v1_runtime_enabled ? 1 : 0
   name                = var.v1_batch_job_name

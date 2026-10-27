@@ -62,6 +62,15 @@ through 300 seconds; missing, non-positive, fractional, or larger values fail
 before any controller client is constructed. It coalesces eligible successful
 imports only and neither changes analytical rules nor activates a schedule.
 
+The internal publication-control service additionally requires explicit
+`TRADVISOR_PUBLICATION_CONTROL_BUCKET`, `TRADVISOR_PUBLICATION_CONTROL_QUEUE`,
+`TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL`,
+`TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT`, and
+`TRADVISOR_BATCH_JOB_NAME` values. The service URL is a fixed HTTPS deployment
+input used for Cloud Tasks targets; it is never derived from request headers.
+Terraform enables the service and the eligible Workflows handoff only when this
+URL is explicitly configured.
+
 ## Source precedence and local use
 
 The process environment is the only configuration source. There is no implicit

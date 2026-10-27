@@ -22,6 +22,7 @@ from backend.configuration import (
     RuntimeConfigurationError,
 )
 from backend.auth.fastapi import verified_identity_dependency
+from backend.auth.workload import GoogleWorkloadTokenVerifier, workload_identity_dependency
 from backend.auth.identity import AdmissionRepository, AdmittedIdentity, FirebaseIdTokenVerifier, TokenVerifier, FirestoreAdmissionRepository, RegisterAdmissionDenyFence
 from backend.contracts.envelopes import ApiError, ErrorEnvelope, ResponseEnvelope, ResponseMeta
 from backend.contracts.routes import (
@@ -175,6 +176,8 @@ def create_app(
     runtime_target = os.environ.get("TRADVISOR_RUNTIME_TARGET", "")
     if runtime_target == "api":
         runtime_configuration: RuntimeConfiguration | None = _api_configuration()
+    elif runtime_target == "publication_control":
+        runtime_configuration = None
     elif runtime_target:
         raise RuntimeConfigurationError("TRADVISOR_RUNTIME_TARGET is unsupported")
     elif os.environ.get("TRADVISOR_ENVIRONMENT"):
@@ -241,6 +244,31 @@ def create_app(
         return await request_validation_exception_handler(request, error)
 
     application.add_exception_handler(RequestValidationError, cast(Any, contract_validation_exception))
+
+    if runtime_target == "publication_control":
+        require_workload = workload_identity_dependency(GoogleWorkloadTokenVerifier())
+
+        @application.post("/internal/publication-control/completion", include_in_schema=False)
+        async def accept_completion(request: Request, _: str = Depends(require_workload)) -> dict[str, str]:
+            from backend.contracts.publication_control import ManagedImportCompletion
+            from backend.configuration import PublicationControlRuntimeConfiguration
+            from backend.publication.runtime import CloudTasksPublicationScheduler, build_controller
+
+            completion = ManagedImportCompletion.model_validate(await request.json())
+            controller = build_controller()
+            controller.accept(completion, received_at=datetime.now(timezone.utc))
+            if completion.triggers_publication:
+                CloudTasksPublicationScheduler(
+                    PublicationControlRuntimeConfiguration.from_environment()
+                ).schedule(completion)
+            return {"status": "accepted"}
+
+        @application.post("/internal/publication-control/dispatch", include_in_schema=False)
+        async def dispatch_completion(_: str = Depends(require_workload)) -> dict[str, str]:
+            from backend.publication.runtime import build_controller
+
+            outcome = build_controller().dispatch_ready(now=datetime.now(timezone.utc))
+            return {"status": "noop" if outcome is None else outcome.outcome}
 
     @application.get("/healthz", include_in_schema=False)
     @application.get("/readyz", include_in_schema=False)

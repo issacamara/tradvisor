@@ -56,6 +56,52 @@ class PublicationControlConfiguration:
 
 
 @dataclass(frozen=True, slots=True)
+class PublicationControlRuntimeConfiguration:
+    """Explicit environment for the internal completion-control service."""
+
+    project_id: str
+    region: str
+    state_bucket: str
+    queue_name: str
+    service_url: str
+    service_account: str
+    job_name: str
+    control_configuration: PublicationControlConfiguration
+
+    @classmethod
+    def from_environment(cls, environ: Mapping[str, str] | None = None) -> "PublicationControlRuntimeConfiguration":
+        values = os.environ if environ is None else environ
+        names = {
+            "GOOGLE_CLOUD_PROJECT": "project_id",
+            "WORKFLOW_REGION": "region",
+            "TRADVISOR_PUBLICATION_CONTROL_BUCKET": "state_bucket",
+            "TRADVISOR_PUBLICATION_CONTROL_QUEUE": "queue_name",
+            "TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL": "service_url",
+            "TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT": "service_account",
+            "TRADVISOR_BATCH_JOB_NAME": "job_name",
+        }
+        missing = [name for name in names if not values.get(name, "").strip()]
+        if missing:
+            raise RuntimeConfigurationError("required publication-control configuration is missing: " + ", ".join(missing))
+        project_id = values["GOOGLE_CLOUD_PROJECT"].strip()
+        if not _PROJECT_ID.fullmatch(project_id):
+            raise RuntimeConfigurationError("GOOGLE_CLOUD_PROJECT is invalid")
+        service_url = values["TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL"].strip().rstrip("/")
+        if not service_url.startswith("https://") or any(ch in service_url for ch in "? #"):
+            raise RuntimeConfigurationError("publication-control service URL is invalid")
+        return cls(
+            project_id=project_id,
+            region=values["WORKFLOW_REGION"].strip(),
+            state_bucket=values["TRADVISOR_PUBLICATION_CONTROL_BUCKET"].strip(),
+            queue_name=values["TRADVISOR_PUBLICATION_CONTROL_QUEUE"].strip(),
+            service_url=service_url,
+            service_account=values["TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT"].strip(),
+            job_name=values["TRADVISOR_BATCH_JOB_NAME"].strip(),
+            control_configuration=PublicationControlConfiguration.from_environment(values),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeConfiguration:
     """Explicit service targets shared by API, batch, and admin entry points."""
 
@@ -236,4 +282,5 @@ __all__ = [
     "RuntimeConfigurationError",
     "RuntimeTarget",
     "PublicationControlConfiguration",
+    "PublicationControlRuntimeConfiguration",
 ]

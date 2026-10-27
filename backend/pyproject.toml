@@ -12,6 +12,7 @@ dependencies = [
     "fastapi==0.115.8",
     "google-cloud-firestore==2.19.0",
     "google-cloud-bigquery==3.29.0",
+    "google-cloud-storage==3.17.1",
     "pydantic==2.10.6",
     "uvicorn[standard]==0.34.0",
 ]

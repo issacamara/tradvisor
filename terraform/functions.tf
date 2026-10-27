@@ -127,6 +127,20 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+%{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")~}
+    - publication_completion:
+        call: http.post
+        args:
+          url: ${google_cloud_run_v2_service.publication_control[0].uri}/internal/publication-control/completion
+          auth:
+            type: OIDC
+            audience: ${google_cloud_run_v2_service.publication_control[0].uri}
+%{if local.workflow_stages[count.index].source == "shares"~}
+          body: $${insert_shares.body}
+%{else~}
+          body: $${scrape_financials.body}
+%{endif~}
+%{endif~}
 %{endfor~}
 EOF
 
