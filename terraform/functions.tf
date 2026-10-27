@@ -119,7 +119,7 @@ resource "google_workflows_workflow" "workflows" {
   source_contents = <<EOF
 main:
   steps:
-%{for function_name in local.workflow_stages[count.index].functions~}
+%{for function_name in local.workflow_stages[count.index].functions}
     - ${function_name}:
         call: http.get
         args:
@@ -128,7 +128,7 @@ main:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
         result: ${function_name}
-%{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")~}
+%{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")}
     - publication_completion:
         call: http.post
         args:
@@ -136,13 +136,13 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloud_run_v2_service.publication_control[0].uri}
-%{if local.workflow_stages[count.index].source == "shares"~}
+%{if local.workflow_stages[count.index].source == "shares"}
           body: $${insert_shares.body}
-%{else~}
+%{else}
           body: $${scrape_financials.body}
-%{endif~}
-%{endif~}
-%{endfor~}
+%{endif}
+%{endif}
+%{endfor}
 EOF
 
   lifecycle {
