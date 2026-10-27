@@ -261,6 +261,14 @@ resource "google_cloud_run_v2_service" "publication_control" {
         value = google_service_account.publication_control[0].email
       }
       env {
+        name  = "WORKER_AUDIENCE"
+        value = google_cloud_run_v2_service.publication_control[0].uri
+      }
+      env {
+        name  = "WORKER_SERVICE_ACCOUNT"
+        value = google_service_account.tradvisor_sa.email
+      }
+      env {
         name  = "TRADVISOR_BATCH_JOB_NAME"
         value = var.v1_batch_job_name
       }
