@@ -46,7 +46,9 @@ class ManagedWriteReceipt(ImmutableContractModel):
 
     @field_validator("completed_at")
     @classmethod
-    def validate_completed_at(cls, value: datetime) -> datetime:
+    def validate_completed_at(cls, value: datetime | str) -> datetime:
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return _require_utc(value)
 
     @field_serializer("completed_at")
