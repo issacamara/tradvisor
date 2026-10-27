@@ -127,6 +127,7 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+        result: ${function_name}
 %{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")~}
     - publication_completion:
         call: http.post
