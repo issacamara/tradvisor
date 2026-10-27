@@ -262,7 +262,7 @@ resource "google_cloud_run_v2_service" "publication_control" {
       }
       env {
         name  = "WORKER_AUDIENCE"
-        value = google_cloud_run_v2_service.publication_control[0].uri
+        value = var.publication_control_service_url
       }
       env {
         name  = "WORKER_SERVICE_ACCOUNT"
