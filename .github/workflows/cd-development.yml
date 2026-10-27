@@ -374,7 +374,7 @@ jobs:
         run: |
           service_url="$(gcloud run services describe tradvisor-v1-api --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format='value(status.url)')"
           test -n "$service_url"
-          curl --fail --silent --show-error --retry 3 "$service_url/healthz" >/dev/null
+          curl --fail --silent --show-error --retry 3 "$service_url/readyz" >/dev/null
           curl --fail --silent --show-error --retry 3 https://dev-tradvisor.web.app/ >/dev/null
       - name: Record development deployment evidence
         if: inputs.action == 'apply'

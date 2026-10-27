@@ -73,6 +73,13 @@ def test_api_entrypoint_starts_and_serves_healthcheck() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_api_entrypoint_serves_platform_safe_readiness_check() -> None:
+    response = TestClient(app).get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_me_denies_a_request_without_a_bearer_token_before_live_reads() -> None:
     client, verifier, admissions = api_client()
 

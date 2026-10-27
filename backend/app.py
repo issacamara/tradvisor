@@ -243,6 +243,7 @@ def create_app(
     application.add_exception_handler(RequestValidationError, cast(Any, contract_validation_exception))
 
     @application.get("/healthz", include_in_schema=False)
+    @application.get("/readyz", include_in_schema=False)
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
