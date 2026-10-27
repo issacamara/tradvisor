@@ -249,6 +249,23 @@ variable "publication_control_service_account_id" {
   }
 }
 
+variable "publication_control_debounce_seconds" {
+  description = "Bounded completion-to-publication debounce window"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.publication_control_debounce_seconds >= 1 && var.publication_control_debounce_seconds <= 300
+    error_message = "Publication-control debounce must be between one and 300 seconds."
+  }
+}
+
+variable "publication_control_service_url" {
+  description = "Fixed HTTPS URL of the internal publication-control service"
+  type        = string
+  default     = ""
+}
+
 variable "v1_cursor_secret_id" {
   description = "Metadata-only secret name referenced by the V1 runtime for cursor signing"
   type        = string

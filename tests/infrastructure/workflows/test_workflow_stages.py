@@ -79,3 +79,14 @@ def test_scheduler_creates_workflow_execution_with_oauth_and_json_argument() -> 
     assert "service_account_email = google_service_account.tradvisor_sa.email" in scheduler
     assert "cloudtasks.googleapis.com/v2/projects/${var.project_id}" not in scheduler
     assert "workflow_dispatcher[0].uri}/internal/workflows" not in scheduler
+
+
+def test_eligible_workflows_handoff_successful_completion_to_publication_control() -> None:
+    workflow_block = FUNCTIONS.split(
+        'resource "google_workflows_workflow" "workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+    assert "publication_completion" in workflow_block
+    assert "google_cloud_run_v2_service.publication_control[0].uri" in workflow_block
+    assert "body: $${insert_shares.body}" in workflow_block
+    assert "body: $${scrape_financials.body}" in workflow_block
+    assert "/internal/publication-control/completion" in workflow_block

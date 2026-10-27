@@ -422,7 +422,9 @@ google-cloud-firestore==2.19.0 \
 google-cloud-storage==3.17.1 \
     --hash=sha256:287c7919d7bcda710eae6f6b60c756e89140475d9a4daec01b6174e737488ca8 \
     --hash=sha256:b24df37900f5e0a93518bd7d3a2a7b7b48d8a1e72add8eb57d53a38b8b2b0640
-    # via firebase-admin
+    # via
+    #   firebase-admin
+    #   tradvisor-backend (backend/pyproject.toml)
 google-crc32c==1.9.0 \
     --hash=sha256:0568b17ed90ac596f29400d99e243fd0cc6276766183def888d1bf8d1dc13827 \
     --hash=sha256:0abe7e202c25909869c35672ab0f2fe748a7acf276eb78577332a7c38999740f \

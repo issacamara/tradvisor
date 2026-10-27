@@ -8,6 +8,7 @@ import pytest
 
 from backend.configuration import (
     PublicationControlConfiguration,
+    PublicationControlRuntimeConfiguration,
     RuntimeConfiguration,
     RuntimeConfigurationError,
 )
@@ -125,6 +126,22 @@ def test_publication_control_debounce_accepts_a_bounded_release_value() -> None:
     assert PublicationControlConfiguration.from_environment(
         {"TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS": "60"}
     ).debounce_seconds == 60
+
+
+def test_publication_control_runtime_requires_explicit_control_plane_targets() -> None:
+    values = {
+        "GOOGLE_CLOUD_PROJECT": "example-dev",
+        "WORKFLOW_REGION": "europe-central2",
+        "TRADVISOR_PUBLICATION_CONTROL_BUCKET": "example-dev-publication-control",
+        "TRADVISOR_PUBLICATION_CONTROL_QUEUE": "publication-control-dispatch",
+        "TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL": "https://publication-control.example.test",
+        "TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT": "publication-control@example-dev.iam.gserviceaccount.com",
+        "TRADVISOR_BATCH_JOB_NAME": "tradvisor-v1-batch",
+        "TRADVISOR_PUBLICATION_DEBOUNCE_SECONDS": "60",
+    }
+    config = PublicationControlRuntimeConfiguration.from_environment(values)
+    assert config.project_id == "example-dev"
+    assert config.control_configuration.debounce_seconds == 60
 
 
 def test_runtime_role_must_match_the_requested_config() -> None:
