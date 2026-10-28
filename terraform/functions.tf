@@ -15,10 +15,11 @@ resource "google_cloudfunctions2_function" "functions" {
     }
   }
   service_config {
-    max_instance_count    = 1
-    available_memory      = "512Mi"
-    timeout_seconds       = 180
-    service_account_email = google_service_account.tradvisor_sa.email
+    max_instance_count               = each.key == "scrape_shares" ? var.shares_max_instance_count : 1
+    max_instance_request_concurrency = each.key == "scrape_shares" ? var.shares_max_request_concurrency : null
+    available_memory                 = "512Mi"
+    timeout_seconds                  = 180
+    service_account_email            = google_service_account.tradvisor_sa.email
     environment_variables = merge({
       TRADVISOR_RUNTIME_TARGET             = "ingestion"
       TRADVISOR_ENVIRONMENT                = var.environment
@@ -127,6 +128,15 @@ main:
           auth:
             type: OIDC
             audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+%{if function_name == "scrape_shares"}
+        retry:
+          predicate: $${retry_transient_http}
+          max_retries: ${var.shares_workflow_max_retries}
+          backoff:
+            initial_delay: ${var.shares_workflow_retry_initial_delay_seconds}
+            max_delay: ${var.shares_workflow_retry_max_delay_seconds}
+            multiplier: 2
+%{endif}
         result: ${function_name}_response
 %{endfor}
 %{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")}
@@ -143,6 +153,15 @@ main:
           body: $${scrape_financials_response.body}
 %{endif}
 %{endif}
+retry_transient_http:
+  params: [e]
+  steps:
+    - classify:
+        switch:
+          - condition: $${e.code == 429 || e.code == 500 || e.code == 502 || e.code == 503 || e.code == 504}
+            return: true
+    - do_not_retry:
+        return: false
 EOF
 
   lifecycle {
