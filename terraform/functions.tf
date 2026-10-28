@@ -158,7 +158,7 @@ retry_transient_http:
   steps:
     - classify:
         switch:
-          - condition: $${e.code == 429 || e.code == 500 || e.code == 502 || e.code == 503 || e.code == 504}
+          - condition: $${e.code == 429 or e.code == 500 or e.code == 502 or e.code == 503 or e.code == 504}
             return: true
     - do_not_retry:
         return: false
