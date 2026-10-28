@@ -60,9 +60,10 @@ def test_shares_retry_stays_before_insert_and_is_not_applied_to_insert() -> None
         'resource "google_workflows_workflow" "workflows"', 1
     )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
     scrape_condition = workflow_block.index('%{if function_name == "scrape_shares"}')
-    retry = workflow_block.index('predicate: $${retry_transient_http}', scrape_condition)
+    try_block = workflow_block.index('        try:', scrape_condition)
+    retry = workflow_block.index('        retry:', try_block)
     loop_end = workflow_block.index('%{endfor}', retry)
-    assert scrape_condition < retry < loop_end
+    assert scrape_condition < try_block < retry < loop_end
     assert workflow_block.count('predicate: $${retry_transient_http}') == 1
 
 

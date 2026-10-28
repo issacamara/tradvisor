@@ -122,13 +122,15 @@ main:
   steps:
 %{for function_name in local.workflow_stages[count.index].functions}
     - ${function_name}:
-        call: http.get
-        args:
-          url: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
-          auth:
-            type: OIDC
-            audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
 %{if function_name == "scrape_shares"}
+        try:
+          call: http.get
+          args:
+            url: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+            auth:
+              type: OIDC
+              audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+          result: ${function_name}_response
         retry:
           predicate: $${retry_transient_http}
           max_retries: ${var.shares_workflow_max_retries}
@@ -136,8 +138,15 @@ main:
             initial_delay: ${var.shares_workflow_retry_initial_delay_seconds}
             max_delay: ${var.shares_workflow_retry_max_delay_seconds}
             multiplier: 2
-%{endif}
+%{else}
+        call: http.get
+        args:
+          url: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
+          auth:
+            type: OIDC
+            audience: ${google_cloudfunctions2_function.functions[function_name].service_config[0].uri}
         result: ${function_name}_response
+%{endif}
 %{endfor}
 %{if trimspace(var.publication_control_service_url) != "" && (local.workflow_stages[count.index].source == "shares" || local.workflow_stages[count.index].source == "financials")}
     - publication_completion:
