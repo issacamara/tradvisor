@@ -11,6 +11,7 @@ def test_development_delivery_is_automatic_and_guarded() -> None:
     assert 'echo "proceed=true"' in workflow
     assert "terraform plan -out=tfplan" in workflow
     assert "terraform apply -auto-approve \"$plan_path\"" in workflow
+    assert "github.event_name == 'workflow_dispatch'" in workflow
     assert "terraform apply -auto-approve" in workflow
     assert "terraform-apply-diagnostic.txt" in workflow
     assert "Sanitized diagnostics:" in workflow
