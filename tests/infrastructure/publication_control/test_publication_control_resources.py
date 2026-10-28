@@ -32,6 +32,9 @@ def test_control_identity_has_only_queue_and_existing_job_invocation_bindings() 
     assert 'role               = "roles/iam.serviceAccountUser"' in CONTROL
     assert 'resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_invoker"' in CONTROL
     assert 'resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_viewer"' in CONTROL
+    assert 'resource "google_project_iam_custom_role" "publication_control_operation_reader"' in CONTROL
+    assert 'permissions = ["run.operations.get"]' in CONTROL
+    assert 'resource "google_project_iam_member" "publication_control_operation_reader"' in CONTROL
     assert 'name     = google_cloud_run_v2_job.v1_batch[0].name' in CONTROL
     assert 'role     = "roles/run.invoker"' in CONTROL
     assert 'roles/run.admin' not in CONTROL

@@ -102,3 +102,19 @@ resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_viewer"
   role     = "roles/run.viewer"
   member   = "serviceAccount:${google_service_account.publication_control[0].email}"
 }
+
+resource "google_project_iam_custom_role" "publication_control_operation_reader" {
+  count       = local.publication_control_enabled ? 1 : 0
+  project     = var.project_id
+  role_id     = "publicationControlOperationReader"
+  title       = "Tradvisor publication control operation reader"
+  description = "Read only the Cloud Run operation used to observe the existing analytical job."
+  permissions = ["run.operations.get"]
+}
+
+resource "google_project_iam_member" "publication_control_operation_reader" {
+  count   = local.publication_control_enabled ? 1 : 0
+  project = var.project_id
+  role    = google_project_iam_custom_role.publication_control_operation_reader[0].name
+  member  = "serviceAccount:${google_service_account.publication_control[0].email}"
+}
