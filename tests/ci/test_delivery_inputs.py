@@ -26,6 +26,16 @@ def test_release_workflow_packages_and_uploads_manifest() -> None:
     assert "actions/upload-artifact@v4" in contents
 
 
+def test_development_delivery_reconstructs_published_api_image() -> None:
+    root = Path(__file__).parents[2]
+    release = (root / ".github/workflows/release.yml").read_text()
+    development = (root / ".github/workflows/cd-development.yml").read_text()
+    image_path = "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api"
+    assert f'API_IMAGE="{image_path}:$GITHUB_SHA"' in release
+    assert f'api_image="{image_path}:$RELEASE_ID@$digest"' in development
+    assert "tradvisor-backend:$RELEASE_ID@$digest" not in development
+
+
 def test_delivery_workflows_keep_plan_attestation_checks() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     for environment in ("development", "production"):
@@ -68,3 +78,4 @@ def test_push_prepares_and_automatically_plans_and_applies() -> None:
     assert "Require successful development deployment" in production
     assert "workflow_call:" in release
     assert 'grep -Eq \'^sha256:[0-9a-f]{64}$\'' in release
+
