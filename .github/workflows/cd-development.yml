@@ -113,34 +113,12 @@ jobs:
             echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          matches="$(gcloud storage ls "gs://$TF_STATE_BUCKET/reviewed-plans/development/*/$RELEASE_ID-*.tar.gz" 2>/dev/null || true)"
-          count="$(printf '%s\n' "$matches" | awk 'NF { count += 1 } END { print count + 0 }')"
-          if [ "$count" -ne 1 ]; then
-            echo "No reviewed development plan selected for $RELEASE_ID; found $count matching artifacts. Delivery withheld."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          plan_path="$matches"
-          plan_name="$(basename "$plan_path")"
-          plan_run_id="$(basename "$(dirname "$plan_path")")"
-          case "$plan_name" in
-            "$RELEASE_ID-prepare.tar.gz") retirement_phase=prepare ;;
-            "$RELEASE_ID-destroy.tar.gz") retirement_phase=destroy ;;
-            *) echo "reviewed plan artifact has an invalid name" >&2; exit 1 ;;
-          esac
           echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "plan_run_id=$plan_run_id" >> "$GITHUB_OUTPUT"
-          echo "retirement_phase=$retirement_phase" >> "$GITHUB_OUTPUT"
+          echo "retirement_phase=prepare" >> "$GITHUB_OUTPUT"
       - name: Decide whether to deliver
         id: delivery-gate
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ "${{ steps.reviewed-plan.outputs.available }}" != true ]; then
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -148,12 +126,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Require a reviewed Terraform plan run
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply' && github.event_name == 'workflow_dispatch'
         env:
           TERRAFORM_PLAN_RUN_ID: ${{ steps.reviewed-plan.outputs.plan_run_id }}
         run: test -n "$TERRAFORM_PLAN_RUN_ID" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
       - name: Download reviewed development Terraform plan
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply' && github.event_name == 'workflow_dispatch'
         env:
           PLAN_RUN_ID: ${{ steps.reviewed-plan.outputs.plan_run_id }}
           RELEASE_ID: ${{ env.RELEASE_ID }}
@@ -202,10 +180,12 @@ jobs:
         env:
           API_IMAGE: ${{ steps.release-image.outputs.api_image }}
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
+          PLAN_PATH: ${{ github.event_name == 'push' && 'terraform/tfplan' || 'reviewed-plan/tfplan' }}
+          ATTESTATION_PATH: ${{ github.event_name == 'push' && 'terraform/plan-attestation.json' || 'reviewed-plan/plan-attestation.json' }}
         run: |
           python3 scripts/deployment/terraform_plan_attestation.py verify \
-            --plan reviewed-plan/tfplan \
-            --attestation reviewed-plan/plan-attestation.json \
+            --plan "$PLAN_PATH" \
+            --attestation "$ATTESTATION_PATH" \
             --release-manifest release/manifest/release-manifest.json \
             --release-run-id "$RELEASE_RUN_ID" \
             --environment development \
@@ -294,7 +274,7 @@ jobs:
           echo "Cloud Tasks IAM policy permission was not visible after 360 seconds" >&2
           exit 1
       - name: Plan development changes
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
+        if: steps.delivery-gate.outputs.proceed == 'true' && (env.DELIVERY_ACTION == 'plan' || (github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -322,7 +302,7 @@ jobs:
           }
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
       - name: Create reviewed development Terraform plan attestation
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
+        if: steps.delivery-gate.outputs.proceed == 'true' && (env.DELIVERY_ACTION == 'plan' || (github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -344,7 +324,7 @@ jobs:
           cp tfplan plan-attestation.json ../terraform-plan-artifact/
           cp terraform-plan.log ../terraform-plan-artifact/
       - name: Store reviewed development Terraform plan privately
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan' && github.event_name == 'workflow_dispatch'
         env:
           RELEASE_ID: ${{ env.RELEASE_ID }}
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -392,9 +372,14 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          cp ../reviewed-plan/function-source-archives/*.zip .
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            cp ../reviewed-plan/function-source-archives/*.zip .
+            plan_path=../reviewed-plan/tfplan
+          else
+            plan_path=tfplan
+          fi
           set +e
-          terraform apply -auto-approve ../reviewed-plan/tfplan > terraform-apply.log 2>&1
+          terraform apply -auto-approve "$plan_path" > terraform-apply.log 2>&1
           apply_status=$?
           set -e
           if [ "$apply_status" -ne 0 ]; then

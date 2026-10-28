@@ -47,16 +47,20 @@ def validate(root: Path) -> None:
     if 'FRONTEND_ENVIRONMENTS = frozenset({"development", "production"})' not in manifest:
         raise ValueError("release manifest must retain frontend environment target validation")
     for workflow in (development, production):
-        if "terraform_plan_run_id" not in workflow:
-            raise ValueError("delivery workflows must accept an exact reviewed plan run")
         if "terraform_plan_attestation.py verify" not in workflow:
             raise ValueError("apply must verify the Terraform plan attestation")
         if "terraform_plan_attestation.py create" not in workflow:
             raise ValueError("plan must publish a Terraform plan attestation")
-        if "terraform apply -auto-approve ../reviewed-plan/tfplan" not in workflow:
-            raise ValueError("apply must consume the reviewed Terraform plan")
         if "Build development frontend" not in workflow and "Build production frontend" not in workflow:
             raise ValueError("delivery workflows must build their environment-specific frontend")
+    if "terraform_plan_run_id" not in production:
+        raise ValueError("production delivery must accept an exact reviewed plan run")
+    if "terraform apply -auto-approve ../reviewed-plan/tfplan" not in production:
+        raise ValueError("production apply must consume the reviewed Terraform plan")
+    if "terraform plan -out=tfplan" not in development:
+        raise ValueError("development delivery must create a Terraform plan")
+    if 'terraform apply -auto-approve "$plan_path"' not in development:
+        raise ValueError("development apply must consume its same-run Terraform plan")
     if "def validate_attestation" not in plan_attestation or "terraform_plan_sha256" not in plan_attestation:
         raise ValueError("Terraform plan attestation must bind the exact plan checksum")
 

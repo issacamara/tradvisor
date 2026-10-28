@@ -26,19 +26,21 @@ def test_release_workflow_packages_and_uploads_manifest() -> None:
     assert "actions/upload-artifact@v4" in contents
 
 
-def test_delivery_workflows_require_exact_reviewed_terraform_plans() -> None:
-    root = Path(__file__).parents[2]
+def test_delivery_workflows_keep_plan_attestation_checks() -> None:
+    root = Path(__file__).parents[2] / ".github/workflows"
     for environment in ("development", "production"):
-        contents = (root / f".github/workflows/cd-{environment}.yml").read_text()
-        assert "terraform_plan_run_id" in contents
+        contents = (root / f"cd-{environment}.yml").read_text()
         assert "terraform_plan_attestation.py verify" in contents
         assert "terraform_plan_attestation.py create" in contents
-        assert "terraform apply -auto-approve ../reviewed-plan/tfplan" in contents
-        assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in contents
         assert "path: terraform-plan-artifact/" not in contents
+    production = root / "cd-production.yml"
+    production = production.read_text()
+    assert "terraform_plan_run_id" in production
+    assert "terraform apply -auto-approve ../reviewed-plan/tfplan" in production
+    assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in production
 
 
-def test_push_prepares_and_automatically_delivers_only_with_reviewed_plan() -> None:
+def test_push_prepares_and_automatically_plans_and_applies() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     development = (root / "cd-development.yml").read_text()
     ci = (root / "ci.yml").read_text()
@@ -48,8 +50,10 @@ def test_push_prepares_and_automatically_delivers_only_with_reviewed_plan() -> N
     assert "uses: ./.github/workflows/release.yml" in development
     assert "needs: prepare" in development
     assert "github.event_name == 'push' && 'apply'" in development
-    assert "reviewed-plans/development/*/$RELEASE_ID-*.tar.gz" in development
-    assert "found $count matching artifacts. Delivery withheld." in development
+    assert "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "PLAN_PATH: ${{ github.event_name == 'push' && 'terraform/tfplan'" in development
+    assert "terraform apply -auto-approve \"$plan_path\"" in development
+    assert "gcloud storage ls \"gs://$TF_STATE_BUCKET/reviewed-plans/development" not in development
     assert "steps.delivery-gate.outputs.proceed == 'true'" in development
     assert "steps.release-image.outputs.api_image" in development
     assert "github.event_name == 'push' && github.ref_name == 'development'" in ci
