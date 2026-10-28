@@ -101,7 +101,14 @@ def get_announcements_for_symbol(symbol):
     }
     
     session = requests.Session()
-    response = session.get(url, headers=headers, timeout=30, impersonate="chrome", allow_redirects=True)
+    response = session.get(
+        url,
+        headers=headers,
+        timeout=30,
+        impersonate="chrome",
+        http_version="v1",
+        allow_redirects=True,
+    )
     
     if response.status_code != 200:
         return []
@@ -194,7 +201,14 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
         html_headers = headers.copy()
         html_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         
-        response = session.get(details_url, headers=html_headers, timeout=30, impersonate="chrome", allow_redirects=True)
+        response = session.get(
+            details_url,
+            headers=html_headers,
+            timeout=30,
+            impersonate="chrome",
+            http_version="v1",
+            allow_redirects=True,
+        )
         
         if response.status_code != 200:
             emit_event("ingestion.financials.details", "failed", error_class="HttpError")
@@ -607,7 +621,14 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                         raise Exception("Failed to extract PDF URL from details page")
                 
                 # Follow redirects and get the actual PDF
-                pdf_response = session.get(pdf_url, headers=headers, timeout=60, impersonate="chrome", allow_redirects=True)
+                pdf_response = session.get(
+                    pdf_url,
+                    headers=headers,
+                    timeout=60,
+                    impersonate="chrome",
+                    http_version="v1",
+                    allow_redirects=True,
+                )
                 
                 if pdf_response.status_code != 200:
                     raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
