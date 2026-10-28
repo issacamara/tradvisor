@@ -51,8 +51,9 @@ def test_push_prepares_and_automatically_plans_and_applies() -> None:
     assert "needs: prepare" in development
     assert "github.event_name == 'push' && 'apply'" in development
     assert "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" in development
-    assert "PLAN_PATH: ${{ github.event_name == 'push' && 'terraform/tfplan'" in development
     assert "terraform apply -auto-approve \"$plan_path\"" in development
+    assert "Verify automatic development Terraform plan" in development
+    assert "--attestation terraform/plan-attestation.json" in development
     assert "gcloud storage ls \"gs://$TF_STATE_BUCKET/reviewed-plans/development" not in development
     assert "steps.delivery-gate.outputs.proceed == 'true'" in development
     assert "steps.release-image.outputs.api_image" in development

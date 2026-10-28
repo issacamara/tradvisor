@@ -175,17 +175,15 @@ jobs:
             *@"$expected_digest") ;;
             *) echo "api_image does not match the release manifest backend digest" >&2; exit 1;;
           esac
-      - name: Verify reviewed development Terraform plan
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
+      - name: Verify manually supplied development Terraform plan
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply' && github.event_name == 'workflow_dispatch'
         env:
           API_IMAGE: ${{ steps.release-image.outputs.api_image }}
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
-          PLAN_PATH: ${{ github.event_name == 'push' && 'terraform/tfplan' || 'reviewed-plan/tfplan' }}
-          ATTESTATION_PATH: ${{ github.event_name == 'push' && 'terraform/plan-attestation.json' || 'reviewed-plan/plan-attestation.json' }}
         run: |
           python3 scripts/deployment/terraform_plan_attestation.py verify \
-            --plan "$PLAN_PATH" \
-            --attestation "$ATTESTATION_PATH" \
+            --plan reviewed-plan/tfplan \
+            --attestation reviewed-plan/plan-attestation.json \
             --release-manifest release/manifest/release-manifest.json \
             --release-run-id "$RELEASE_RUN_ID" \
             --environment development \
@@ -323,6 +321,22 @@ jobs:
           cp ./*.zip ../terraform-plan-artifact/function-source-archives/
           cp tfplan plan-attestation.json ../terraform-plan-artifact/
           cp terraform-plan.log ../terraform-plan-artifact/
+      - name: Verify automatic development Terraform plan
+        if: steps.delivery-gate.outputs.proceed == 'true' && github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'
+        env:
+          API_IMAGE: ${{ steps.release-image.outputs.api_image }}
+          RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
+        run: |
+          python3 scripts/deployment/terraform_plan_attestation.py verify \
+            --plan terraform/tfplan \
+            --attestation terraform/plan-attestation.json \
+            --release-manifest release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment development \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE"
       - name: Store reviewed development Terraform plan privately
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan' && github.event_name == 'workflow_dispatch'
         env:
