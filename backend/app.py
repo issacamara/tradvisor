@@ -246,10 +246,17 @@ def create_app(
     application.add_exception_handler(RequestValidationError, cast(Any, contract_validation_exception))
 
     if runtime_target == "publication_control":
-        require_workload = workload_identity_dependency(GoogleWorkloadTokenVerifier())
+        require_workflow = workload_identity_dependency(GoogleWorkloadTokenVerifier())
+        require_task = workload_identity_dependency(
+            GoogleWorkloadTokenVerifier(
+                expected_service_account=os.environ.get(
+                    "TRADVISOR_PUBLICATION_CONTROL_SERVICE_ACCOUNT"
+                )
+            )
+        )
 
         @application.post("/internal/publication-control/completion", include_in_schema=False)
-        async def accept_completion(request: Request, _: str = Depends(require_workload)) -> dict[str, str]:
+        async def accept_completion(request: Request, _: str = Depends(require_workflow)) -> dict[str, str]:
             from backend.contracts.publication_control import ManagedImportCompletion
             from backend.configuration import PublicationControlRuntimeConfiguration
             from backend.publication.runtime import CloudTasksPublicationScheduler, build_controller
@@ -264,7 +271,7 @@ def create_app(
             return {"status": "accepted"}
 
         @application.post("/internal/publication-control/dispatch", include_in_schema=False)
-        async def dispatch_completion(_: str = Depends(require_workload)) -> dict[str, str]:
+        async def dispatch_completion(_: str = Depends(require_task)) -> dict[str, str]:
             from backend.publication.runtime import build_controller
 
             outcome = build_controller().dispatch_ready(now=datetime.now(timezone.utc))
