@@ -52,7 +52,7 @@ def test_shares_scraper_scaling_and_retry_budget_are_explicitly_bounded() -> Non
     assert "max_retries: ${var.shares_workflow_max_retries}" in FUNCTIONS
     assert "initial_delay: ${var.shares_workflow_retry_initial_delay_seconds}" in FUNCTIONS
     assert "max_delay: ${var.shares_workflow_retry_max_delay_seconds}" in FUNCTIONS
-    assert "e.code == 429 || e.code == 500 || e.code == 502 || e.code == 503 || e.code == 504" in FUNCTIONS
+    assert "e.code == 429 or e.code == 500 or e.code == 502 or e.code == 503 or e.code == 504" in FUNCTIONS
 
 
 def test_shares_retry_stays_before_insert_and_is_not_applied_to_insert() -> None:
