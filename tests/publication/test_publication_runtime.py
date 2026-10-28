@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from backend.contracts.publication_control import ManagedImportCompletion, ManagedWriteReceipt
 from backend.publication.runtime import GcsPublicationControlStore
+from backend.publication.control import PublicationControlState
+from backend.contracts.publication_control import ReadySourceInput, SourceInputIdentity
 
 
 class Blob:
@@ -47,10 +49,23 @@ def test_control_state_store_persists_sanitized_controller_state() -> None:
         ),
     )
 
-    from backend.publication.control import PublicationControlState
-
     result = store.transact(lambda state: state.to_record())
     assert result == PublicationControlState().to_record()
     store.transact(lambda state: setattr(state, "last_outcome", None))
     assert "a" * 64 not in store._blob.download_as_text()
     assert completion.source == "shares"
+
+
+def test_control_state_round_trip_accepts_json_arrays_for_identity_inputs() -> None:
+    identity = SourceInputIdentity.from_inputs((ReadySourceInput(source="shares", revision_fingerprint="a" * 64),))
+    state = PublicationControlState(
+        coalescing_started_at=datetime(2026, 10, 27, tzinfo=timezone.utc),
+        ready_inputs=(ReadySourceInput(source="shares", revision_fingerprint="a" * 64),),
+        last_requested_identity=identity,
+        active_identity=identity,
+        analytical_attempts=1,
+    )
+
+    restored = PublicationControlState.from_record(state.to_record())
+
+    assert restored.active_identity == identity
