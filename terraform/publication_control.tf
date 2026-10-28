@@ -76,6 +76,13 @@ resource "google_cloud_tasks_queue_iam_member" "publication_control_enqueuer" {
   member   = "serviceAccount:${google_service_account.publication_control[0].email}"
 }
 
+resource "google_service_account_iam_member" "publication_control_task_token_creator" {
+  count              = local.publication_control_enabled ? 1 : 0
+  service_account_id = google_service_account.publication_control[0].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.publication_control[0].email}"
+}
+
 # Scope job invocation to the one existing analytical job; no project-wide run role.
 resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_invoker" {
   count    = local.publication_control_enabled ? 1 : 0
