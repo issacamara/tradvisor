@@ -93,3 +93,12 @@ resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_invoker
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.publication_control[0].email}"
 }
+
+resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_viewer" {
+  count    = local.publication_control_enabled ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_job.v1_batch[0].location
+  name     = google_cloud_run_v2_job.v1_batch[0].name
+  role     = "roles/run.viewer"
+  member   = "serviceAccount:${google_service_account.publication_control[0].email}"
+}
