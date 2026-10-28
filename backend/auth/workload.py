@@ -14,6 +14,9 @@ class WorkloadTokenVerifier(Protocol):
 
 
 class GoogleWorkloadTokenVerifier:
+    def __init__(self, *, expected_service_account: str | None = None) -> None:
+        self._expected_service_account = expected_service_account
+
     def verify(self, token: str, *, audience: str) -> str:
         from google.oauth2 import id_token
         from google.auth.transport import requests
@@ -23,7 +26,7 @@ class GoogleWorkloadTokenVerifier:
         subject = claims.get("email")
         if not isinstance(subject, str) or claims.get("email_verified") is not True:
             raise ValueError("workload token has no verified service identity")
-        expected = os.environ.get("WORKER_SERVICE_ACCOUNT")
+        expected = self._expected_service_account or os.environ.get("WORKER_SERVICE_ACCOUNT")
         if expected and subject != expected:
             raise ValueError("unexpected workload identity")
         return subject
