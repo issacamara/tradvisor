@@ -83,7 +83,7 @@ jobs:
             api_image="$API_IMAGE_INPUT"
           else
             digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
-            api_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/tradvisor-backend:$RELEASE_ID@$digest"
+            api_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api:$RELEASE_ID@$digest"
           fi
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
       - uses: hashicorp/setup-terraform@v3
@@ -459,3 +459,4 @@ jobs:
           name: tradvisor-development-apply-diagnostic-${{ github.run_id }}
           path: terraform/terraform-apply-diagnostic.txt
           if-no-files-found: ignore
+
