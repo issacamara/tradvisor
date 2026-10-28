@@ -72,7 +72,7 @@ class _FakeBigQueryClient:
             self.stages[table_id] = rows
         return _Job(error=self.load_error)
 
-    def query(self, sql: str, *, job_config: Any) -> _Job:
+    def query(self, sql: str, *, job_config: Any = None) -> _Job:
         parameters = {
             parameter.name: parameter.value
             for parameter in getattr(job_config, "query_parameters", [])
@@ -110,6 +110,21 @@ class _FakeBigQueryClient:
                 None,
             )
             return _Job(result=[dict(match)] if match else [])
+        if sql.lstrip().startswith("SELECT symbol, fiscal_year, document_link"):
+            self.select_queries.append(sql)
+            table_match = re.search(r"FROM `([^`]+)`", sql)
+            assert table_match is not None
+            rows = self.tables.get(table_match.group(1), [])
+            return _Job(
+                result=[
+                    SimpleNamespace(
+                        symbol=row["symbol"],
+                        fiscal_year=row["fiscal_year"],
+                        document_link=row.get("document_link"),
+                    )
+                    for row in rows
+                ]
+            )
         self.merge_queries.append(sql)
         staging_id = re.search(r"USING `([^`]+)`", sql) or re.search(
             r"FROM `([^`]+)`", sql
@@ -154,7 +169,7 @@ def loader(monkeypatch: pytest.MonkeyPatch) -> tuple[ModuleType, _FakeBigQueryCl
     helper = _load_helper()
     client = _FakeBigQueryClient()
     bigquery = SimpleNamespace(
-        Client=lambda project: client,
+        Client=lambda **kwargs: client,
         SchemaField=lambda name, field_type: SimpleNamespace(name=name, type=field_type),
         Table=lambda table_id, schema: SimpleNamespace(table_id=table_id, schema=schema),
         LoadJobConfig=lambda **values: SimpleNamespace(**values),
@@ -290,6 +305,26 @@ def _load_monthly_scraper(
     sys.modules[specification.name] = module
     specification.loader.exec_module(module)
     return module
+
+
+def test_monthly_scraper_existing_lookup_uses_managed_financial_schema(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper, client = loader
+    client.tables["project.stocks.financials"] = [{
+        "symbol": "ABC",
+        "fiscal_year": 2025,
+        "document_link": "https://reports.example/annual.pdf",
+    }]
+    scraper = _load_monthly_scraper(monkeypatch, helper)
+
+    existing = scraper.get_existing_symbols_and_years("project.stocks.financials")
+
+    assert existing == {
+        ("ABC", 2025): {"document_link": "https://reports.example/annual.pdf"}
+    }
+    assert "announcement_date" not in client.select_queries[-1]
 
 
 def test_retries_and_revision_batches_use_isolated_staging(
@@ -713,7 +748,7 @@ def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch
     monkeypatch.setattr(
         scraper,
         "get_existing_symbols_and_years",
-        lambda: {("OTHER", 2024): {"announcement_date": "2025-01-01"}},
+        lambda: {("OTHER", 2024): {"document_link": "https://reports.example/other.pdf"}},
     )
     monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
     monkeypatch.setattr(
@@ -758,7 +793,6 @@ def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
     client.tables["project.stocks.financials"] = [{
         "symbol": "ABC",
         "fiscal_year": 2025,
-        "announcement_date": "2026-04-01",
         "document_link": source_url,
         "net_income": 100,
     }]
@@ -779,7 +813,7 @@ def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
         scraper,
         "get_existing_symbols_and_years",
         lambda: {("ABC", 2025): {
-            "announcement_date": "2026-04-01", "document_link": source_url
+            "document_link": source_url
         }},
     )
     monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
