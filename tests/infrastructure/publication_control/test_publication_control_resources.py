@@ -28,6 +28,8 @@ def test_control_identity_has_only_queue_and_existing_job_invocation_bindings() 
     assert "max_dispatches_per_second = 1" in CONTROL
     assert 'resource "google_cloud_tasks_queue_iam_member" "publication_control_enqueuer"' in CONTROL
     assert 'role     = "roles/cloudtasks.enqueuer"' in CONTROL
+    assert 'resource "google_service_account_iam_member" "publication_control_task_token_creator"' in CONTROL
+    assert 'role               = "roles/iam.serviceAccountUser"' in CONTROL
     assert 'resource "google_cloud_run_v2_job_iam_member" "publication_control_batch_invoker"' in CONTROL
     assert 'name     = google_cloud_run_v2_job.v1_batch[0].name' in CONTROL
     assert 'role     = "roles/run.invoker"' in CONTROL
