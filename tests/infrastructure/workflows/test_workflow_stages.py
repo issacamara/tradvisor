@@ -90,3 +90,12 @@ def test_eligible_workflows_handoff_successful_completion_to_publication_control
     assert "body: $${insert_shares_response.body}" in workflow_block
     assert "body: $${scrape_financials_response.body}" in workflow_block
     assert "/internal/publication-control/completion" in workflow_block
+
+
+def test_publication_completion_is_after_all_ingestion_stages() -> None:
+    workflow_block = FUNCTIONS.split(
+        'resource "google_workflows_workflow" "workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+    loop_end = workflow_block.index("%{endfor}")
+    completion = workflow_block.index("- publication_completion:")
+    assert completion > loop_end
