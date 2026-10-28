@@ -89,8 +89,17 @@ class PublicationControlState:
             raise ValueError("publication-control coalescing time must be a timestamp")
         started = datetime.fromisoformat(raw_time.replace("Z", "+00:00")) if isinstance(raw_time, str) else None
 
+        def identity_record(value: object) -> object:
+            if not isinstance(value, Mapping):
+                return value
+            normalized = dict(value)
+            inputs = normalized.get("inputs")
+            if isinstance(inputs, list):
+                normalized["inputs"] = tuple(inputs)
+            return normalized
+
         def identity(value: object) -> SourceInputIdentity | None:
-            return SourceInputIdentity.model_validate(value) if value is not None else None
+            return SourceInputIdentity.model_validate(identity_record(value)) if value is not None else None
 
         raw_inputs = record["ready_inputs"]
         if not isinstance(raw_inputs, list):
@@ -99,6 +108,10 @@ class PublicationControlState:
         attempts = record["analytical_attempts"]
         if not isinstance(attempts, int) or isinstance(attempts, bool):
             raise ValueError("publication-control attempts must be an integer")
+        raw_outcome_record = raw_outcome
+        if isinstance(raw_outcome, Mapping):
+            raw_outcome_record = dict(raw_outcome)
+            raw_outcome_record["input_identity"] = identity_record(raw_outcome.get("input_identity"))
         return cls(
             coalescing_started_at=_utc(started) if started is not None else None,
             ready_inputs=tuple(ReadySourceInput.model_validate(value) for value in raw_inputs),
@@ -106,7 +119,7 @@ class PublicationControlState:
             active_identity=identity(record["active_identity"]),
             analytical_attempts=attempts,
             last_outcome=(
-                PublicationControlOutcome.model_validate(raw_outcome)
+                PublicationControlOutcome.model_validate(raw_outcome_record)
                 if raw_outcome is not None
                 else None
             ),
