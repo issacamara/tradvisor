@@ -38,7 +38,7 @@ def test_delivery_workflows_require_exact_reviewed_terraform_plans() -> None:
         assert "path: terraform-plan-artifact/" not in contents
 
 
-def test_push_prepares_release_without_unreviewed_apply() -> None:
+def test_push_prepares_and_automatically_delivers_only_with_reviewed_plan() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     development = (root / "cd-development.yml").read_text()
     ci = (root / "ci.yml").read_text()
@@ -46,9 +46,15 @@ def test_push_prepares_release_without_unreviewed_apply() -> None:
     release = (root / "release.yml").read_text()
     assert "branches: [development]" in development
     assert "uses: ./.github/workflows/release.yml" in development
+    assert "needs: prepare" in development
+    assert "github.event_name == 'push' && 'apply'" in development
+    assert "reviewed-plans/development/*/$RELEASE_ID-*.tar.gz" in development
+    assert "found $count matching artifacts. Delivery withheld." in development
+    assert "steps.delivery-gate.outputs.proceed == 'true'" in development
+    assert "steps.release-image.outputs.api_image" in development
     assert "github.event_name == 'push' && github.ref_name == 'development'" in ci
     assert "uses: ./.github/workflows/release.yml" in ci
-    assert "github.event_name == 'workflow_dispatch'" in development
+    assert "workflow_dispatch:" in development
     assert "branches: [main]" in production
     assert "github.event_name == 'workflow_dispatch'" in production
     assert "git rev-parse \"$GITHUB_SHA^{tree}\"" in production
