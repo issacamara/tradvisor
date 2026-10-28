@@ -8,7 +8,9 @@ def test_development_delivery_is_automatic_and_guarded() -> None:
     assert "branches: [development]" in workflow
     assert "Select reviewed development plan" in workflow
     assert "Decide whether to deliver" in workflow
-    assert "Delivery withheld." in workflow
+    assert 'echo "proceed=true"' in workflow
+    assert "terraform plan -out=tfplan" in workflow
+    assert "terraform apply -auto-approve \"$plan_path\"" in workflow
     assert "terraform apply -auto-approve" in workflow
     assert "terraform-apply-diagnostic.txt" in workflow
     assert "Sanitized diagnostics:" in workflow
