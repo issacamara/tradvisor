@@ -25,8 +25,8 @@ FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/et
 def get_existing_symbols_and_years(table_id=None):
     """Read existing canonical rows to avoid unnecessary report processing.
     
-    Returns a dict mapping (symbol, fiscal_year) tuples to announcement_date.
-    Used for smart PDF download - skips if we already have data from this announcement.
+    Returns a dict mapping (symbol, fiscal_year) tuples to the stored document link.
+    Used to identify the canonical report already associated with each fiscal year.
     """
     from google.cloud import bigquery
     from google.auth import default
@@ -35,15 +35,17 @@ def get_existing_symbols_and_years(table_id=None):
     table_id = table_id or f"{project_id}.stocks.financials"
     client = bigquery.Client(credentials=credentials, project=project_id)
     query = f"""
-        SELECT symbol, fiscal_year, announcement_date, document_link
+        SELECT symbol, fiscal_year, document_link
         FROM `{table_id}`
     """
     try:
         results = client.query(query).result()
-        return {(row.symbol, row.fiscal_year): {
-            'announcement_date': str(row.announcement_date) if row.announcement_date else None,
-            'document_link': row.document_link,
-        } for row in results}
+        return {
+            (row.symbol, row.fiscal_year): {
+                'document_link': row.document_link,
+            }
+            for row in results
+        }
     except Exception:
         return {}
 
@@ -599,7 +601,6 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
             
             current_matches_announcement = bool(
                 existing_financials
-                and existing_financials.get('announcement_date') == ann['announcement_date']
                 and existing_financials.get('document_link') == ann['url']
             )
             
