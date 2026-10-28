@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -24,7 +25,7 @@ def test_inventory_covers_all_scheduled_workflows_and_callers() -> None:
 
 
 def test_inventory_records_duration_retry_and_overlap_contracts() -> None:
-    assert FUNCTIONS.count("timeout_seconds       = 180") == 1
+    assert len(re.findall(r"timeout_seconds\s+= 180", FUNCTIONS)) == 1
     assert 'resource "google_cloud_scheduler_job" "jobs"' in FUNCTIONS
     assert "oauth_token {" in FUNCTIONS
     assert 'timeout         = "${var.v1_batch_timeout_seconds}s"' in RUNTIME

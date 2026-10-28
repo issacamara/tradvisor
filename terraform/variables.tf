@@ -115,6 +115,61 @@ variable "function_runtimes" {
   }
 }
 
+variable "shares_max_instance_count" {
+  description = "Bounded maximum instances for the rate-limited shares scraper"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.shares_max_instance_count >= 1 && var.shares_max_instance_count <= 2
+    error_message = "Shares scraper max instances must be between 1 and 2."
+  }
+}
+
+variable "shares_max_request_concurrency" {
+  description = "Maximum concurrent requests for each shares scraper instance"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.shares_max_request_concurrency == 1
+    error_message = "Shares scraper request concurrency must remain 1."
+  }
+}
+
+variable "shares_workflow_max_retries" {
+  description = "Finite Workflows retry count for transient shares scraper responses"
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.shares_workflow_max_retries >= 0 && var.shares_workflow_max_retries <= 3
+    error_message = "Shares workflow retries must be between 0 and 3."
+  }
+}
+
+variable "shares_workflow_retry_initial_delay_seconds" {
+  description = "Initial backoff delay for transient shares scraper responses"
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.shares_workflow_retry_initial_delay_seconds >= 1 && var.shares_workflow_retry_initial_delay_seconds <= 30
+    error_message = "Shares workflow initial retry delay must be between 1 and 30 seconds."
+  }
+}
+
+variable "shares_workflow_retry_max_delay_seconds" {
+  description = "Maximum backoff delay for transient shares scraper responses"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.shares_workflow_retry_max_delay_seconds >= var.shares_workflow_retry_initial_delay_seconds && var.shares_workflow_retry_max_delay_seconds <= 60
+    error_message = "Shares workflow maximum retry delay must be between the initial delay and 60 seconds."
+  }
+}
+
 variable "function_local_files" {
   description = "Local Python modules and data files required by each existing function artifact"
   type        = map(list(string))

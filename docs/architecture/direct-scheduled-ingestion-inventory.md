@@ -52,6 +52,22 @@ declared schedule cadence and bounded workflow path. It does not claim that a
 live execution has been measured; issue #278 remains the separately approved
 development verification gate.
 
+## Shares rate-limit resilience
+
+The Terraform-managed `scrape_shares` function is capped at two instances with
+one request per instance. This conservative ceiling limits duplicate upstream
+pressure and keeps the change within the owner-approved development cost
+boundary; the other ingestion functions retain their existing one-instance
+ceiling. The generated `shares-wf` retries only HTTP 429, 500, 502, 503, and 504
+from `scrape_shares`, for at most three retries with exponential backoff from
+five seconds to a sixty-second maximum. `insert_shares` remains a separate
+ordered step and is reached only after a successful scrape.
+
+These limits are Terraform configuration, not a live-operation authorization.
+No Terraform apply, schedule activation, production change, or paid data
+operation is part of issue #337; development deployment requires the normal
+reviewed plan and owner-approved delivery workflow.
+
 ## Retirement boundary
 
 The safe scheduled-ingestion retirement set is limited to the four

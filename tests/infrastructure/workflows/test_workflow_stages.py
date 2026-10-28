@@ -42,6 +42,30 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert "workflow_dispatcher" not in IAM
 
 
+def test_shares_scraper_scaling_and_retry_budget_are_explicitly_bounded() -> None:
+    assert 'max_instance_count               = each.key == "scrape_shares" ? var.shares_max_instance_count : 1' in FUNCTIONS
+    assert 'max_instance_request_concurrency = each.key == "scrape_shares" ? var.shares_max_request_concurrency : null' in FUNCTIONS
+    assert re.search(r'variable "shares_max_instance_count"\s*\{[^}]*default\s*=\s*2', VARIABLES, re.S)
+    assert re.search(r'variable "shares_max_request_concurrency"\s*\{[^}]*default\s*=\s*1', VARIABLES, re.S)
+    assert re.search(r'variable "shares_workflow_max_retries"\s*\{[^}]*default\s*=\s*3', VARIABLES, re.S)
+    assert "predicate: $${retry_transient_http}" in FUNCTIONS
+    assert "max_retries: ${var.shares_workflow_max_retries}" in FUNCTIONS
+    assert "initial_delay: ${var.shares_workflow_retry_initial_delay_seconds}" in FUNCTIONS
+    assert "max_delay: ${var.shares_workflow_retry_max_delay_seconds}" in FUNCTIONS
+    assert "e.code == 429 || e.code == 500 || e.code == 502 || e.code == 503 || e.code == 504" in FUNCTIONS
+
+
+def test_shares_retry_stays_before_insert_and_is_not_applied_to_insert() -> None:
+    workflow_block = FUNCTIONS.split(
+        'resource "google_workflows_workflow" "workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+    scrape_condition = workflow_block.index('%{if function_name == "scrape_shares"}')
+    retry = workflow_block.index('predicate: $${retry_transient_http}', scrape_condition)
+    loop_end = workflow_block.index('%{endfor}', retry)
+    assert scrape_condition < retry < loop_end
+    assert workflow_block.count('predicate: $${retry_transient_http}') == 1
+
+
 def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -> None:
     assert re.search(
         r'resource "google_workflows_workflow" "workflows"\s*\{[^}]*'
@@ -53,7 +77,7 @@ def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -
         'resource "google_workflows_workflow" "workflows"', 1
     )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
     assert "for_each" not in workflow_block
-    assert "try:" not in FUNCTIONS
+    assert re.search(r"(?m)^\s+- try:\s*$", FUNCTIONS) is None
     assert "except:" not in FUNCTIONS
 
 
