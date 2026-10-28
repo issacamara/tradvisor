@@ -20,6 +20,8 @@ from google.auth import default
 
 
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
+# curl_cffi.CurlHttpVersion.V1_1 is the libcurl HTTP/1.1 constant.
+HTTP_VERSION_1_1 = 2
 
 
 def get_existing_symbols_and_years(table_id=None):
@@ -108,7 +110,7 @@ def get_announcements_for_symbol(symbol):
         headers=headers,
         timeout=30,
         impersonate="chrome",
-        http_version="v1",
+        http_version=HTTP_VERSION_1_1,
         allow_redirects=True,
     )
     
@@ -208,7 +210,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
             headers=html_headers,
             timeout=30,
             impersonate="chrome",
-            http_version="v1",
+            http_version=HTTP_VERSION_1_1,
             allow_redirects=True,
         )
         
@@ -627,7 +629,7 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                     headers=headers,
                     timeout=60,
                     impersonate="chrome",
-                    http_version="v1",
+                    http_version=HTTP_VERSION_1_1,
                     allow_redirects=True,
                 )
                 
