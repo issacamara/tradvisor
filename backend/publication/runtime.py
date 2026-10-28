@@ -68,7 +68,10 @@ class CloudTasksPublicationScheduler:
                     "url": urljoin(self._configuration.service_url, "/internal/publication-control/dispatch"),
                     "headers": {"Content-Type": "application/json"},
                     "body": base64.b64encode(b"{}").decode(),
-                    "oidcToken": {"serviceAccountEmail": self._configuration.service_account},
+                    "oidcToken": {
+                        "serviceAccountEmail": self._configuration.service_account,
+                        "audience": self._configuration.service_url,
+                    },
                 },
                 "scheduleTime": (datetime.now(timezone.utc) + timedelta(seconds=self._configuration.control_configuration.debounce_seconds)).isoformat().replace("+00:00", "Z"),
             }
