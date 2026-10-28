@@ -17,9 +17,9 @@ def test_publication_control_state_is_isolated_and_protected() -> None:
     assert 'resource "google_project_iam_custom_role" "publication_control_state"' in CONTROL
     assert 'resource "google_storage_bucket_iam_member" "publication_control_state"' in CONTROL
     assert '"storage.objects.create"' in CONTROL
+    assert '"storage.objects.delete"' in CONTROL
     assert '"storage.objects.get"' in CONTROL
     assert '"storage.objects.update"' in CONTROL
-    assert '"storage.objects.delete"' not in CONTROL
 
 
 def test_control_identity_has_only_queue_and_existing_job_invocation_bindings() -> None:

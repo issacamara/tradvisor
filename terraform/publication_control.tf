@@ -55,6 +55,7 @@ resource "google_project_iam_custom_role" "publication_control_state" {
   description = "Read and conditionally update only publication-control state objects."
   permissions = [
     "storage.objects.create",
+    "storage.objects.delete",
     "storage.objects.get",
     "storage.objects.update",
   ]
