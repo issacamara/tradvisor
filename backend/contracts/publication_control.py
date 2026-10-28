@@ -44,7 +44,7 @@ class ManagedWriteReceipt(ImmutableContractModel):
     revision_fingerprint: RevisionFingerprint
     completed_at: datetime
 
-    @field_validator("completed_at")
+    @field_validator("completed_at", mode="before")
     @classmethod
     def validate_completed_at(cls, value: datetime | str) -> datetime:
         if isinstance(value, str):

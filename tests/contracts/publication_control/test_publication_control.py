@@ -25,6 +25,15 @@ def receipt() -> ManagedWriteReceipt:
     return ManagedWriteReceipt(revision_fingerprint=FINGERPRINT_A, completed_at=NOW)
 
 
+def test_managed_write_receipt_accepts_json_rfc3339_timestamp() -> None:
+    receipt = ManagedWriteReceipt(
+        revision_fingerprint=FINGERPRINT_A,
+        completed_at="2026-10-18T00:00:00.123456Z",
+    )
+
+    assert receipt.completed_at == datetime(2026, 10, 18, 0, 0, 0, 123456, tzinfo=timezone.utc)
+
+
 def identity() -> SourceInputIdentity:
     return SourceInputIdentity.from_inputs(
         (ReadySourceInput(source="shares", revision_fingerprint=FINGERPRINT_A),)
