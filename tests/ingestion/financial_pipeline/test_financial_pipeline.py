@@ -182,6 +182,12 @@ def adapter_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.setitem(sys.modules, "google.auth", google_auth)
     monkeypatch.setitem(sys.modules, "google.cloud", cloud)
 
+    observability = ModuleType("ingestion_observability")
+    observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.managed_import_completion = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.observed_entrypoint = lambda *args, **kwargs: (lambda function: function)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ingestion_observability", observability)
+
     helper = ModuleType("helper")
     for name in (
         "get_financial_report_revision",
@@ -223,7 +229,7 @@ def test_recorded_provider_response_replays_only_for_matching_pdf(
     monkeypatch.setitem(
         sys.modules,
         "curl_cffi",
-        SimpleNamespace(requests=SimpleNamespace(post=forbidden_provider)),
+        SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=SimpleNamespace(post=forbidden_provider)),
     )
     evidence: list[dict[str, object]] = []
 
@@ -297,7 +303,7 @@ def test_mocked_provider_response_captures_model_prompt_and_response(
     requests = SimpleNamespace(
         post=lambda url, **kwargs: calls.append(kwargs) or _Response()
     )
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=requests))
     monkeypatch.setattr(
         adapter_module,
         "extract_text_from_pdf",
@@ -326,7 +332,7 @@ def test_provider_attempt_budget_is_shared_and_bounded(
         text = "fixture failure"
 
     requests = SimpleNamespace(post=lambda *args, **kwargs: calls.append(args) or _Failure())
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=requests))
     attempt_budget = [0]
 
     adapter_module.send_openrouter_payload(
@@ -379,7 +385,7 @@ def test_incomplete_extraction_is_not_accepted_and_remains_retryable(
     monkeypatch.setitem(
         sys.modules,
         "curl_cffi",
-        SimpleNamespace(requests=SimpleNamespace(post=post)),
+        SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=SimpleNamespace(post=post)),
     )
     monkeypatch.setattr(
         adapter_module,
@@ -436,7 +442,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
     monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=lambda stream: {}))
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=lambda *a, **k: None))
 
-    pdf = b"fixture monthly annual report PDF bytes"
+    pdf = b"%PDF-1.7\nfixture monthly annual report PDF bytes"
     storage_client = _MemoryStorageClient()
     bigquery_client = _MemoryBigQueryClient()
 
@@ -582,7 +588,7 @@ def test_monthly_incremental_retry_reuses_canonical_pdf_revision(
         Session=lambda: _Session(),
         post=lambda url, **kwargs: provider_calls.append(kwargs) or _ProviderResponse(),
     )
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=requests))
 
     helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
@@ -717,7 +723,7 @@ def test_missing_table_requires_explicit_initialization_workflow(
     monkeypatch.setitem(sys.modules, "functions_framework", functions_framework)
     monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=lambda stream: {}))
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=lambda *a, **k: None))
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=SimpleNamespace()))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=SimpleNamespace()))
     google_auth = ModuleType("google.auth")
     google_auth.default = lambda: ("fixture-credentials", "fixture-project")  # type: ignore[attr-defined]
     google = ModuleType("google")
@@ -779,7 +785,7 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
         content = pdf
 
     requests = SimpleNamespace(Session=lambda: SimpleNamespace(get=lambda *a, **k: _DownloadResponse()))
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=requests))
 
     helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
     monkeypatch.setattr(helper, "get_project_number", lambda project_id: "123")
@@ -883,7 +889,7 @@ def test_importing_financial_pipeline_modules_does_not_construct_clients_or_call
     monkeypatch.setitem(sys.modules, "yaml", SimpleNamespace(safe_load=forbidden("yaml")))
     monkeypatch.setitem(sys.modules, "bs4", SimpleNamespace(BeautifulSoup=forbidden("BeautifulSoup")))
     requests = SimpleNamespace(Session=forbidden("provider/source session"), post=forbidden("provider"))
-    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=requests))
+    monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(CurlHttpVersion=SimpleNamespace(V1_1=2), requests=requests))
 
     google_auth = ModuleType("google.auth")
     google_auth.default = forbidden("google.auth.default")  # type: ignore[attr-defined]

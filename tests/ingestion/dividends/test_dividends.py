@@ -14,6 +14,7 @@ bs4 = types.ModuleType("bs4")
 bs4.BeautifulSoup = object
 sys.modules["bs4"] = bs4
 curl_cffi = types.ModuleType("curl_cffi")
+curl_cffi.CurlHttpVersion = types.SimpleNamespace(V1_1=2)
 curl_cffi.requests = types.SimpleNamespace(Session=object)
 sys.modules["curl_cffi"] = curl_cffi
 framework = types.ModuleType("functions_framework")

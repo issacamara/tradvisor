@@ -76,6 +76,7 @@ def _install_cloud_fakes(monkeypatch: pytest.MonkeyPatch, project_id: str | None
     bs4.BeautifulSoup = lambda *_args, **_kwargs: SimpleNamespace()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "bs4", bs4)
     curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=2)  # type: ignore[attr-defined]
     curl_cffi.requests = SimpleNamespace(Session=lambda: SimpleNamespace())  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "curl_cffi", curl_cffi)
 

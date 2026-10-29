@@ -28,6 +28,7 @@ def _load_financial_discovery(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     _load_module(SUPPORT_SCRIPTS / "company_reference.py", "company_reference")
 
     curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=2)  # type: ignore[attr-defined]
     curl_cffi.requests = SimpleNamespace(  # type: ignore[attr-defined]
         Session=lambda: (_ for _ in ()).throw(AssertionError("unexpected HTTP call"))
     )
