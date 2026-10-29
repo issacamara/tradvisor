@@ -1,4 +1,4 @@
-from curl_cffi import requests
+from curl_cffi import CurlHttpVersion, requests
 import pandas as pd
 from helper import (
     save_dataframe_as_csv,
@@ -16,12 +16,81 @@ import io
 import hashlib
 import importlib.util
 import sys
+import time
 from google.auth import default
 
 
 FINANCIALS_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
-# curl_cffi.CurlHttpVersion.V1_1 is the libcurl HTTP/1.1 constant.
-HTTP_VERSION_1_1 = 2
+# Keep the transport option typed; curl-cffi's impersonation profile supplies
+# the browser headers.
+HTTP_VERSION_1_1 = CurlHttpVersion.V1_1
+RICHBOURSE_MAX_ATTEMPTS = 3
+RICHBOURSE_RETRY_DELAYS = (1, 2)
+
+
+class RichBourseTransportError(RuntimeError):
+    """Raised when RichBourse returns unavailable or unusable content."""
+
+
+def _is_challenge_or_interstitial(content):
+    text = content.decode("utf-8", errors="ignore").lower()
+    return any(
+        marker in text
+        for marker in (
+            "just a moment",
+            "checking your browser",
+            "cf-chl-",
+            "enable javascript and cookies",
+            "access denied",
+        )
+    )
+
+
+def _richbourse_get(session, url, headers, *, timeout):
+    """Perform one validated, retryable RichBourse request."""
+    for attempt in range(RICHBOURSE_MAX_ATTEMPTS):
+        try:
+            response = session.get(
+                url,
+                headers=headers,
+                timeout=timeout,
+                impersonate="chrome",
+                http_version=HTTP_VERSION_1_1,
+                allow_redirects=True,
+            )
+            content = response.content or b""
+            retryable_status = response.status_code in {429, 500, 502, 503, 504}
+            if response.status_code == 200 and content and not _is_challenge_or_interstitial(content):
+                emit_event("ingestion.financials.transport", "succeeded", count=attempt + 1)
+                return response
+            if not retryable_status and response.status_code != 200:
+                raise RichBourseTransportError(
+                    f"RichBourse request failed with HTTP {response.status_code}: {url}"
+                )
+            if response.status_code == 200:
+                reason = "challenge/interstitial" if _is_challenge_or_interstitial(content) else "empty body"
+            else:
+                reason = f"HTTP {response.status_code}"
+            if attempt == RICHBOURSE_MAX_ATTEMPTS - 1:
+                raise RichBourseTransportError(
+                    f"RichBourse request unusable after {RICHBOURSE_MAX_ATTEMPTS} attempts ({reason}): {url}"
+                )
+            emit_event("ingestion.financials.transport", "retry", count=attempt + 1)
+        except RichBourseTransportError:
+            raise
+        except Exception as error:
+            if attempt == RICHBOURSE_MAX_ATTEMPTS - 1:
+                raise RichBourseTransportError(
+                    f"RichBourse request failed after {RICHBOURSE_MAX_ATTEMPTS} attempts: {url}"
+                ) from error
+            emit_event(
+                "ingestion.financials.transport",
+                "retry",
+                count=attempt + 1,
+                error_class=type(error).__name__,
+            )
+        time.sleep(RICHBOURSE_RETRY_DELAYS[attempt])
+    raise AssertionError("unreachable")
 
 
 def get_existing_symbols_and_years(table_id=None):
@@ -98,24 +167,13 @@ def get_announcements_for_symbol(symbol):
     """Fetch announcements for a specific symbol."""
     url = f"https://www.richbourse.com/common/actualite-categorie/index/etats-financiers?symbole={symbol}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
     }
     
     session = requests.Session()
-    response = session.get(
-        url,
-        headers=headers,
-        timeout=30,
-        impersonate="chrome",
-        http_version=HTTP_VERSION_1_1,
-        allow_redirects=True,
-    )
-    
-    if response.status_code != 200:
-        return []
+    response = _richbourse_get(session, url, headers, timeout=30)
     
     soup = BeautifulSoup(response.content, 'html.parser')
     
@@ -205,18 +263,7 @@ def extract_pdf_url_from_details_page(details_url, session, headers):
         html_headers = headers.copy()
         html_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         
-        response = session.get(
-            details_url,
-            headers=html_headers,
-            timeout=30,
-            impersonate="chrome",
-            http_version=HTTP_VERSION_1_1,
-            allow_redirects=True,
-        )
-        
-        if response.status_code != 200:
-            emit_event("ingestion.financials.details", "failed", error_class="HttpError")
-            return None
+        response = _richbourse_get(session, details_url, html_headers, timeout=30)
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
@@ -610,7 +657,6 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
             try:
                 session = requests.Session()
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                     "Accept": "application/pdf,*/*",
                     "Referer": "https://www.richbourse.com/",
                 }
@@ -624,19 +670,13 @@ def scrape_financials(url, openrouter_api_key=None, configuration=None):
                         raise Exception("Failed to extract PDF URL from details page")
                 
                 # Follow redirects and get the actual PDF
-                pdf_response = session.get(
-                    pdf_url,
-                    headers=headers,
-                    timeout=60,
-                    impersonate="chrome",
-                    http_version=HTTP_VERSION_1_1,
-                    allow_redirects=True,
-                )
-                
-                if pdf_response.status_code != 200:
-                    raise Exception(f"Failed to download PDF: HTTP {pdf_response.status_code}")
+                pdf_response = _richbourse_get(session, pdf_url, headers, timeout=60)
                 
                 pdf_content = pdf_response.content
+                if not pdf_content.startswith(b"%PDF-"):
+                    raise RichBourseTransportError(
+                        f"RichBourse returned invalid PDF content: {pdf_url}"
+                    )
                 document_revision = hashlib.sha256(pdf_content).hexdigest()
                 shared_adapter = _load_shared_extraction_module()
                 try:

@@ -269,12 +269,13 @@ def _load_monthly_scraper(
     requests = SimpleNamespace(
         Session=lambda: SimpleNamespace(
             get=lambda *args, **kwargs: SimpleNamespace(
-                status_code=200, content=b"monthly annual report"
+                status_code=200, content=b"%PDF-1.7\nmonthly annual report"
             ),
             close=lambda: None,
         )
     )
     curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=2)  # type: ignore[attr-defined]
     curl_cffi.requests = requests  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "curl_cffi", curl_cffi)
     yaml = ModuleType("yaml")
@@ -788,7 +789,7 @@ def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
     helper, client = loader
     scraper = _load_monthly_scraper(monkeypatch, helper)
     source_url = "https://reports.example/annual.pdf"
-    report_bytes = b"monthly annual report"
+    report_bytes = b"%PDF-1.7\nmonthly annual report"
     previous_hash = hashlib.sha256(b"previous PDF bytes").hexdigest()
     client.tables["project.stocks.financials"] = [{
         "symbol": "ABC",
