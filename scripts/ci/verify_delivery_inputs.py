@@ -61,7 +61,7 @@ def validate(root: Path) -> None:
         raise ValueError("production apply must consume the reviewed Terraform plan")
     if "terraform plan -out=tfplan" not in development:
         raise ValueError("development delivery must create a Terraform plan")
-    if "workflow_call:" not in development or "github.event_name == 'workflow_call'" not in development:
+    if "workflow_call:" not in development or "inputs.automatic == true" not in development:
         raise ValueError("development delivery must be reusable from CI")
     if "needs: release" not in ci or "uses: ./.github/workflows/cd-development.yml" not in ci:
         raise ValueError("CI must call development delivery after release")

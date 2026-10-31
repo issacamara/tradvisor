@@ -57,13 +57,13 @@ def test_development_delivery_consumes_successful_ci_release() -> None:
     production = (root / "cd-production.yml").read_text()
     release = (root / "release.yml").read_text()
     assert "workflow_call:" in development
-    assert "github.event_name == 'workflow_call'" in development
+    assert "inputs.automatic == true" in development
     assert "github.event_name == 'workflow_dispatch'" in development
-    assert "github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "inputs.automatic == true && env.DELIVERY_ACTION == 'apply'" in development
     assert "terraform apply -auto-approve \"$plan_path\"" in development
     assert "Verify manually supplied development Terraform plan" in development
     assert "Verify automatically generated development Terraform plan" in development
-    assert "github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "inputs.automatic == true && env.DELIVERY_ACTION == 'apply'" in development
     assert "openrouter_secret_id" in development
     assert "verify_openrouter_secret_version.py" in development
     assert "gcloud storage ls \"gs://$TF_STATE_BUCKET/reviewed-plans/development" not in development
