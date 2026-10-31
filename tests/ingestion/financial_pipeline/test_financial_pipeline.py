@@ -346,6 +346,48 @@ def test_provider_attempt_budget_is_shared_and_bounded(
     assert len(calls) == 1
 
 
+def test_provider_http_failure_emits_only_sanitized_status(
+    adapter_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[object, ...]] = []
+
+    class _Response:
+        status_code = 503
+        text = "secret provider response body"
+
+    requests = SimpleNamespace(post=lambda *args, **kwargs: _Response())
+    monkeypatch.setitem(
+        sys.modules,
+        "curl_cffi",
+        SimpleNamespace(
+            CurlHttpVersion=SimpleNamespace(V1_1=2),
+            requests=requests,
+        ),
+    )
+    monkeypatch.setattr(
+        adapter_module,
+        "emit_event",
+        lambda *args, **kwargs: events.append((*args, kwargs)),
+    )
+
+    assert adapter_module.send_openrouter_payload(
+        [{"type": "text", "text": "fixture"}],
+        "fixture-key",
+        attempt_budget=[0],
+        max_provider_attempts=1,
+    ) is None
+
+    assert events == [
+        (
+            "ingestion.financials.provider",
+            "failed",
+            {"error_class": "ProviderHTTP503"},
+        )
+    ]
+    assert "secret provider response body" not in repr(events)
+
+
 def test_incomplete_extraction_is_not_accepted_and_remains_retryable(
     adapter_module: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
