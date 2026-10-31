@@ -1,7 +1,9 @@
 name: Development delivery
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [development]
   workflow_dispatch:
     inputs:
@@ -42,18 +44,17 @@ permissions:
   id-token: write
 
 jobs:
-  prepare:
-    if: github.event_name == 'push'
-    uses: ./.github/workflows/release.yml
-    secrets: inherit
   delivery:
-    needs: prepare
-    if: always() && github.event_name == 'workflow_dispatch' && github.ref_name == 'development' && needs.prepare.result == 'skipped'
+    if: >-
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'development')
     runs-on: ubuntu-latest
     env:
-      DELIVERY_ACTION: ${{ inputs.action }}
-      RELEASE_ID: ${{ inputs.release_id }}
-      RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+      DELIVERY_ACTION: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.action }}
+      RELEASE_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_id }}
+      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
       ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
@@ -64,6 +65,8 @@ jobs:
       name: development
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
       - name: Download verified release bundle
         uses: actions/download-artifact@v4
         with:
@@ -74,16 +77,17 @@ jobs:
       - name: Bind development delivery to the release commit
         env:
           RELEASE_ID: ${{ env.RELEASE_ID }}
+          DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         run: |
           release_commit="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["commit"])')"
           test "$RELEASE_ID" = "$release_commit"
-          test "$GITHUB_SHA" = "$release_commit"
+          test "$DEPLOY_SHA" = "$release_commit"
       - name: Resolve release image
         id: release-image
         env:
           API_IMAGE_INPUT: ${{ inputs.api_image }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ -n "$API_IMAGE_INPUT" ]; then
             api_image="$API_IMAGE_INPUT"
           else
             digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
@@ -106,11 +110,16 @@ jobs:
           PLAN_RUN_ID_INPUT: ${{ inputs.terraform_plan_run_id }}
           RETIREMENT_PHASE_INPUT: ${{ inputs.retirement_phase }}
         run: |
-          if [ "$DELIVERY_ACTION" = apply ]; then
+          if [ "$DELIVERY_ACTION" = apply ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             test -n "$PLAN_RUN_ID_INPUT" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "plan_run_id=$PLAN_RUN_ID_INPUT" >> "$GITHUB_OUTPUT"
             echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && [ "$DELIVERY_ACTION" = apply ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "retirement_phase=prepare" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "available=false" >> "$GITHUB_OUTPUT"
@@ -279,7 +288,10 @@ jobs:
           echo "Cloud Tasks IAM policy permission was not visible after 360 seconds" >&2
           exit 1
       - name: Plan development changes
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
+        if: >-
+          steps.delivery-gate.outputs.proceed == 'true' &&
+          (env.DELIVERY_ACTION == 'plan' ||
+          (github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -322,7 +334,10 @@ jobs:
             exit 1
           fi
       - name: Create reviewed development Terraform plan attestation
-        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
+        if: >-
+          steps.delivery-gate.outputs.proceed == 'true' &&
+          (env.DELIVERY_ACTION == 'plan' ||
+          (github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -352,6 +367,24 @@ jobs:
           [[ "$RELEASE_ID" =~ ^[a-zA-Z0-9._-]+$ ]]
           tar -czf reviewed-plan.tar.gz -C terraform-plan-artifact .
           gcloud storage cp --no-clobber reviewed-plan.tar.gz "gs://$TF_STATE_BUCKET/reviewed-plans/development/$GITHUB_RUN_ID/$RELEASE_ID-$RETIREMENT_PHASE.tar.gz"
+      - name: Verify automatically generated development Terraform plan
+        if: >-
+          steps.delivery-gate.outputs.proceed == 'true' &&
+          github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'
+        env:
+          API_IMAGE: ${{ steps.release-image.outputs.api_image }}
+          RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
+        run: |
+          python3 scripts/deployment/terraform_plan_attestation.py verify \
+            --plan terraform/tfplan \
+            --attestation terraform/plan-attestation.json \
+            --release-manifest release/manifest/release-manifest.json \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --environment development \
+            --project-id "$GCP_PROJECT_ID" \
+            --state-bucket "$TF_STATE_BUCKET" \
+            --state-prefix "$TF_STATE_PREFIX" \
+            --api-image "$API_IMAGE"
       - name: Clear protection on retired workflow dispatcher
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
         env:
@@ -392,8 +425,12 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          cp ../reviewed-plan/function-source-archives/*.zip .
-          plan_path=../reviewed-plan/tfplan
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            cp ../reviewed-plan/function-source-archives/*.zip .
+            plan_path=../reviewed-plan/tfplan
+          else
+            plan_path=tfplan
+          fi
           set +e
           terraform apply -auto-approve "$plan_path" > terraform-apply.log 2>&1
           apply_status=$?
@@ -443,8 +480,9 @@ jobs:
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
         env:
           RELEASE_ID: ${{ env.RELEASE_ID }}
+          DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         run: |
-          jq -n --arg commit "$GITHUB_SHA" --arg release_id "$RELEASE_ID" \
+          jq -n --arg commit "$DEPLOY_SHA" --arg release_id "$RELEASE_ID" \
             --arg digest "$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')" \
             '{commit:$commit,release_id:$release_id,backend_digest:$digest}' > development-deployment.json
       - uses: actions/upload-artifact@v4

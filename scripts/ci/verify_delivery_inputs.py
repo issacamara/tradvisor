@@ -61,12 +61,16 @@ def validate(root: Path) -> None:
         raise ValueError("production apply must consume the reviewed Terraform plan")
     if "terraform plan -out=tfplan" not in development:
         raise ValueError("development delivery must create a Terraform plan")
-    if "github.event_name == 'push' && 'apply'" in development:
-        raise ValueError("development push must not select Terraform apply")
-    if "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" in development:
-        raise ValueError("development push must not reach Terraform apply")
+    if "workflows: [CI]" not in development or "types: [completed]" not in development:
+        raise ValueError("development delivery must consume completed CI workflow runs")
+    if "github.event.workflow_run.conclusion == 'success'" not in development:
+        raise ValueError("development delivery must require successful CI")
+    if "github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'" not in development:
+        raise ValueError("successful CI must trigger the development apply path")
     if "Verify manually supplied development Terraform plan" not in development:
-        raise ValueError("development apply must verify a manually supplied reviewed plan")
+        raise ValueError("development apply must verify its Terraform plan")
+    if "Verify automatically generated development Terraform plan" not in development:
+        raise ValueError("automatic development apply must verify its generated plan")
     if 'terraform apply -auto-approve "$plan_path"' not in development:
         raise ValueError("development apply must consume the reviewed Terraform plan")
     if "openrouter_secret_id" not in development or "verify_openrouter_secret_version.py" not in development:

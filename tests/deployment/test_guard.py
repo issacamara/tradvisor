@@ -7,8 +7,8 @@ def test_development_apply_is_manual_and_guarded() -> None:
     assert "workflow_dispatch" in workflow
     assert "branches: [development]" in workflow
     assert "github.event_name == 'workflow_dispatch'" in workflow
-    assert "github.event_name == 'push' && 'apply'" not in workflow
-    assert "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" not in workflow
+    assert "workflows: [CI]" in workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in workflow
     assert "Select reviewed development plan" in workflow
     assert "Decide whether to deliver" in workflow
     assert 'echo "proceed=true"' in workflow
