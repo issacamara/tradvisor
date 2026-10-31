@@ -1,10 +1,15 @@
 name: Development delivery
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [development]
+  workflow_call:
+    inputs:
+      action: {required: true, type: string}
+      api_image: {required: false, type: string}
+      release_id: {required: true, type: string}
+      release_run_id: {required: true, type: string}
+      terraform_plan_run_id: {required: false, type: string}
+      openrouter_secret_id: {required: false, type: string}
+      retirement_phase: {required: true, type: string}
   workflow_dispatch:
     inputs:
       action:
@@ -46,15 +51,14 @@ permissions:
 jobs:
   delivery:
     if: >-
-      (github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_call' && inputs.action == 'apply') ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'development')
     runs-on: ubuntu-latest
     env:
-      DELIVERY_ACTION: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.action }}
-      RELEASE_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_id }}
-      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      DELIVERY_ACTION: ${{ inputs.action }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+      DEPLOY_SHA: ${{ github.sha }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
       ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
@@ -117,7 +121,7 @@ jobs:
             echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && [ "$DELIVERY_ACTION" = apply ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_call ] && [ "$DELIVERY_ACTION" = apply ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "retirement_phase=prepare" >> "$GITHUB_OUTPUT"
             exit 0
@@ -291,7 +295,7 @@ jobs:
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
           (env.DELIVERY_ACTION == 'plan' ||
-          (github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'))
+          (github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -337,7 +341,7 @@ jobs:
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
           (env.DELIVERY_ACTION == 'plan' ||
-          (github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'))
+          (github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -370,7 +374,7 @@ jobs:
       - name: Verify automatically generated development Terraform plan
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
-          github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'
+          github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'
         env:
           API_IMAGE: ${{ steps.release-image.outputs.api_image }}
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}

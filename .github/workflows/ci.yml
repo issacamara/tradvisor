@@ -143,3 +143,18 @@ jobs:
       id-token: write
     uses: ./.github/workflows/release.yml
     secrets: inherit
+
+  delivery:
+    needs: release
+    if: github.event_name == 'push' && github.ref_name == 'development'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/cd-development.yml
+    with:
+      action: apply
+      release_id: ${{ github.sha }}
+      release_run_id: ${{ github.run_id }}
+      retirement_phase: prepare
+    secrets: inherit
