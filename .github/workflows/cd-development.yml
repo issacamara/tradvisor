@@ -26,6 +26,10 @@ on:
         description: "GitHub Actions run ID containing the reviewed Terraform plan (apply only)"
         required: false
         type: string
+      openrouter_secret_id:
+        description: "Non-secret development Secret Manager ID (required for apply)"
+        required: false
+        type: string
       retirement_phase:
         description: "Retired dispatcher transition phase"
         required: true
@@ -44,12 +48,12 @@ jobs:
     secrets: inherit
   delivery:
     needs: prepare
-    if: always() && github.ref_name == 'development' && (github.event_name == 'push' || needs.prepare.result == 'skipped')
+    if: always() && github.event_name == 'workflow_dispatch' && github.ref_name == 'development' && needs.prepare.result == 'skipped'
     runs-on: ubuntu-latest
     env:
-      DELIVERY_ACTION: ${{ github.event_name == 'push' && 'apply' || inputs.action }}
-      RELEASE_ID: ${{ github.event_name == 'push' && github.sha || inputs.release_id }}
-      RELEASE_RUN_ID: ${{ github.event_name == 'push' && github.run_id || inputs.release_run_id }}
+      DELIVERY_ACTION: ${{ inputs.action }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      RELEASE_RUN_ID: ${{ inputs.release_run_id }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
       ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
@@ -102,19 +106,15 @@ jobs:
           PLAN_RUN_ID_INPUT: ${{ inputs.terraform_plan_run_id }}
           RETIREMENT_PHASE_INPUT: ${{ inputs.retirement_phase }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            if [ "$DELIVERY_ACTION" != apply ]; then
-              echo "available=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          if [ "$DELIVERY_ACTION" = apply ]; then
             test -n "$PLAN_RUN_ID_INPUT" || { echo "terraform_plan_run_id is required for apply" >&2; exit 1; }
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "plan_run_id=$PLAN_RUN_ID_INPUT" >> "$GITHUB_OUTPUT"
             echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "retirement_phase=prepare" >> "$GITHUB_OUTPUT"
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
       - name: Decide whether to deliver
         id: delivery-gate
         run: |
@@ -191,6 +191,12 @@ jobs:
             --state-bucket "$TF_STATE_BUCKET" \
             --state-prefix "$TF_STATE_PREFIX" \
             --api-image "$API_IMAGE"
+      - name: Verify OpenRouter secret has an enabled version
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
+        env:
+          OPENROUTER_SECRET_ID: ${{ inputs.openrouter_secret_id }}
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+        run: python3 scripts/deployment/verify_openrouter_secret_version.py
       - name: Initialize Terraform backend
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION != 'frontend'
         working-directory: terraform
@@ -272,7 +278,7 @@ jobs:
           echo "Cloud Tasks IAM policy permission was not visible after 360 seconds" >&2
           exit 1
       - name: Plan development changes
-        if: steps.delivery-gate.outputs.proceed == 'true' && (env.DELIVERY_ACTION == 'plan' || (github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'))
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -293,14 +299,28 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
+          if terraform plan -out=tfplan -no-color > terraform-plan.log 2>&1; then
+            python3 ../scripts/deployment/sanitize_terraform_diagnostics.py \
+              < terraform-plan.log > terraform-plan-diagnostic.txt
+          else
+            plan_status=$?
+            python3 ../scripts/deployment/sanitize_terraform_diagnostics.py \
+              < terraform-plan.log > terraform-plan-diagnostic.txt
+            echo "Terraform plan failed (exit code $plan_status). Sanitized diagnostics:" >&2
+            tail -80 terraform-plan-diagnostic.txt >&2
+            exit "$plan_status"
+          fi
           set -o pipefail
-          terraform plan -out=tfplan -no-color 2>&1 | tee terraform-plan.log || {
-            echo "Terraform plan failed. The sanitized diagnostic is in terraform-plan.log." >&2
+          if ! terraform show -json tfplan 2> terraform-show.log \
+            | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'; then
+            python3 ../scripts/deployment/sanitize_terraform_diagnostics.py \
+              < terraform-show.log > terraform-show-diagnostic.txt
+            echo "Terraform plan summary failed. Sanitized diagnostics:" >&2
+            tail -80 terraform-show-diagnostic.txt >&2
             exit 1
-          }
-          terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
+          fi
       - name: Create reviewed development Terraform plan attestation
-        if: steps.delivery-gate.outputs.proceed == 'true' && (env.DELIVERY_ACTION == 'plan' || (github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'))
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan'
         working-directory: terraform
         env:
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -320,23 +340,7 @@ jobs:
           mkdir -p ../terraform-plan-artifact/function-source-archives
           cp ./*.zip ../terraform-plan-artifact/function-source-archives/
           cp tfplan plan-attestation.json ../terraform-plan-artifact/
-          cp terraform-plan.log ../terraform-plan-artifact/
-      - name: Verify automatic development Terraform plan
-        if: steps.delivery-gate.outputs.proceed == 'true' && github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'
-        env:
-          API_IMAGE: ${{ steps.release-image.outputs.api_image }}
-          RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
-        run: |
-          python3 scripts/deployment/terraform_plan_attestation.py verify \
-            --plan terraform/tfplan \
-            --attestation terraform/plan-attestation.json \
-            --release-manifest release/manifest/release-manifest.json \
-            --release-run-id "$RELEASE_RUN_ID" \
-            --environment development \
-            --project-id "$GCP_PROJECT_ID" \
-            --state-bucket "$TF_STATE_BUCKET" \
-            --state-prefix "$TF_STATE_PREFIX" \
-            --api-image "$API_IMAGE"
+          cp terraform-plan-diagnostic.txt ../terraform-plan-artifact/
       - name: Store reviewed development Terraform plan privately
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'plan' && github.event_name == 'workflow_dispatch'
         env:
@@ -386,12 +390,8 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            cp ../reviewed-plan/function-source-archives/*.zip .
-            plan_path=../reviewed-plan/tfplan
-          else
-            plan_path=tfplan
-          fi
+          cp ../reviewed-plan/function-source-archives/*.zip .
+          plan_path=../reviewed-plan/tfplan
           set +e
           terraform apply -auto-approve "$plan_path" > terraform-apply.log 2>&1
           apply_status=$?
@@ -399,23 +399,21 @@ jobs:
           if [ "$apply_status" -ne 0 ]; then
             {
               echo "Terraform apply failed (exit code $apply_status). Sanitized diagnostics:"
-              sanitize() {
-                sed -E \
-                  -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?<redacted>#g' \
-                  -e 's#([[:space:]]|^)(token|password|secret|api[_-]?key|credential)([=:])[^[:space:]]+#\1\2\3<redacted>#Ig'
-              }
+              python3 ../scripts/deployment/sanitize_terraform_diagnostics.py \
+                < terraform-apply.log > terraform-apply-diagnostic.txt
               if grep -Eq '(^|[[:space:]│])Error:' terraform-apply.log; then
                 awk '
                   /(^|[[:space:]│])Error:/ { capture=1; lines=0 }
                   capture && lines < 8 { print; lines++ }
                   capture && lines >= 8 { capture=0 }
-                ' terraform-apply.log | sanitize
+                ' terraform-apply.log \
+                  | python3 ../scripts/deployment/sanitize_terraform_diagnostics.py
               else
                 echo "No structured Terraform diagnostic was emitted; inspect the private apply-diagnostic artifact."
                 echo "Last 80 lines of sanitized Terraform output:"
-                tail -80 terraform-apply.log | sanitize
+                tail -80 terraform-apply-diagnostic.txt
               fi
-            } | tee terraform-apply-diagnostic.txt >&2
+            } >&2
             exit "$apply_status"
           fi
       - name: Build development frontend

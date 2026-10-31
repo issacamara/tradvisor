@@ -50,7 +50,7 @@ def test_delivery_workflows_keep_plan_attestation_checks() -> None:
     assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in production
 
 
-def test_push_prepares_and_automatically_plans_and_applies() -> None:
+def test_development_push_prepares_release_without_delivery() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     development = (root / "cd-development.yml").read_text()
     ci = (root / "ci.yml").read_text()
@@ -59,13 +59,16 @@ def test_push_prepares_and_automatically_plans_and_applies() -> None:
     assert "branches: [development]" in development
     assert "uses: ./.github/workflows/release.yml" in development
     assert "needs: prepare" in development
-    assert "github.event_name == 'push' && 'apply'" in development
-    assert "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "github.event_name == 'workflow_dispatch'" in development
+    assert "github.event_name == 'push' && 'apply'" not in development
+    assert "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" not in development
     assert "terraform apply -auto-approve \"$plan_path\"" in development
-    assert "Verify automatic development Terraform plan" in development
-    assert "--attestation terraform/plan-attestation.json" in development
+    assert "Verify manually supplied development Terraform plan" in development
+    assert "Verify automatic development Terraform plan" not in development
+    assert "openrouter_secret_id" in development
+    assert "verify_openrouter_secret_version.py" in development
     assert "gcloud storage ls \"gs://$TF_STATE_BUCKET/reviewed-plans/development" not in development
-    assert "steps.delivery-gate.outputs.proceed == 'true'" in development
+    assert "if: always() && github.event_name == 'workflow_dispatch'" in development
     assert "steps.release-image.outputs.api_image" in development
     assert "github.event_name == 'push' && github.ref_name == 'development'" in ci
     assert "uses: ./.github/workflows/release.yml" in ci
