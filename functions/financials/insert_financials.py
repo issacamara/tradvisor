@@ -20,6 +20,14 @@ from helper import (
 MAX_PROVIDER_ATTEMPTS_PER_PDF = 4
 
 
+def _provider_http_error_class(status_code):
+    """Return a sanitized provider HTTP classification for a response status."""
+    if isinstance(status_code, int) and not isinstance(status_code, bool):
+        if 100 <= status_code <= 599:
+            return f"ProviderHTTP{status_code}"
+    return "ProviderError"
+
+
 def is_data_incomplete(data):
     """Check if extracted data is incomplete (any missing value)."""
     if data is None:
@@ -413,7 +421,11 @@ Each evidenced amount object has source-reported numeric "value", "currency", ex
                     else:
                         emit_event("ingestion.financials.provider", "incomplete")
             else:
-                emit_event("ingestion.financials.provider", "failed", error_class="ProviderError")
+                emit_event(
+                    "ingestion.financials.provider",
+                    "failed",
+                    error_class=_provider_http_error_class(response.status_code),
+                )
         except Exception as e:
             emit_event("ingestion.financials.provider", "failed", error_class=type(e).__name__)
             continue
