@@ -157,5 +157,6 @@ jobs:
       action: apply
       release_id: ${{ github.sha }}
       release_run_id: ${{ github.run_id }}
+      openrouter_secret_id: openrouter-api-key
       retirement_phase: prepare
     secrets: inherit

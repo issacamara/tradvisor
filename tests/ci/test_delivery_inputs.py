@@ -73,6 +73,7 @@ def test_development_delivery_consumes_successful_ci_release() -> None:
     assert "needs: [validate, frontend]" in ci
     assert "needs: release" in ci
     assert "uses: ./.github/workflows/cd-development.yml" in ci
+    assert "openrouter_secret_id: openrouter-api-key" in ci
     assert "workflow_dispatch:" in development
     assert "branches: [main]" in production
     assert "github.event_name == 'workflow_dispatch'" in production
