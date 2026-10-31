@@ -19,14 +19,14 @@ resource "google_cloudfunctions2_function" "functions" {
     max_instance_request_concurrency = each.key == "scrape_shares" ? var.shares_max_request_concurrency : null
     available_memory                 = "512Mi"
     timeout_seconds                  = 180
-    service_account_email            = google_service_account.tradvisor_sa.email
+    service_account_email            = contains(["scrape_financials", "insert_financials"], each.key) ? google_service_account.financials_runtime.email : google_service_account.tradvisor_sa.email
     environment_variables = merge({
       TRADVISOR_RUNTIME_TARGET             = "ingestion"
       TRADVISOR_ENVIRONMENT                = var.environment
       GOOGLE_CLOUD_PROJECT                 = var.project_id
       TRADVISOR_TARGET_PROJECT_ID          = var.project_id
       TRADVISOR_ENVIRONMENT_PROJECT_ID     = var.v1_environment_project_id
-      TRADVISOR_INGESTION_SERVICE_ACCOUNT  = google_service_account.tradvisor_sa.email
+      TRADVISOR_INGESTION_SERVICE_ACCOUNT  = contains(["scrape_financials", "insert_financials"], each.key) ? google_service_account.financials_runtime.email : google_service_account.tradvisor_sa.email
       TRADVISOR_INGESTION_DATA_BUCKET      = google_storage_bucket.data-brvm.name
       TRADVISOR_INGESTION_ARCHIVE_BUCKET   = google_storage_bucket.archive-brvm.name
       TRADVISOR_INGESTION_DATASET          = "stocks"
