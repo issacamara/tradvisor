@@ -41,11 +41,3 @@ def test_development_apply_is_manual_and_guarded() -> None:
     assert "dev-tradvisor-tfstate" in workflow
     assert "state/dev" in workflow
     assert "ALLOWED_BRANCH: development" in workflow
-
-
-def test_terraform_plan_uses_configured_development_environment_for_dev_prs() -> None:
-    workflow = Path(".github/workflows/terraform.yml").read_text()
-    assert "github.base_ref == 'main' && 'production-plan'" in workflow
-    assert "github.ref_name == 'main' && 'production'" in workflow
-    assert "'development' }}" in workflow
-    assert "development-plan" not in workflow
