@@ -10,6 +10,46 @@ resource "google_service_account" "tradvisor_sa" {
   }
 }
 
+# Financial extraction has a separate runtime identity so the historical
+# project-wide grants on the shared ingestion account do not reach these two
+# functions.
+resource "google_service_account" "financials_runtime" {
+  account_id   = var.financials_runtime_service_account_id
+  display_name = "Tradvisor financials runtime"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# BigQuery jobs are project-scoped; table data access is limited to stocks.
+resource "google_project_iam_member" "financials_runtime_bigquery_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.financials_runtime.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "financials_runtime_data_editor" {
+  project    = var.project_id
+  dataset_id = "stocks"
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.financials_runtime.email}"
+}
+
+# Runtime code lists, reads, writes, and archives objects only in these two
+# buckets. Keep the grants at bucket scope.
+resource "google_storage_bucket_iam_member" "financials_runtime_data_bucket" {
+  bucket = google_storage_bucket.data-brvm.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.financials_runtime.email}"
+}
+
+resource "google_storage_bucket_iam_member" "financials_runtime_archive_bucket" {
+  bucket = google_storage_bucket.archive-brvm.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.financials_runtime.email}"
+}
+
 # Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
   count              = var.manage_legacy_service_account_credentials ? 1 : 0

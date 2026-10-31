@@ -5,6 +5,17 @@ variable "project_id" {
   #   default     = "sbx-31371-uw1yf3stmtx5c52rawmo"
 }
 
+variable "financials_runtime_service_account_id" {
+  description = "Dedicated service account ID for the two recurring financials functions"
+  type        = string
+  default     = "tradvisor-financials-runtime"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.financials_runtime_service_account_id))
+    error_message = "financials_runtime_service_account_id must be a valid 6-30 character service account ID."
+  }
+}
+
 variable "environment" {
   description = "Deployment environment represented by this Terraform state"
   type        = string
