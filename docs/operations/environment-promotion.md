@@ -48,13 +48,24 @@ deployment credentials.
 
 1. CI checks each PR. A push to `development` builds the backend image once,
    resolves its registry digest, and creates the commit-bound release manifest.
-2. Dispatch development `plan` with the release ID, release run ID, and exact
-   development image digest. Review the saved plan, then dispatch `apply` with
-   its plan run ID. Apply verifies the manifest and saved-plan attestation,
-   deploys Cloud Run through Terraform, then builds and deploys the static
-   frontend to development Firebase Hosting. The workflow checks the API
-   health endpoint and Hosting response, then records non-secret deployment
-   evidence. Complete the authenticated Swing and Long-Term smoke review.
+   This push does not run development Terraform, apply infrastructure, or
+   deploy Firebase Hosting.
+2. Before planning, dispatch development `import` with the release ID and
+   release run ID to reconcile any existing BigQuery tables and Scheduler jobs
+   into Terraform state. Then dispatch development `plan` with the release ID,
+   release run ID, and exact development image digest. Review the saved plan,
+   then dispatch `apply` with its plan run ID and the explicit non-secret
+   `openrouter_secret_id` input. Do not import or otherwise change Terraform
+   state between plan generation and apply; if state reconciliation is needed,
+   run `import` first and generate a fresh plan afterward.
+   Apply verifies the manifest and saved-plan attestation against the release,
+   environment, and target project, then checks that the referenced Secret
+   Manager secret has an enabled version using version metadata only. It never
+   reads the secret payload. After the environment approval, apply deploys
+   Cloud Run through Terraform, then builds and deploys the static frontend to
+   development Firebase Hosting. The workflow checks the API health endpoint
+   and Hosting response, then records non-secret deployment evidence. Complete
+   the authenticated Swing and Long-Term smoke review.
 3. Merge the tested development tree into `main` with a merge commit. The
    production push checks the matching development commit, release manifest,
    and successful development deployment evidence, then copies that image

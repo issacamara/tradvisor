@@ -21,6 +21,8 @@ def validate(root: Path) -> None:
     development = (root / ".github/workflows/cd-development.yml").read_text()
     production = (root / ".github/workflows/cd-production.yml").read_text()
     plan_attestation = (root / "scripts/deployment/terraform_plan_attestation.py").read_text()
+    secret_version_gate = (root / "scripts/deployment/verify_openrouter_secret_version.py").read_text()
+    diagnostic_sanitizer = (root / "scripts/deployment/sanitize_terraform_diagnostics.py").read_text()
     release = (root / ".github/workflows/release.yml").read_text()
     dockerfile = (root / "backend/Dockerfile").read_text()
     manifest = (root / "scripts/release/manifest.py").read_text()
@@ -59,8 +61,30 @@ def validate(root: Path) -> None:
         raise ValueError("production apply must consume the reviewed Terraform plan")
     if "terraform plan -out=tfplan" not in development:
         raise ValueError("development delivery must create a Terraform plan")
+    if "github.event_name == 'push' && 'apply'" in development:
+        raise ValueError("development push must not select Terraform apply")
+    if "github.event_name == 'push' && env.DELIVERY_ACTION == 'apply'" in development:
+        raise ValueError("development push must not reach Terraform apply")
+    if "Verify manually supplied development Terraform plan" not in development:
+        raise ValueError("development apply must verify a manually supplied reviewed plan")
     if 'terraform apply -auto-approve "$plan_path"' not in development:
-        raise ValueError("development apply must consume its same-run Terraform plan")
+        raise ValueError("development apply must consume the reviewed Terraform plan")
+    if "openrouter_secret_id" not in development or "verify_openrouter_secret_version.py" not in development:
+        raise ValueError("development apply must verify the OpenRouter secret-version prerequisite")
+    if any(marker in development for marker in ("OPENROUTER_API_KEY", "secret_data", "payload.data")):
+        raise ValueError("development delivery must not receive or read the OpenRouter payload")
+    for required in ('"versions"', '"list"', '"--filter=state=ENABLED"', '"--format=value(name)"'):
+        if required not in secret_version_gate:
+            raise ValueError("OpenRouter secret gate must query enabled version metadata only")
+    if '"access"' in secret_version_gate or '"--format=get(payload.data)"' in secret_version_gate:
+        raise ValueError("OpenRouter secret gate must not read a secret payload")
+    if "sanitize_terraform_diagnostics.py" not in development:
+        raise ValueError("development Terraform diagnostics must be sanitized before emission")
+    if "cp terraform-plan-diagnostic.txt" not in development or "cp terraform-plan.log" in development:
+        raise ValueError("development plan artifacts must exclude raw Terraform logs")
+    for marker in ('authorization', 'bearer', 'openrouter', 'secret', 'credential'):
+        if marker not in diagnostic_sanitizer.lower():
+            raise ValueError("Terraform diagnostic sanitizer must redact credential material")
     if "def validate_attestation" not in plan_attestation or "terraform_plan_sha256" not in plan_attestation:
         raise ValueError("Terraform plan attestation must bind the exact plan checksum")
 
