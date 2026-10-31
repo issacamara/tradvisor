@@ -3,6 +3,7 @@ name: Development delivery
 on:
   workflow_call:
     inputs:
+      automatic: {required: false, type: boolean, default: false}
       action: {required: true, type: string}
       api_image: {required: false, type: string}
       release_id: {required: true, type: string}
@@ -51,7 +52,7 @@ permissions:
 jobs:
   delivery:
     if: >-
-      (github.event_name == 'workflow_call' && inputs.action == 'apply') ||
+      (inputs.automatic == true && inputs.action == 'apply') ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'development')
     runs-on: ubuntu-latest
     env:
@@ -59,6 +60,7 @@ jobs:
       RELEASE_ID: ${{ inputs.release_id }}
       RELEASE_RUN_ID: ${{ inputs.release_run_id }}
       DEPLOY_SHA: ${{ github.sha }}
+      AUTOMATIC_DELIVERY: ${{ inputs.automatic }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
       ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
@@ -121,7 +123,7 @@ jobs:
             echo "retirement_phase=$RETIREMENT_PHASE_INPUT" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$GITHUB_EVENT_NAME" = workflow_call ] && [ "$DELIVERY_ACTION" = apply ]; then
+          if [ "$AUTOMATIC_DELIVERY" = true ] && [ "$DELIVERY_ACTION" = apply ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "retirement_phase=prepare" >> "$GITHUB_OUTPUT"
             exit 0
@@ -295,7 +297,7 @@ jobs:
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
           (env.DELIVERY_ACTION == 'plan' ||
-          (github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'))
+          (inputs.automatic == true && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}
@@ -341,7 +343,7 @@ jobs:
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
           (env.DELIVERY_ACTION == 'plan' ||
-          (github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'))
+          (inputs.automatic == true && env.DELIVERY_ACTION == 'apply'))
         working-directory: terraform
         env:
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -374,7 +376,7 @@ jobs:
       - name: Verify automatically generated development Terraform plan
         if: >-
           steps.delivery-gate.outputs.proceed == 'true' &&
-          github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'
+          inputs.automatic == true && env.DELIVERY_ACTION == 'apply'
         env:
           API_IMAGE: ${{ steps.release-image.outputs.api_image }}
           RELEASE_RUN_ID: ${{ env.RELEASE_RUN_ID }}
@@ -429,7 +431,7 @@ jobs:
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          if [ "$AUTOMATIC_DELIVERY" != true ]; then
             cp ../reviewed-plan/function-source-archives/*.zip .
             plan_path=../reviewed-plan/tfplan
           else

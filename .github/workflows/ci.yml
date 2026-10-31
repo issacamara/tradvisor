@@ -153,6 +153,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/cd-development.yml
     with:
+      automatic: true
       action: apply
       release_id: ${{ github.sha }}
       release_run_id: ${{ github.run_id }}
