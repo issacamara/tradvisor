@@ -31,7 +31,8 @@ resource "google_project_iam_member" "financials_runtime_bigquery_job_user" {
 
 resource "google_bigquery_dataset_iam_member" "financials_runtime_data_editor" {
   project    = var.project_id
-  dataset_id = google_bigquery_dataset.stocks.dataset_id
+  dataset_id = google_bigquery_dataset.stocks[count.index].dataset_id
+  count      = var.manage_legacy_bigquery_datasets ? 1 : 0
   role       = "roles/bigquery.dataEditor"
   member     = "serviceAccount:${google_service_account.financials_runtime.email}"
 }
