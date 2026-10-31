@@ -50,6 +50,34 @@ resource "google_storage_bucket_iam_member" "financials_runtime_archive_bucket" 
   member = "serviceAccount:${google_service_account.financials_runtime.email}"
 }
 
+# The key payload is provisioned by an authorized operator. Terraform owns
+# only the environment-local secret metadata and this resource-level grant.
+resource "google_secret_manager_secret" "openrouter" {
+  project   = var.project_id
+  secret_id = var.openrouter_secret_id
+
+  replication {
+    auto {}
+  }
+
+  lifecycle {
+    prevent_destroy = true
+    precondition {
+      condition     = contains(["development", "production"], var.environment) && trimspace(var.v1_environment_project_id) != "" && var.v1_environment_project_id == var.project_id
+      error_message = "OpenRouter secret metadata must target the project explicitly bound to its environment."
+    }
+  }
+
+  depends_on = [data.google_project.project]
+}
+
+resource "google_secret_manager_secret_iam_member" "financials_openrouter" {
+  project   = google_secret_manager_secret.openrouter.project
+  secret_id = google_secret_manager_secret.openrouter.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.financials_runtime.email}"
+}
+
 # Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
   count              = var.manage_legacy_service_account_credentials ? 1 : 0

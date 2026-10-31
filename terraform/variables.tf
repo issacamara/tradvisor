@@ -16,6 +16,17 @@ variable "financials_runtime_service_account_id" {
   }
 }
 
+variable "openrouter_secret_id" {
+  description = "Environment-local Secret Manager secret ID for the OpenRouter financial extraction key"
+  type        = string
+  default     = "openrouter-api-key"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]{1,255}$", var.openrouter_secret_id))
+    error_message = "openrouter_secret_id must be a non-secret Secret Manager ID containing only letters, digits, underscores, and hyphens."
+  }
+}
+
 variable "environment" {
   description = "Deployment environment represented by this Terraform state"
   type        = string

@@ -1,8 +1,12 @@
 resource "google_cloudfunctions2_function" "functions" {
-  depends_on = [google_project_service.apis, data.google_project.project]
-  for_each   = toset(var.functions)
-  name       = "${each.key}_function"
-  location   = var.region
+  depends_on = [
+    google_project_service.apis,
+    data.google_project.project,
+    google_secret_manager_secret_iam_member.financials_openrouter,
+  ]
+  for_each = toset(var.functions)
+  name     = "${each.key}_function"
+  location = var.region
   build_config {
     #     runtime     = "python39"
     runtime     = var.function_runtimes[each.key]
@@ -36,6 +40,15 @@ resource "google_cloudfunctions2_function" "functions" {
       TRADVISOR_INGESTION_FINANCIALS_TABLE = "${var.project_id}.stocks.financials"
       TRADVISOR_INGESTION_RATINGS_TABLE    = "${var.project_id}.stocks.ratings"
     }, var.v1_ingestion_source_urls)
+    dynamic "secret_environment_variables" {
+      for_each = contains(["scrape_financials", "insert_financials"], each.key) ? [1] : []
+      content {
+        key        = "OPENROUTER_API_KEY"
+        project_id = var.project_id
+        secret     = google_secret_manager_secret.openrouter.secret_id
+        version    = "latest"
+      }
+    }
   }
 
   lifecycle {
