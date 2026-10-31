@@ -134,7 +134,10 @@ jobs:
         run: python scripts/ci/verify_delivery_inputs.py
 
   release:
-    if: github.event_name == 'push' && github.ref_name == 'development'
+    needs: [validate, frontend]
+    if: >-
+      github.event_name == 'push' && github.ref_name == 'development' &&
+      needs.validate.result == 'success' && needs.frontend.result == 'success'
     permissions:
       contents: read
       id-token: write
