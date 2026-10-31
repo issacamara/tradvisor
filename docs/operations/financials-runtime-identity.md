@@ -16,6 +16,10 @@ The repository code and Terraform wiring show these non-secret needs:
 | List, read, write, and archive financial PDFs and extraction evidence | `scrape_financials` and `insert_financials` list/read/write objects in the data bucket and copy/delete processed PDFs in the archive bucket | `roles/storage.objectUser` on the data and archive buckets only |
 | Emit function events | Ingestion observability emits structured events to stdout for platform collection | No explicit Cloud Logging API grant |
 
+The `stocks` dataset IAM grant is managed independently of
+`manage_legacy_bigquery_datasets`. That preservation flag controls ownership
+of the existing dataset, not access required by the dedicated runtime identity.
+
 The recurring `financials-wf` invokes `scrape_financials` with OIDC. The
 one-time `financials-init-wf` invokes `insert_financials` with OIDC after the
 separate initialization step. Both Workflows and the Scheduler execution caller

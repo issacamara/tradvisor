@@ -84,8 +84,8 @@ def test_financials_runtime_grants_match_documented_nonsecret_inventory() -> Non
     assert "roles/secretmanager.secretAccessor" not in dedicated_blocks
     assert "roles/logging.logWriter" not in dedicated_blocks
     assert "roles/storage.admin" not in dedicated_blocks
-    assert "google_bigquery_dataset.stocks[count.index].dataset_id" in dedicated_blocks
-    assert "count      = var.manage_legacy_bigquery_datasets ? 1 : 0" in dedicated_blocks
+    assert 'dataset_id = "stocks"' in dedicated_blocks
+    assert "count =" not in _resource_block(IAM, "google_bigquery_dataset_iam_member", "financials_runtime_data_editor")
     assert "roles/bigquery.dataEditor" in DOC
     assert "roles/storage.objectUser" in DOC
 
