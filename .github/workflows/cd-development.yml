@@ -228,7 +228,7 @@ jobs:
               '}' > retired-workflow-dispatcher.tf
           fi
       - name: Import existing development shares table
-        if: steps.delivery-gate.outputs.proceed == 'true' && (env.DELIVERY_ACTION == 'import' || env.DELIVERY_ACTION == 'apply')
+        if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'import'
         working-directory: terraform
         env:
           RETIREMENT_PHASE: ${{ steps.reviewed-plan.outputs.retirement_phase }}

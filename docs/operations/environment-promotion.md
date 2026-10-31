@@ -50,9 +50,14 @@ deployment credentials.
    resolves its registry digest, and creates the commit-bound release manifest.
    This push does not run development Terraform, apply infrastructure, or
    deploy Firebase Hosting.
-2. Dispatch development `plan` with the release ID, release run ID, and exact
-   development image digest. Review the saved plan, then dispatch `apply` with
-   its plan run ID and the explicit non-secret `openrouter_secret_id` input.
+2. Before planning, dispatch development `import` with the release ID and
+   release run ID to reconcile any existing BigQuery tables and Scheduler jobs
+   into Terraform state. Then dispatch development `plan` with the release ID,
+   release run ID, and exact development image digest. Review the saved plan,
+   then dispatch `apply` with its plan run ID and the explicit non-secret
+   `openrouter_secret_id` input. Do not import or otherwise change Terraform
+   state between plan generation and apply; if state reconciliation is needed,
+   run `import` first and generate a fresh plan afterward.
    Apply verifies the manifest and saved-plan attestation against the release,
    environment, and target project, then checks that the referenced Secret
    Manager secret has an enabled version using version metadata only. It never

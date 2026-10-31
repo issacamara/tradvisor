@@ -82,3 +82,12 @@ def test_development_push_prepares_release_without_delivery() -> None:
     assert "workflow_call:" in release
     assert 'grep -Eq \'^sha256:[0-9a-f]{64}$\'' in release
 
+
+def test_development_imports_complete_before_reviewed_plan_generation() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/cd-development.yml").read_text()
+    import_step = workflow.split("      - name: Import existing development shares table", 1)[1].split("      - name:", 1)[0]
+    assert "env.DELIVERY_ACTION == 'import'" in import_step
+    assert "env.DELIVERY_ACTION == 'apply'" not in import_step
+    assert workflow.index("Import existing development shares table") < workflow.index("Plan development changes")
+    assert "terraform import \"$address\" \"$resource_id\"" in import_step
+
