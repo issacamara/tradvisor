@@ -56,18 +56,14 @@ def test_development_delivery_consumes_successful_ci_release() -> None:
     ci = (root / "ci.yml").read_text()
     production = (root / "cd-production.yml").read_text()
     release = (root / "release.yml").read_text()
-    assert "branches: [development]" in development
-    assert "workflows: [CI]" in development
-    assert "types: [completed]" in development
-    assert "github.event.workflow_run.conclusion == 'success'" in development
-    assert "github.event.workflow_run.head_sha" in development
-    assert "github.event.workflow_run.id" in development
+    assert "workflow_call:" in development
+    assert "github.event_name == 'workflow_call'" in development
     assert "github.event_name == 'workflow_dispatch'" in development
-    assert "github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'" in development
     assert "terraform apply -auto-approve \"$plan_path\"" in development
     assert "Verify manually supplied development Terraform plan" in development
     assert "Verify automatically generated development Terraform plan" in development
-    assert "github.event_name == 'workflow_run' && env.DELIVERY_ACTION == 'apply'" in development
+    assert "github.event_name == 'workflow_call' && env.DELIVERY_ACTION == 'apply'" in development
     assert "openrouter_secret_id" in development
     assert "verify_openrouter_secret_version.py" in development
     assert "gcloud storage ls \"gs://$TF_STATE_BUCKET/reviewed-plans/development" not in development
@@ -75,6 +71,8 @@ def test_development_delivery_consumes_successful_ci_release() -> None:
     assert "github.event_name == 'push' && github.ref_name == 'development'" in ci
     assert "uses: ./.github/workflows/release.yml" in ci
     assert "needs: [validate, frontend]" in ci
+    assert "needs: release" in ci
+    assert "uses: ./.github/workflows/cd-development.yml" in ci
     assert "workflow_dispatch:" in development
     assert "branches: [main]" in production
     assert "github.event_name == 'workflow_dispatch'" in production

@@ -5,10 +5,9 @@ def test_development_apply_is_manual_and_guarded() -> None:
     workflow = Path(".github/workflows/cd-development.yml").read_text()
     guard = Path("scripts/deployment/guard.sh").read_text()
     assert "workflow_dispatch" in workflow
-    assert "branches: [development]" in workflow
     assert "github.event_name == 'workflow_dispatch'" in workflow
-    assert "workflows: [CI]" in workflow
-    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "workflow_call:" in workflow
+    assert "github.event_name == 'workflow_call'" in workflow
     assert "Select reviewed development plan" in workflow
     assert "Decide whether to deliver" in workflow
     assert 'echo "proceed=true"' in workflow

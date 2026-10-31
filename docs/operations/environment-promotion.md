@@ -49,9 +49,9 @@ deployment credentials.
 1. CI checks each PR. A push to `development` runs the full `validate` and
    `frontend` jobs before the single release job builds the backend image,
    resolves its registry digest, and creates the commit-bound release manifest.
-   The development delivery workflow listens for the successful CI run,
-   downloads that run's immutable bundle, and deploys the exact
-   `workflow_run.head_sha`; failed or cancelled CI runs cannot trigger delivery.
+   The CI workflow calls the reusable development delivery workflow only after
+   both jobs and the single release job succeed, passing the exact run ID and
+   commit-bound release ID; failed or cancelled CI runs cannot trigger delivery.
    Manual dispatch remains available for reviewed recovery and import paths.
 2. The successful-CI delivery generates and attests a Terraform plan in the
    same run, then applies that exact plan after the development environment
