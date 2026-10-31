@@ -148,6 +148,18 @@ Responses use the standard `data` and `meta` envelope and include explicit unava
 - The completion trigger identity may invoke only the existing analytical job. It has no Firestore read/write privilege beyond the minimal publication-control state and no authority to change schedules, analytical rules, source tables, or user-serving data.
 - Logs contain operational metadata only and never carry user secrets or credentials.
 
+### OA-1 OpenRouter financials credential amendment
+
+The approved financials credential amendment keeps the real OpenRouter
+credential payload out of Terraform, GitHub, source, tests, logs, and artifacts. Terraform manages
+environment-local Secret Manager metadata and a resource-level accessor grant
+for the dedicated financials identity. Only `scrape_financials` and
+`insert_financials` receive `OPENROUTER_API_KEY` through secret environment
+configuration. An authorized operator provisions and enables a secret version
+before requesting reviewed function wiring; development and production use
+separate project-local secrets and payloads. This records the target contract,
+not a claim that payload provisioning or cloud deployment has occurred.
+
 ## Approved Publication-Orchestration Amendment
 
 The owner approved completion-driven publication on 2026-10-18 to prevent the
