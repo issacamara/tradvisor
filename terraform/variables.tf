@@ -16,6 +16,101 @@ variable "financials_runtime_service_account_id" {
   }
 }
 
+variable "fi1_financial_runtime_service_account_id" {
+  description = "Dedicated least-privilege service account for the FI-1 Cloud Run Job"
+  type        = string
+  default     = "tradvisor-fi1-fin-runtime"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.fi1_financial_runtime_service_account_id))
+    error_message = "fi1_financial_runtime_service_account_id must be a valid 6-30 character service account ID."
+  }
+}
+
+variable "fi1_financial_scheduler_service_account_id" {
+  description = "Dedicated Cloud Scheduler caller identity for the FI-1 Cloud Run Job"
+  type        = string
+  default     = "tradvisor-fi1-fin-scheduler"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.fi1_financial_scheduler_service_account_id))
+    error_message = "fi1_financial_scheduler_service_account_id must be a valid 6-30 character service account ID."
+  }
+}
+
+variable "manage_fi1_financial_job" {
+  description = "Whether Terraform provisions the FI-1 financial ingestion Job and its monthly Scheduler target"
+  type        = bool
+  default     = false
+}
+
+variable "activate_fi1_financial_schedule" {
+  description = "Whether the provisioned FI-1 monthly Scheduler target may start the Job; activation requires the legacy schedule to be managed so its financial target can be paused"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.activate_fi1_financial_schedule || var.manage_fi1_financial_job
+    error_message = "activate_fi1_financial_schedule requires manage_fi1_financial_job = true."
+  }
+}
+
+variable "fi1_financial_job_name" {
+  description = "Cloud Run Job name for FI-1 financial ingestion"
+  type        = string
+  default     = "tradvisor-fi1-financials"
+}
+
+variable "fi1_financial_job_image" {
+  description = "Immutable image digest for the FI-1 Job; supplied by the FI-1 release integration"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.fi1_financial_job_image == "" || can(regex("^.+@sha256:[0-9a-f]{64}$", var.fi1_financial_job_image))
+    error_message = "fi1_financial_job_image must be empty or an immutable image digest reference."
+  }
+}
+
+variable "fi1_financial_job_timeout_seconds" {
+  description = "Maximum duration for one FI-1 Job task, capped at the approved 60-minute limit"
+  type        = number
+  default     = 3600
+
+  validation {
+    condition     = var.fi1_financial_job_timeout_seconds >= 1 && var.fi1_financial_job_timeout_seconds <= 3600
+    error_message = "fi1_financial_job_timeout_seconds must be between 1 and 3600 seconds."
+  }
+}
+
+variable "fi1_financial_job_max_concurrent_requests" {
+  description = "Maximum concurrent RichBourse requests for one FI-1 batch"
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.fi1_financial_job_max_concurrent_requests >= 1 && var.fi1_financial_job_max_concurrent_requests <= 4
+    error_message = "FI-1 request concurrency must be between 1 and the approved maximum of 4."
+  }
+}
+
+variable "fi1_financial_job_max_reports_per_symbol" {
+  description = "Maximum annual reports processed per symbol in one FI-1 batch"
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.fi1_financial_job_max_reports_per_symbol >= 1 && var.fi1_financial_job_max_reports_per_symbol <= 5
+    error_message = "FI-1 may process between 1 and the approved maximum of 5 reports per symbol."
+  }
+}
+
+variable "fi1_financial_job_schedule" {
+  description = "Monthly Cloud Scheduler cron expression for FI-1 financial ingestion"
+  type        = string
+  default     = "0 20 1 * *"
+}
+
 variable "openrouter_secret_id" {
   description = "Environment-local Secret Manager secret ID for the OpenRouter financial extraction key"
   type        = string
