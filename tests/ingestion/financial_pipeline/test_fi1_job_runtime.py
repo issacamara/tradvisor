@@ -23,6 +23,7 @@ from functions.financials.fi1_job import (
     ActiveExecutionError,
     FirestoreExecutionLease,
     JobDeadlineExceeded,
+    ProviderHTTPError,
     RuntimeConfiguration,
     RuntimeAdapters,
     _default_adapters,
@@ -250,6 +251,48 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert tuple(key for key in fake.writes[0][0][0] if key in EXTRACTION_KEYS) == EXTRACTION_KEYS
     assert fake.actions == ["state_read", "staging_load", "merge_commit", "completion"]
     assert outcome.completion is not None
+
+
+def test_provider_http_status_is_sanitized_in_fi1_telemetry() -> None:
+    def fail(*_args: object) -> object:
+        raise ProviderHTTPError(503)
+
+    fake = Harness(extract=fail)
+    outcome = run(fake, model_order=(MODEL_ORDER[0],))
+    provider_events = [event for event in fake.events if event[0] == "ingestion.fi1.provider"]
+
+    assert provider_events == [
+        ("ingestion.fi1.provider", "failed", {"error_class": "ProviderHTTP503"})
+    ]
+    assert outcome.failed == 1
+    assert fake.completions == []
+
+
+def test_provider_http_error_rejects_invalid_status_codes() -> None:
+    with pytest.raises(ValueError, match="provider HTTP status is invalid"):
+        ProviderHTTPError(600)
+
+
+def test_provider_http_response_body_is_not_carried_into_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = "PRIVATE_PROVIDER_RESPONSE_BODY"
+
+    class Response:
+        status_code = 503
+        text = sentinel
+
+    curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=object())  # type: ignore[attr-defined]
+    curl_cffi.requests = SimpleNamespace(post=lambda *_args, **_kwargs: Response())  # type: ignore[attr-defined]
+    monkeypatch.setitem(__import__("sys").modules, "curl_cffi", curl_cffi)
+
+    with pytest.raises(ProviderHTTPError) as caught:
+        fi1_job._provider_attempt("private text", MODEL_ORDER[0], "secret", 1)
+
+    assert caught.value.status_code == 503
+    assert str(caught.value) == "ProviderHTTP503"
+    assert sentinel not in repr(caught.value)
 
 
 def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytest.MonkeyPatch) -> None:

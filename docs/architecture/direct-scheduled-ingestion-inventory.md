@@ -1,94 +1,42 @@
-# Direct scheduled-ingestion trigger inventory
+# Scheduled ingestion trigger inventory
 
-Status: read-only V1 evidence for issue #274, captured from the `V1` integration
-branch at commit `2aae141`.
+This inventory reflects the FI-1 financial-ingestion cutover delivered by
+issues #363–#365. It describes Terraform configuration; it does not assert
+that any environment has been applied or that a schedule is active.
 
-This inventory describes the currently declared legacy path. It does not change
-or authorize cloud resources. The direct Scheduler-to-Workflows target is the
-follow-on implementation in issue #276.
+## Automated ingestion paths
 
-## Scheduled workflows and legacy callers
+| Source | Trigger target | Schedule | Terraform input |
+| --- | --- | --- | --- |
+| Shares | Scheduler → `shares-wf` | `0 20 * * 1-5` (Africa/Bamako) | `manage_legacy_schedules` |
+| Dividends | Scheduler → `dividends-wf` | `0 20 1 * *` (Africa/Bamako) | `manage_legacy_schedules` |
+| Ratings | Scheduler → `ratings-wf` | `0 20 1 * *` (Africa/Bamako) | `manage_legacy_schedules` |
+| Financials | Scheduler → FI-1 Cloud Run Job | `0 20 1 * *` (Africa/Bamako) | `manage_fi1_financial_job`; paused unless separately activated |
 
-All four recurring workflows use the same ordered Cloud Workflows shape: each
-workflow calls its listed Cloud Functions in order, and each function writes to
-the listed Terraform-managed BigQuery table.
+There is no financial Scheduler-to-Workflow path, financial Cloud Function, or
+financial initialization Workflow in the active Terraform configuration. The
+FI-1 job emits the existing sanitized completion outcome after its changed
+financial `MERGE` commits, preserving the completion-driven Long-Term
+publication control. Runtime execution remains bounded to 60 minutes.
 
-| Workflow | Ordered functions | Target table | Legacy queue | Scheduler job | Schedule (Africa/Bamako) | Minimum interval |
-| --- | --- | --- | --- | --- | --- | --- |
-| `shares-wf` | `scrape_shares` → `insert_shares` | `stocks.shares` | `shares-writer` | `shares-job` | `0 20 * * 1-5` | 24 hours between eligible weekday runs |
-| `dividends-wf` | `scrape_dividends` → `insert_dividends` | `stocks.dividends` | `dividends-writer` | `dividends-job` | `0 20 1 * *` | 28 days |
-| `financials-wf` | `scrape_financials` | `stocks.financials` | `financials-writer` | `financials-job` | `0 20 1 * *` | 28 days |
-| `ratings-wf` | `scrape_ratings` → `insert_ratings` | `stocks.ratings` | `ratings-writer` | `ratings-job` | `0 20 1 * *` | 28 days |
+## Retirement and retained assets
 
-The declared Scheduler caller posts to the Cloud Tasks REST API for the matching
-`<workflow>-writer` queue. Each queue then calls the internal
-`/internal/workflows/<workflow>-wf/dispatch` endpoint on the Cloud Run
-`workflow-dispatcher`, which starts and waits for the named Workflows execution.
-These are the complete scheduled-ingestion callers found in the repository.
+Terraform state migration explicitly retires the old financial scheduler,
+recurring Workflow, initialization Workflow, and three financial Functions.
+The corresponding legacy source ZIP objects are removed from Terraform state
+without deleting them. The historic source modules remain available to the
+FI-1 image; this change removes only their legacy Cloud Functions packaging.
 
-## Duration, retry, and overlap evidence
+Financial PDF archive objects, annual-financial revision assets, canonical
+BigQuery rows and Terraform-managed financial tables are not deleted or
+migrated. Shares, dividends and ratings workflow/scheduler/function
+configuration remains intact. The completion-driven publication-control
+queue and IAM are outside the retirement boundary.
 
-- Each recurring ingestion function has a declared 180-second timeout. The
-  one-time `scrape_financials_init` function has a 600-second timeout and is not
-  one of the four recurring workflows.
-- The legacy dispatcher has a 900-second request timeout and polls until the
-  Workflows execution reaches a terminal state.
-- Each recurring workflow has at most two 180-second function calls in series,
-  so its declared function-time ceiling is 360 seconds (180 seconds for
-  financials). The 900-second dispatcher bound leaves no declared function
-  timeout longer than the dispatcher, but provider and orchestration overhead
-  still requires measurement during the approved development verification.
-- Legacy queue serialization is explicit: one concurrent dispatch and one
-  dispatch per second. Queue retry configuration is `max_attempts = 1`; a failed
-  task is not silently replayed by this configuration.
-- The four schedules have a minimum interval of 24 hours (weekday shares) or
-  28 days (monthly workflows), each materially greater than the 900-second
-  dispatcher bound. The direct path must preserve the same workflow-level
-  idempotency before queue retirement: the existing ingestion loaders collapse
-  exact retries and retain canonical source identity for changed observations.
+## Operational boundary
 
-Conclusion: the repository evidence supports the overlap assumption for the
-declared schedule cadence and bounded workflow path. It does not claim that a
-live execution has been measured; issue #278 remains the separately approved
-development verification gate.
-
-## Shares rate-limit resilience
-
-The Terraform-managed `scrape_shares` function is capped at two instances with
-one request per instance. This conservative ceiling limits duplicate upstream
-pressure and keeps the change within the owner-approved development cost
-boundary; the other ingestion functions retain their existing one-instance
-ceiling. The generated `shares-wf` retries only HTTP 429, 500, 502, 503, and 504
-from `scrape_shares`, for at most three retries with exponential backoff from
-five seconds to a sixty-second maximum. `insert_shares` remains a separate
-ordered step and is reached only after a successful scrape.
-
-These limits are Terraform configuration, not a live-operation authorization.
-No Terraform apply, schedule activation, production change, or paid data
-operation is part of issue #337; development deployment requires the normal
-reviewed plan and owner-approved delivery workflow.
-
-## Retirement boundary
-
-The safe scheduled-ingestion retirement set is limited to the four
-`workflow_writers` queues, their `roles/cloudtasks.enqueuer` IAM members, the
-legacy Scheduler-to-Cloud-Tasks targets, the Cloud Run workflow-dispatcher
-service, and its `roles/run.invoker` grant—after issue #276 proves the direct
-path and the later wave tickets complete their own review.
-
-The completion-driven publication-control queue, its IAM, and the Cloud Tasks
-API enablement are explicitly excluded from this set. The public architecture
-assigns that control plane to completion-driven analytical publication, not
-scheduled ingestion. No scheduled-ingestion caller in this repository targets
-that queue; no live resource deletion or cloud-state assertion is made here.
-
-## Source contracts
-
-- `terraform/functions.tf`: four workflow stages, queue rate/retry settings,
-  and Scheduler HTTP targets.
-- `terraform/iam.tf`: legacy queue enqueuer and dispatcher invoker grants.
-- `terraform/runtime.tf`: dispatcher timeout, concurrency, and service boundary.
-- `terraform/variables.tf`: four schedule expressions and the
-  `manage_legacy_schedules` ownership gate.
-- Existing ingestion loaders and tests: retry-safe canonical writes and
-  duplicate/revision behavior.
+This inventory is not evidence of an apply, deployed topology, or active
+schedule. No Terraform plan/apply, schedule activation, job execution, paid
+provider call, paid query, or production operation is authorized by this
+documentation. Use the separately approved delivery path for environment
+changes.

@@ -106,10 +106,8 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
       error_message = "FI-1 must target the explicitly configured project for its environment."
     }
     precondition {
-      condition = !var.activate_fi1_financial_schedule || (
-        var.manage_legacy_schedules && contains([for job in values(var.jobs) : job.name], "financials")
-      )
-      error_message = "FI-1 schedule activation requires Terraform to manage and pause the legacy financial Scheduler target."
+      condition     = !var.activate_fi1_financial_schedule || var.manage_legacy_schedules
+      error_message = "FI-1 schedule activation requires Terraform ownership of the remaining legacy schedules."
     }
   }
 
@@ -152,12 +150,6 @@ resource "google_cloud_scheduler_job" "fi1_financials" {
 
   lifecycle {
     prevent_destroy = true
-    precondition {
-      condition = !var.activate_fi1_financial_schedule || (
-        var.manage_legacy_schedules && contains([for job in values(var.jobs) : job.name], "financials")
-      )
-      error_message = "FI-1 schedule activation requires Terraform to manage and pause the legacy financial Scheduler target."
-    }
   }
 
   depends_on = [

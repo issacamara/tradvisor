@@ -1,23 +1,17 @@
 
 locals {
   function_entrypoint_roots = {
-    scrape_shares          = "../functions/shares"
-    insert_shares          = "../functions/shares"
-    scrape_dividends       = "../functions/dividends"
-    insert_dividends       = "../functions/dividends"
-    scrape_financials      = "../functions/financials"
-    insert_financials      = "../functions/financials"
-    scrape_financials_init = "../functions/financials"
-    scrape_ratings         = "../functions/ratings"
-    insert_ratings         = "../functions/ratings"
-    scrape_ratings_init    = "../functions/ratings"
+    scrape_shares       = "../functions/shares"
+    insert_shares       = "../functions/shares"
+    scrape_dividends    = "../functions/dividends"
+    insert_dividends    = "../functions/dividends"
+    scrape_ratings      = "../functions/ratings"
+    insert_ratings      = "../functions/ratings"
+    scrape_ratings_init = "../functions/ratings"
   }
   function_dependency_roots = {
-    insert_shares          = "../functions/shares"
-    scrape_financials      = "../functions/financials"
-    insert_financials      = "../functions/financials"
-    scrape_financials_init = "../functions/financials"
-    scrape_ratings_init    = "../functions/ratings"
+    insert_shares       = "../functions/shares"
+    scrape_ratings_init = "../functions/ratings"
   }
   legacy_function_root = "../archive/legacy-ingestion/scripts"
 }
@@ -65,18 +59,10 @@ data "archive_file" "assets" {
   }
 
   dynamic "source" {
-    for_each = contains(["scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"], each.key) ? [1] : []
+    for_each = contains(["scrape_ratings", "insert_ratings"], each.key) ? [1] : []
     content {
       content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
       filename = "mapping.csv"
-    }
-  }
-
-  dynamic "source" {
-    for_each = contains(["scrape_financials", "insert_financials"], each.key) ? [1] : []
-    content {
-      content  = file("../archive/legacy-ingestion/scripts/scrape_financials_init.py")
-      filename = "scrape_financials_init.py"
     }
   }
 
@@ -134,13 +120,6 @@ data "archive_file" "new_function_assets" {
     }
   }
   dynamic "source" {
-    for_each = each.key == "scrape_financials" || each.key == "insert_financials" ? [1] : []
-    content {
-      content  = file("../functions/financials/scrape_financials_init.py")
-      filename = "scrape_financials_init.py"
-    }
-  }
-  dynamic "source" {
     for_each = each.key == "scrape_ratings" ? [1] : []
     content {
       content  = file("../functions/ratings/scrape_ratings_init.py")
@@ -185,13 +164,6 @@ data "archive_file" "initialization_assets" {
   source {
     content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
     filename = "main.py"
-  }
-  dynamic "source" {
-    for_each = each.key == "scrape_financials_init" ? [1] : []
-    content {
-      content  = file("../functions/financials/company_reference.py")
-      filename = "company_reference.py"
-    }
   }
   dynamic "source" {
     for_each = each.key == "scrape_ratings_init" ? [1] : []
@@ -243,7 +215,7 @@ resource "google_storage_bucket" "bucket" {
     ignore_changes  = all
   }
 }
-resource "google_storage_bucket_object" "src-code" {
+resource "google_storage_bucket_object" "retained-src-code" {
   for_each   = var.manage_legacy_source_objects ? toset(var.functions) : toset([])
   depends_on = [data.archive_file.assets, google_storage_bucket.bucket]
   name       = "${each.key}.zip"
@@ -256,7 +228,7 @@ resource "google_storage_bucket_object" "src-code" {
   }
 }
 
-resource "google_storage_bucket_object" "new-function-src-code" {
+resource "google_storage_bucket_object" "retained-new-function-src-code" {
   for_each   = var.manage_new_function_sources ? var.managed_function_sources : toset([])
   depends_on = [data.archive_file.new_function_assets, google_storage_bucket.bucket]
   name       = "${each.key}-${data.archive_file.new_function_assets[each.key].output_md5}.zip"
@@ -264,7 +236,7 @@ resource "google_storage_bucket_object" "new-function-src-code" {
   source     = data.archive_file.new_function_assets[each.key].output_path
 }
 
-resource "google_storage_bucket_object" "initialization-src-code" {
+resource "google_storage_bucket_object" "retained-initialization-src-code" {
   for_each   = var.manage_new_function_sources ? var.initialization_functions : toset([])
   depends_on = [data.archive_file.initialization_assets, google_storage_bucket.bucket]
   name       = "${each.key}-${data.archive_file.initialization_assets[each.key].output_md5}.zip"
@@ -282,7 +254,7 @@ resource "null_resource" "delete_archive" {
   provisioner "local-exec" {
     command = "rm -f ${data.archive_file.assets[each.key].output_path}"
   }
-  depends_on = [data.archive_file.assets, google_storage_bucket_object.src-code]
+  depends_on = [data.archive_file.assets, google_storage_bucket_object.retained-src-code]
 }
 
 resource "null_resource" "delete_new_function_archive" {
@@ -293,5 +265,5 @@ resource "null_resource" "delete_new_function_archive" {
   provisioner "local-exec" {
     command = "rm -f ${data.archive_file.new_function_assets[each.key].output_path}"
   }
-  depends_on = [data.archive_file.new_function_assets, google_storage_bucket_object.new-function-src-code]
+  depends_on = [data.archive_file.new_function_assets, google_storage_bucket_object.retained-new-function-src-code]
 }

@@ -4,6 +4,7 @@ import re
 
 ROOT = Path(__file__).parents[3]
 FUNCTIONS = (ROOT / "terraform/functions.tf").read_text()
+FI1 = (ROOT / "terraform/fi1_financial.tf").read_text()
 IAM = (ROOT / "terraform/iam.tf").read_text()
 VARIABLES = (ROOT / "terraform/variables.tf").read_text()
 DELIVERY = (ROOT / ".github/workflows/cd-development.yml").read_text()
@@ -48,38 +49,33 @@ def test_openrouter_secret_input_and_metadata_are_nonsecret_and_protected() -> N
     assert "secret_data" not in secret
 
 
-def test_secret_accessor_is_bound_only_to_the_declared_secret_and_financials_identity() -> None:
-    binding = _resource(IAM, "google_secret_manager_secret_iam_member", "financials_openrouter")
+def test_secret_accessor_is_bound_only_to_the_declared_secret_and_fi1_identity() -> None:
+    binding = _resource(IAM, "google_secret_manager_secret_iam_member", "fi1_financial_openrouter")
 
     assert "google_secret_manager_secret.openrouter.project" in binding
     assert "google_secret_manager_secret.openrouter.secret_id" in binding
     assert 'role      = "roles/secretmanager.secretAccessor"' in binding
-    assert 'member    = "serviceAccount:${google_service_account.financials_runtime.email}"' in binding
+    assert 'member    = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"' in binding
     assert 'resource "google_project_iam_binding" "sms_accessor"' in IAM
-    assert "financials_runtime.email" not in _resource(IAM, "google_project_iam_binding", "sms_accessor")
+    assert "fi1_financial_runtime" not in _resource(IAM, "google_project_iam_binding", "sms_accessor")
 
 
-def test_only_recurring_financials_functions_receive_the_secret_environment_variable() -> None:
-    function = _resource(FUNCTIONS, "google_cloudfunctions2_function", "functions")
-    secret_environment = _block(function, "dynamic", "secret_environment_variables")
-    init = _resource(FUNCTIONS, "google_cloudfunctions2_function", "initialization_functions")
-
-    assert 'contains(["scrape_financials", "insert_financials"], each.key)' in secret_environment
-    assert 'key        = "OPENROUTER_API_KEY"' in secret_environment
-    assert "project_id = var.project_id" in secret_environment
-    assert "google_secret_manager_secret.openrouter.secret_id" in secret_environment
-    assert 'version    = "latest"' in secret_environment
-    assert "OPENROUTER_API_KEY" not in init
+def test_only_fi1_job_receives_the_secret_environment_variable() -> None:
+    job = _resource(FI1, "google_cloud_run_v2_job", "fi1_financials")
+    assert 'name = "OPENROUTER_API_KEY"' in job
+    assert "value_source" in job and "secret_key_ref" in job
+    assert "google_secret_manager_secret.openrouter.secret_id" in job
+    assert 'version = "latest"' in job
+    assert "OPENROUTER_API_KEY" not in FUNCTIONS
 
 
 def test_secret_project_follows_the_explicit_environment_project_binding() -> None:
     secret = _resource(IAM, "google_secret_manager_secret", "openrouter")
-    function = _resource(FUNCTIONS, "google_cloudfunctions2_function", "functions")
+    job = _resource(FI1, "google_cloud_run_v2_job", "fi1_financials")
 
     assert "project   = var.project_id" in secret
-    assert "project_id = var.project_id" in function
-    assert 'var.v1_environment_project_id == var.project_id' in function
-    assert "development" in function and "production" in function
+    assert 'var.v1_environment_project_id == var.project_id' in job
+    assert "development" in job and "production" in job
 
 
 def test_delivery_and_operator_docs_exclude_payloads_and_require_enabled_version() -> None:
@@ -97,10 +93,8 @@ def test_delivery_and_operator_docs_exclude_payloads_and_require_enabled_version
 
 
 def test_secret_payload_wiring_is_absent_from_terraform_and_workflows() -> None:
-    assert 'key        = "OPENROUTER_API_KEY"' not in _resource(
-        FUNCTIONS, "google_cloudfunctions2_function", "initialization_functions"
-    )
-    for source in (FUNCTIONS, IAM, DELIVERY, PRODUCTION):
+    assert 'key = "OPENROUTER_API_KEY"' not in FUNCTIONS
+    for source in (FUNCTIONS, IAM, FI1, DELIVERY, PRODUCTION):
         assert "OPENROUTER_API_KEY =" not in source
         assert "OPENROUTER_API_KEY=" not in source
 

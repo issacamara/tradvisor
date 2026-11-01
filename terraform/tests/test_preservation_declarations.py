@@ -147,7 +147,7 @@ class PreservationDeclarationTests(unittest.TestCase):
             (TERRAFORM_DIR / "buckets.tf").read_text(),
         )
         self.assertIn(
-            "count           = var.manage_legacy_workflows ? length(var.functions) / 2 : 0",
+            "for_each        = var.manage_legacy_workflows ? { for stage in local.workflow_stages : stage.source => stage } : {}",
             functions,
         )
 
@@ -167,11 +167,11 @@ class PreservationDeclarationTests(unittest.TestCase):
         self.assertEqual(buckets.count(guard), 3)
         self.assertIn('name       = "${each.key}.zip"', buckets)
         self.assertIn(
-            "object = google_storage_bucket_object.new-function-src-code[each.key].name",
+            "object = google_storage_bucket_object.retained-new-function-src-code[each.key].name",
             functions,
         )
         self.assertNotIn(
-            "google_storage_bucket_object.src-code[each.key].name",
+            "google_storage_bucket_object.retained-src-code[each.key].name",
             functions,
         )
 

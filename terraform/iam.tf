@@ -10,46 +10,6 @@ resource "google_service_account" "tradvisor_sa" {
   }
 }
 
-# Financial extraction has a separate runtime identity so the historical
-# project-wide grants on the shared ingestion account do not reach these two
-# functions.
-resource "google_service_account" "financials_runtime" {
-  account_id   = var.financials_runtime_service_account_id
-  display_name = "Tradvisor financials runtime"
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-# BigQuery jobs are project-scoped; table data access is limited to stocks.
-resource "google_project_iam_member" "financials_runtime_bigquery_job_user" {
-  project = var.project_id
-  role    = "roles/bigquery.jobUser"
-  member  = "serviceAccount:${google_service_account.financials_runtime.email}"
-}
-
-resource "google_bigquery_dataset_iam_member" "financials_runtime_data_editor" {
-  project    = var.project_id
-  dataset_id = "stocks"
-  role       = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:${google_service_account.financials_runtime.email}"
-}
-
-# Runtime code lists, reads, writes, and archives objects only in these two
-# buckets. Keep the grants at bucket scope.
-resource "google_storage_bucket_iam_member" "financials_runtime_data_bucket" {
-  bucket = google_storage_bucket.data-brvm.name
-  role   = "roles/storage.objectUser"
-  member = "serviceAccount:${google_service_account.financials_runtime.email}"
-}
-
-resource "google_storage_bucket_iam_member" "financials_runtime_archive_bucket" {
-  bucket = google_storage_bucket.archive-brvm.name
-  role   = "roles/storage.objectUser"
-  member = "serviceAccount:${google_service_account.financials_runtime.email}"
-}
-
 # The key payload is provisioned by an authorized operator. Terraform owns
 # only the environment-local secret metadata and this resource-level grant.
 resource "google_secret_manager_secret" "openrouter" {
@@ -69,13 +29,6 @@ resource "google_secret_manager_secret" "openrouter" {
   }
 
   depends_on = [data.google_project.project]
-}
-
-resource "google_secret_manager_secret_iam_member" "financials_openrouter" {
-  project   = google_secret_manager_secret.openrouter.project
-  secret_id = google_secret_manager_secret.openrouter.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.financials_runtime.email}"
 }
 
 # FI-1 has its own identity so it does not inherit the legacy functions'

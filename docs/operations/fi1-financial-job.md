@@ -10,16 +10,17 @@ environment values or secrets. Both switches default off: the job is absent by
 default, and a provisioned Scheduler target remains paused until
 `activate_fi1_financial_schedule` is explicitly enabled.
 After provisioning, keep `manage_fi1_financial_job` enabled; the Job and
-Scheduler resources are destroy-protected. Pause the schedule with the
-activation switch, and retire resources only through the later approved
-retirement work.
+Scheduler resources are destroy-protected. The financial-specific legacy
+Functions, Workflows, Scheduler target, source packaging, runtime identity and
+IAM grants have been retired from Terraform configuration. Terraform state
+migration removes the old trigger and execution resources while leaving
+historical source ZIP objects unmanaged and intact.
 
-Schedule activation also requires `manage_legacy_schedules`. On activation,
-Terraform pauses only the legacy `financials` Scheduler target. It retains the
-financial Workflow, function packaging and IAM resources, every non-financial
-schedule, and all historical archive or revision assets for the later legacy
-retirement work. The activation precondition requires the legacy financial
-target to be in Terraform's managed schedule set before FI-1 can be activated.
+Schedule activation also requires `manage_legacy_schedules`, which keeps the
+remaining non-financial Scheduler inventory under Terraform ownership. The
+financial scheduler and both financial Workflows are removed by the explicit
+retirement state blocks. All non-financial schedules remain configured, and
+historical archive and annual-financial revision assets are preserved.
 
 The FI-1 Job uses its own runtime identity. It can read the Terraform-managed
 `stocks.brvm_companies` selector table, edit only
