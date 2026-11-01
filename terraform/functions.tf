@@ -251,7 +251,11 @@ resource "google_cloud_scheduler_job" "jobs" {
     }
   }
 
-  paused = contains(local.paused_schedule_keys, each.key)
+  # At FI-1 cutover, pause only the legacy financial target. Leave its
+  # Workflow and every other source's Scheduler resource in place.
+  paused = contains(local.paused_schedule_keys, each.key) || (
+    each.value.name == "financials" && var.activate_fi1_financial_schedule
+  )
 
   lifecycle {
     prevent_destroy = true
