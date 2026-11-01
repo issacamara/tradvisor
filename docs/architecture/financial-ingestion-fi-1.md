@@ -81,6 +81,8 @@ flowchart LR
 - **Interfaces/data:** Emits source identity/outcome metadata only; no PDF, extracted text, prompt, response, or secret is included.
 - **Technology:** Existing completion-control integration.
 
+The contract boundary consumed by the runtime wave is `functions.financials.fi1_contracts`: `parse_selector_symbols(html)`, `richbourse_symbol_page_url(symbol)`, `parse_annual_candidates(html, symbol, limit=5)`, `is_approved_document_url(url)`, `validate_extraction(payload, source_fiscal_year=...)`, and `decide_row_state(existing_document_link=..., candidate_document_link=..., extraction_succeeded=...)`. It exposes `AnnualCandidate(symbol, fiscal_year, document_link)`, `ValidatedExtraction` with exactly the six FI-1 extraction fields, and `RowDecision` (`insert`, `skip`, `replace`, `preserve`). Candidate document URLs and every redirect target must remain on the HTTPS origin `https://www.richbourse.com`; runtime fetchers stop at the first off-origin redirect. These functions are offline and pure: they have no source/provider clients, storage writers, or telemetry hooks; source PDFs/text and provider prompts/responses/evidence stay outside the contract objects.
+
 ### 5.6 Cloud Scheduler trigger
 
 - **Purpose:** Start the private job once per month and distinguish trigger delivery failure from job execution failure.
