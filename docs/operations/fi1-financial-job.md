@@ -3,7 +3,10 @@
 Terraform provisions the FI-1 Cloud Run Job and its direct monthly Cloud
 Scheduler target only when `manage_fi1_financial_job` is true. The image input,
 `fi1_financial_job_image`, must be an immutable `@sha256:` digest supplied by
-the FI-1 release integration. Both switches default off: the job is absent by
+the FI-1 release integration from `fi1_job.digest` in the commit-bound release
+manifest. Delivery resolves it to the environment-local Artifact Registry
+image. The image is built from the locked FI-1 dependencies and contains no
+environment values or secrets. Both switches default off: the job is absent by
 default, and a provisioned Scheduler target remains paused until
 `activate_fi1_financial_schedule` is explicitly enabled.
 After provisioning, keep `manage_fi1_financial_job` enabled; the Job and

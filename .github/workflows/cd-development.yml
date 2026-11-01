@@ -99,7 +99,11 @@ jobs:
             digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')"
             api_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/api:$RELEASE_ID@$digest"
           fi
+          fi1_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["fi1_job"]["digest"])')"
+          [[ "$fi1_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          fi1_job_image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/financial-ingestion:$RELEASE_ID@$fi1_digest"
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
+          echo "fi1_job_image=$fi1_job_image" >> "$GITHUB_OUTPUT"
       - uses: hashicorp/setup-terraform@v3
         if: env.DELIVERY_ACTION != 'frontend'
         with:
@@ -315,6 +319,7 @@ jobs:
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ steps.release-image.outputs.api_image }}
           TF_VAR_v1_batch_image: ${{ steps.release-image.outputs.api_image }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.release-image.outputs.fi1_job_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
@@ -427,6 +432,7 @@ jobs:
           TF_VAR_manage_legacy_workflows: "true"
           TF_VAR_v1_api_image: ${{ steps.release-image.outputs.api_image }}
           TF_VAR_v1_batch_image: ${{ steps.release-image.outputs.api_image }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.release-image.outputs.fi1_job_image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}.stocks.financials
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
@@ -489,8 +495,9 @@ jobs:
           DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         run: |
           jq -n --arg commit "$DEPLOY_SHA" --arg release_id "$RELEASE_ID" \
-            --arg digest "$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')" \
-            '{commit:$commit,release_id:$release_id,backend_digest:$digest}' > development-deployment.json
+            --arg backend_digest "$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["backend"]["digest"])')" \
+            --arg fi1_job_digest "$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["fi1_job"]["digest"])')" \
+            '{commit:$commit,release_id:$release_id,backend_digest:$backend_digest,fi1_job_digest:$fi1_job_digest}' > development-deployment.json
       - uses: actions/upload-artifact@v4
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
         with:

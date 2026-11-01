@@ -26,6 +26,8 @@ def validate(root: Path) -> None:
     release = (root / ".github/workflows/release.yml").read_text()
     dockerfile = (root / "backend/Dockerfile").read_text()
     manifest = (root / "scripts/release/manifest.py").read_text()
+    fi1_dockerfile = (root / "functions/financials/Dockerfile").read_text()
+    fi1_dockerignore = (root / "functions/financials/Dockerfile.dockerignore").read_text()
 
     if ci.count(f'python-version: "{PYTHON_VERSION}"') != 2:
         raise ValueError("CI must pin both Python setup steps")
@@ -42,10 +44,32 @@ def validate(root: Path) -> None:
         raise ValueError("release workflow must package artifacts and create a manifest")
     if f"FROM {PYTHON_BASE}" not in dockerfile:
         raise ValueError("backend image must use the pinned Python digest")
+    if f"FROM {PYTHON_BASE}" not in fi1_dockerfile or "--require-hashes" not in fi1_dockerfile:
+        raise ValueError("FI-1 image must use the pinned Python digest and hashed dependency lock")
+    for runtime_file in (
+        "requirements.lock",
+        "helper.py",
+        "ingestion_observability.py",
+        "fi1_job.py",
+        "fi1_contracts.py",
+        "insert_financials.py",
+    ):
+        if runtime_file not in fi1_dockerignore:
+            raise ValueError("FI-1 build context must include only the locked runtime inputs")
     if re.search(r"firebase-tools@(latest|[0-9]+(?:\.[0-9]+)?(?:\.[0-9]+)?)\b", ci):
         raise ValueError("CI contains a mutable or non-exact Firebase CLI reference")
     if 'IMAGE_DIGEST = re.compile(r"^sha256:' not in manifest:
         raise ValueError("release manifest must require immutable SHA-256 backend digests")
+    if '"fi1_job": {"digest": fi1_job_digest}' not in manifest:
+        raise ValueError("release manifest must retain the immutable FI-1 image digest")
+    if "--fi1-job-digest" not in release or "financial-ingestion" not in release:
+        raise ValueError("release workflow must build and record the FI-1 job image")
+    if '["fi1_job"]["digest"]' not in development or "TF_VAR_fi1_financial_job_image" not in development:
+        raise ValueError("development delivery must bind the FI-1 manifest digest to Terraform")
+    if "promoted_fi1_digest" not in production or "TF_VAR_fi1_financial_job_image" not in production:
+        raise ValueError("production promotion must preserve and configure the FI-1 manifest digest")
+    if "docker build --file functions/financials/Dockerfile" not in ci or "--check-config" not in ci:
+        raise ValueError("CI must build and smoke-check the FI-1 runtime image")
     if 'FRONTEND_ENVIRONMENTS = frozenset({"development", "production"})' not in manifest:
         raise ValueError("release manifest must retain frontend environment target validation")
     for workflow in (development, production):

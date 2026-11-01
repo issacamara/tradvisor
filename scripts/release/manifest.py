@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 RELEASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -86,6 +86,7 @@ def build_manifest(
     release_id: str,
     commit: str,
     backend_digest: str,
+    fi1_job_digest: str,
     function_archives: Mapping[str, Path],
     frontend_artifacts: Mapping[str, Path],
     rule_versions: Mapping[str, str],
@@ -101,6 +102,8 @@ def build_manifest(
         raise ManifestError("commit must be a full 40-character SHA-1")
     if not IMAGE_DIGEST.fullmatch(backend_digest):
         raise ManifestError("backend_digest must be an immutable sha256:<digest>")
+    if not IMAGE_DIGEST.fullmatch(fi1_job_digest):
+        raise ManifestError("fi1_job_digest must be an immutable sha256:<digest>")
     if REQUIRED_FUNCTIONS - function_archives.keys():
         missing = ", ".join(sorted(REQUIRED_FUNCTIONS - function_archives.keys()))
         raise ManifestError(f"function archives missing required targets: {missing}")
@@ -120,6 +123,7 @@ def build_manifest(
         "release_id": release_id,
         "commit": commit,
         "backend": {"digest": backend_digest},
+        "fi1_job": {"digest": fi1_job_digest},
         "functions": {
             name: artifact_entry(name, path)
             for name, path in sorted(function_archives.items())
@@ -146,7 +150,7 @@ def validate_manifest(manifest: Mapping[str, Any]) -> None:
 
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise ManifestError("unsupported manifest schema")
-    for field in ("release_id", "commit", "backend", "functions", "frontend", "rules", "toolchains", "configuration"):
+    for field in ("release_id", "commit", "backend", "fi1_job", "functions", "frontend", "rules", "toolchains", "configuration"):
         if field not in manifest:
             raise ManifestError(f"manifest is missing {field}")
     if not isinstance(manifest["release_id"], str) or not RELEASE_ID.fullmatch(manifest["release_id"]):
@@ -156,6 +160,9 @@ def validate_manifest(manifest: Mapping[str, Any]) -> None:
     backend = manifest["backend"]
     if not isinstance(backend, Mapping) or not IMAGE_DIGEST.fullmatch(str(backend.get("digest", ""))):
         raise ManifestError("manifest backend digest is not immutable")
+    fi1_job = manifest["fi1_job"]
+    if not isinstance(fi1_job, Mapping) or not IMAGE_DIGEST.fullmatch(str(fi1_job.get("digest", ""))):
+        raise ManifestError("manifest FI-1 job digest is not immutable")
     for section in ("functions", "frontend"):
         entries = manifest[section]
         if not isinstance(entries, Mapping) or (section == "functions" and not entries):
@@ -226,6 +233,7 @@ def main() -> int:
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--backend-digest", required=True)
+    parser.add_argument("--fi1-job-digest", required=True)
     parser.add_argument("--function-archive", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--frontend-artifact", action="append", default=[], metavar="ENVIRONMENT=PATH")
     parser.add_argument("--rule-version", action="append", default=[], metavar="NAME=VERSION")
@@ -249,6 +257,7 @@ def main() -> int:
             release_id=args.release_id,
             commit=args.commit,
             backend_digest=args.backend_digest,
+            fi1_job_digest=args.fi1_job_digest,
             function_archives=_path_pairs(args.function_archive, "function archives"),
             frontend_artifacts=_path_pairs(args.frontend_artifact, "frontend artifacts"),
             rule_versions=_pairs(args.rule_version, "rule versions"),

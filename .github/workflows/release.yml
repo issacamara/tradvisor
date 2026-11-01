@@ -43,6 +43,22 @@ jobs:
           gcloud artifacts docker images describe "$API_IMAGE" \
             --format='value(image_summary.digest)' > dist/backend-registry.digest
           grep -Eq '^sha256:[0-9a-f]{64}$' dist/backend-registry.digest
+      - name: Build and push FI-1 job image by release tag
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+        run: |
+          test "$GCP_PROJECT_ID" = dev-tradvisor
+          test -n "$GCP_REGION"
+          test -n "$ARTIFACT_REPOSITORY"
+          FI1_IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/financial-ingestion:$GITHUB_SHA"
+          gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+          docker build --file functions/financials/Dockerfile --tag "$FI1_IMAGE" .
+          docker push "$FI1_IMAGE"
+          gcloud artifacts docker images describe "$FI1_IMAGE" \
+            --format='value(image_summary.digest)' > dist/fi1-job-registry.digest
+          grep -Eq '^sha256:[0-9a-f]{64}$' dist/fi1-job-registry.digest
       - name: Retain backend image artifact
         run: |
           docker save --output dist/backend-image.tar "$(cat dist/backend-image.id)"
@@ -62,6 +78,7 @@ jobs:
             --release-id "$RELEASE_ID" \
             --commit "$GITHUB_SHA" \
             --backend-digest "$(cat dist/backend-registry.digest)" \
+            --fi1-job-digest "$(cat dist/fi1-job-registry.digest)" \
             --function-archive shares=dist/functions/shares.tar \
             --function-archive dividends=dist/functions/dividends.tar \
             --function-archive financials=dist/functions/financials.tar \
