@@ -6,6 +6,11 @@ The operational V1 boundary is summarized in
 [`docs/operations/v1-scope.md`](docs/operations/v1-scope.md). It is a
 companion to this architecture, not a separate product specification.
 **Engineering amendment:** TF-1, approved 2026-10-12 and incorporated 2026-10-14. R1–R7 define the target design; implementation and compliance verification remain pending.
+**Financial-ingestion amendment:** FI-1, approved 2026-11-01 and incorporated
+2026-11-01. It replaces the financial Cloud Function chain with one monthly
+Cloud Run Job and makes BigQuery the only retained financial-ingestion record.
+Its orchestration-ready Gate 2 handoff, contracts, retirement scope, and wave
+plan are in [`docs/architecture/financial-ingestion-fi-1.md`](docs/architecture/financial-ingestion-fi-1.md).
 
 ## Scope
 
@@ -20,7 +25,7 @@ The product publishes research, explanations, and evidence. It does not maintain
 
 ```mermaid
 flowchart LR
-  Sources[BRVM and RichBourse sources] --> Ingestion[Reused ingestion functions]
+  Sources[BRVM and RichBourse sources] --> Ingestion[Ingestion workloads]
   Ingestion --> BQ[BigQuery stocks dataset]
   Ingestion --> Trigger[Completion-driven publication control]
   Trigger --> Analysis[Existing analytical publication job]
@@ -59,6 +64,12 @@ task, subject to dependency verification and the normal reviewed Terraform
 delivery process. Existing ingestion workflow definitions, schedules, GCS and
 BigQuery contracts, and completion-driven publication control remain unchanged.
 
+FI-1 is the financials-specific exception to this shared path. Its monthly
+Scheduler job invokes the financial-ingestion Cloud Run Job directly; it does
+not create a financials Workflow execution or invoke the retired
+`scrape_financials`, `scrape_financials_init`, or `insert_financials` Cloud
+Functions. Other ingestion sources retain the Scheduler-to-Workflow design.
+
 Operational monitoring must distinguish a Scheduler delivery failure from a
 Workflow execution failure. Before retiring queue-based serialization, the
 implementation must verify that each workflow's maximum execution duration is
@@ -73,7 +84,7 @@ The static Next.js application uses authenticated client requests to the Cloud R
 
 The approved [v1.1 cloud-only ingestion amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6110931290) supersedes future V1 requirements for a separate share-price revision store and point-in-time share-correction replay. Completed #14 and #42 remain historical delivery records; this amendment does not delete or reclassify their delivered work.
 
-1. Existing ingestion functions retain incoming files and raw source evidence in GCS, then load company, share, dividend, financial, and rating data into the configured environment's Terraform-managed `stocks` dataset. Canonical `shares` observations are keyed by symbol and date; corrections may update that row while retaining the history needed for charts and indicator warm-up. V1 does not persist a separate share-price revision store or provide point-in-time replay of share corrections.
+1. Existing non-financial ingestion functions retain incoming files and raw source evidence in GCS, then load company, share, dividend, and rating data into the configured environment's Terraform-managed `stocks` dataset. FI-1 instead downloads each selected financial PDF into job memory, discards the PDF and provider responses after validation, and retains only the resulting row in `stocks.financials`. Canonical `shares` observations are keyed by symbol and date; corrections may update that row while retaining the history needed for charts and indicator warm-up. V1 does not persist a separate share-price revision store or provide point-in-time replay of share corrections.
 2. A successful import emits a sanitized completion outcome only after its managed BigQuery write has finished. The reused ingestion workflow/control plane coalesces eligible outcomes and then starts the existing analytical Cloud Run Job. It is completion-driven, not a second fixed-time analytical schedule.
 3. `shares` is the daily publication dependency and starts a refresh after a successful daily import. `financials` starts a refresh after a successful import because it changes Long-Term inputs. `ratings` is retained as an ingestion dataset but neither gates nor starts publication in V1 because the current analytical reader does not consume it. Adding ratings later requires an approved analytical-contract amendment.
 4. The control plane serializes publication requests and uses a bounded, release-configured debounce window. Multiple eligible completions in that window produce at most one job execution. Before starting a run, it compares the source-input identity with the active publication; an unchanged input set is recorded as a no-op rather than producing a duplicate publication.
@@ -86,7 +97,7 @@ The approved [v1.1 cloud-only ingestion amendment](https://github.com/issacamara
 
 | Component | Responsibility |
 |---|---|
-| Ingestion | Reuse the BRVM/RichBourse collection functions; retain incoming/raw source evidence in GCS plus source metadata, session date, and ingestion outcome. |
+| Ingestion | Reuse the BRVM/RichBourse adapters and managed BigQuery writer patterns. Non-financial sources retain incoming/raw evidence in GCS. Financials use the FI-1 monthly Cloud Run Job and retain only validated rows in BigQuery. |
 | Publication control | Extend the existing ingestion Workflow/dispatcher and serialized task-control pattern to accept successful input-completion outcomes, coalesce them, reject duplicate source snapshots, and invoke the existing analytical job. It does not calculate analytics or serve user requests. |
 | BigQuery | Store canonical source tables, including dated `shares` rows keyed by symbol/date, and partitioned analytical inputs. |
 | Analysis job | The single existing Cloud Run Job calculates EMA20/EMA50, RSI14, ATR14, traded-value liquidity, Swing entry state/strength, and Long-Term Growth research after an eligible input completion. |
@@ -133,7 +144,7 @@ Responses use the standard `data` and `meta` envelope and include explicit unava
 - Firebase Hosting serves the static frontend.
 - Cloud Run API uses zero minimum instances and request-based billing.
 - Heavy calculations run once per daily batch, preferably in BigQuery, not on interactive API requests.
-- The existing analytical Cloud Run Job is the only recurring analytical compute. Import-completion events may request it, but coalescing and input-snapshot deduplication ensure that one ready input set produces at most one execution.
+- The existing analytical Cloud Run Job remains the only recurring analytical compute. FI-1 adds one monthly ingestion job; it does not calculate or publish recommendations. Import-completion events may request the analytical job, but coalescing and input-snapshot deduplication ensure that one ready input set produces at most one analytical execution.
 - BigQuery source and analytical tables use partitioning and only select the necessary symbols, dates, and columns.
 - Terraform declares development resources in `dev-tradvisor`; production remains isolated and read-only unless separately approved.
 - Deploy through the repository GitHub Actions workflow after a committed, pushed change and passing CI.
@@ -153,20 +164,91 @@ Responses use the standard `data` and `meta` envelope and include explicit unava
 The approved financials credential amendment keeps the real OpenRouter
 credential payload out of Terraform, GitHub, source, tests, logs, and artifacts. Terraform manages
 environment-local Secret Manager metadata and a resource-level accessor grant
-for the dedicated financials identity. Only `scrape_financials` and
-`insert_financials` receive `OPENROUTER_API_KEY` through secret environment
-configuration. An authorized operator provisions and enables a secret version
+for the dedicated financials identity. Under FI-1, only the financial-ingestion
+Cloud Run Job receives `OPENROUTER_API_KEY` through secret environment
+configuration; the retired financial Cloud Functions no longer receive it.
+An authorized operator provisions and enables a secret version
 before requesting reviewed function wiring; development and production use
 separate project-local secrets and payloads. This records the target contract,
 not a claim that payload provisioning or cloud deployment has occurred.
+
+## Approved Financial-Ingestion Job Amendment
+
+The owner approved FI-1 on 2026-11-01 to simplify the monthly collection of the
+latest five available annual financial statements per RichBourse-listed
+company. This section supersedes the financials-specific Cloud Function,
+Workflow, GCS archive, extraction-artifact and initialization paths. It does
+not change financial formulas, Long-Term availability rules, source-table
+ownership, or completion-driven analytical publication.
+
+### FI-1 requirements and decisions
+
+| Req ID | Requirement | Architecture decision |
+|---|---|---|
+| FI-01 | Collect the latest five available annual financial years for each company exposed by the RichBourse company selector. | One monthly Cloud Run Job fetches the selector once, requests the symbol-filtered page for each listed company with bounded concurrency, rejects quarterly and half-year activity reports, and retains the newest five annual fiscal years actually available. |
+| FI-02 | Avoid repeated extraction of already stored statements. | The job reads existing `(symbol, fiscal_year, document_link)` state from `stocks.financials` once, skips unchanged rows, and reprocesses an existing year only when RichBourse exposes a different document link. |
+| FI-03 | Extract `fiscal_year`, `revenue`, `net_income`, `total_debt`, `cash_and_cash_equivalents`, and `total_equity` as numbers or null. | The job requires the exact JSON shape, checks finite numeric/null values and verifies the fiscal year against source metadata before writing. Missing values remain null; they are never synthesized as zero. |
+| FI-04 | Use an ordered OpenRouter fallback chain. | Runtime configuration defines `gemma-4-31b-it` as the primary business-selected model, then `nvidia/nemotron-3.5-lightning:free`, then `openai/gpt-4o-mini`. The next model is called only after provider failure, invalid JSON/schema, fiscal-year conflict, or a result with no usable financial value. The deployable OpenRouter identifier for the primary alias must be verified before release. |
+| FI-05 | Retain no PDF archive or extraction evidence. | PDFs, extracted text and provider responses exist only in job memory and are discarded after validation. `stocks.financials` is the sole retained ingestion record. Logs contain bounded operational metadata only. |
+| FI-06 | Run once per month with minimal platform machinery. | Cloud Scheduler invokes one private Cloud Run Job directly. No financials Workflow, Cloud Function chain, Pub/Sub topic, Cloud Tasks queue, or GCS bucket is required. |
+| FI-07 | Preserve Terraform ownership and safe publication. | Terraform declares the job, schedule, IAM, secret binding and BigQuery tables. The job uses the managed staging/MERGE writer and emits successful financial-import completion only after the BigQuery write commits. |
+
+```mermaid
+flowchart LR
+  Scheduler[Monthly Cloud Scheduler] -->|OAuth run permission| Job[Financial ingestion Cloud Run Job]
+  Job -->|company pages and transient PDFs| RichBourse[RichBourse]
+  Job -->|ordered extraction requests| OpenRouter[OpenRouter]
+  Job -->|staged validated merge| Financials[BigQuery stocks.financials]
+  Job -->|sanitized completion| Publication[Publication control]
+```
+
+The job is stateless and performs one bounded batch. It reads the configured
+BigQuery state once, keeps PDFs and provider responses only in memory, and
+writes validated rows through the existing Terraform-managed staging/MERGE
+pattern. A report that fails all three models remains absent or unchanged and
+is retried on the next run. Successfully committed rows are not repeated.
+
+The primary model identifier, request limits, concurrency and retry allowance
+are runtime configuration because OpenRouter availability and quotas are
+external. The implementation must verify the exact primary Gemma identifier
+before deployment. A free secondary model is opportunistic: unavailability or
+rate limiting falls through to the paid tertiary model within the configured
+attempt budget. Monitoring must report candidate, skipped, inserted, updated,
+failed and per-model-attempt counts without recording document text or model
+responses.
+
+The provisional operating target is one active execution at a time, at most
+four concurrent RichBourse requests, no more than one attempt per configured
+model for one report, and completion within 60 minutes for the current
+48-company selector. The implementation must measure this in development and
+adjust the concurrency or timeout through reviewed runtime configuration rather
+than adding another service. One BigQuery state query and one staged MERGE per
+successful run are the database-efficiency targets.
+
+Choosing BigQuery-only retention accepts that an extraction cannot be replayed
+or audited from retained source material and that an in-place replacement at
+the same RichBourse URL is not detectable. A changed document URL is treated
+as a replacement and may update the current `(symbol, fiscal_year)` row. The
+existing historical financial revision assets, if present, are left untouched;
+their removal or migration requires a separate data-retention decision.
+
+FI-1 is a target architecture amendment, not evidence of deployment. Delivery
+requires an isolated wave, focused parser/model-fallback/writer tests,
+current-head CI and review, a trusted post-merge image built from the
+`development` commit, development deployment by immutable digest, and
+development verification. Production promotion must use the same digest and a
+human-approved gate. Terraform plan/apply, paid provider calls, paid BigQuery
+queries, schedule activation and production operations remain separately
+approved actions.
 
 ## Approved Publication-Orchestration Amendment
 
 The owner approved completion-driven publication on 2026-10-18 to prevent the
 published Firestore batch from lagging successful source imports. This
 amendment extends existing ingestion orchestration and the existing analytical
-Cloud Run Job; it does not introduce a second batch job, a request-time
-BigQuery fallback, a new analytical input, or a new user-facing workflow.
+Cloud Run Job. FI-1 subsequently introduces one monthly financial-ingestion
+batch job but no second analytical job, request-time BigQuery fallback, new
+analytical input, or new user-facing workflow.
 
 This section describes target architecture and does not assert that it is
 deployed. Deployment, schedule activation, development proof, and operational
@@ -203,6 +285,6 @@ The owner approved R1–R7 on 2026-10-12, including complete DuckDB removal. The
 | R6 — Logs | Extend `OperationalEvent` with consistent JSON stdout formatting across entry points, bounded sanitized attributes and safe failure handling; exclude raw provider payloads, credentials and user identifiers. Platform-managed retention remains 30 days. |
 | R7 — Admin processes | Wrap existing admission, recovery and maintenance modules with thin commands using the approved backend image/configuration, explicit targets, operation-specific permissions, stable retry identifiers and conspicuous failures. Schema changes remain Terraform-owned. |
 
-These are approved design requirements, not claims that the codebase is now compliant. Implementation must preserve existing resources and source evidence, pass focused checks and current-head review/CI, and obtain separate authorization for cloud plans/applies, migrations, paid queries, seeding, schedule activation or production changes.
+These are approved design requirements, not claims that the codebase is now compliant. Implementation must preserve existing resources and non-financial source evidence; FI-1 intentionally retains no financial PDF or extraction evidence. Delivery must pass focused checks and current-head review/CI and obtain separate authorization for cloud plans/applies, migrations, paid queries, seeding, schedule activation or production changes.
 
 Only the engineering amendment is synchronized with `planning/public/architecture.md`. The pre-existing Swing guard/eligibility wording difference is preserved and requires separate owner reconciliation before any financial-rule change; TF-1 does not choose between those formulations.
