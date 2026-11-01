@@ -390,10 +390,41 @@ def _provider_attempt(
     from curl_cffi import CurlHttpVersion, requests
 
     prompt = (
-        "Extract annual financial values from this BRVM statement. Return only a JSON object "
-        "with exactly these keys: fiscal_year, revenue, net_income, total_debt, "
-        "cash_and_cash_equivalents, total_equity. Values must be finite numbers or null. "
-        "Use full XOF units; never guess missing values. The document text follows.\n\n"
+        "You are a financial data extraction expert. Extract structured financial data from a "
+        "BRVM annual financial statement PDF.\n\n"
+        "Extract the most recent fiscal year's data, not the publication date. The documents "
+        "may be in French and follow SYSCOHADA révisé / BCEAO-PCB norms; look for chiffre "
+        "d'affaires, résultat net, trésorerie, capitaux propres, dettes, passifs, and the unit "
+        "disclosure.\n\n"
+        "revenue: Generic operating revenue or chiffre d'affaires only. Never put bank net "
+        "banking income (produit net bancaire / PNB), insurer premiums, interest income, or "
+        "another category-specific measure in this field.\n\n"
+        "net_income: Net income or résultat net de l'exercice. Prefer résultat net part du "
+        "groupe when consolidated and company-only accounts are shown together.\n\n"
+        "total_debt: Detect the company type first. For non-financial companies, use total "
+        "financial/interest-bearing debt, excluding trade payables and other non-financial "
+        "liabilities when itemized. For banks, use interest-bearing liabilities to third "
+        "parties such as interbank borrowings, customer deposits, and bonds; do not include "
+        "equity, provisions, or off-balance-sheet commitments. For insurers, use technical "
+        "and financial liabilities excluding equity, primarily technical provisions plus debt.\n\n"
+        "cash_and_cash_equivalents: Use trésorerie, trésorerie et équivalents de trésorerie, "
+        "disponibilités, or for banks caisse, banques centrales / trésorerie active.\n\n"
+        "total_equity: Use capitaux propres or capitaux propres part du groupe, including "
+        "reserves, capital, and retained earnings.\n\n"
+        "CRITICAL — UNIT NORMALIZATION: Detect whether figures are in thousands, millions, or "
+        "billions of XOF/FCFA and convert every monetary value to full base units. Apply the "
+        "same scale consistently to all five monetary fields. If no unit is specified, do not "
+        "scale. If a field is not found, use null; do not guess.\n\n"
+        "Return only this JSON object, with no explanation or extra text:\n"
+        "{\n"
+        '  "fiscal_year": <integer or null>,\n'
+        '  "revenue": <number or null>,\n'
+        '  "net_income": <number or null>,\n'
+        '  "total_debt": <number or null>,\n'
+        '  "cash_and_cash_equivalents": <number or null>,\n'
+        '  "total_equity": <number or null>\n'
+        "}\n\n"
+        "The document text follows.\n\n"
         f"{document_text}"
     )
     response = requests.post(
