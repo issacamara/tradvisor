@@ -78,6 +78,82 @@ resource "google_secret_manager_secret_iam_member" "financials_openrouter" {
   member    = "serviceAccount:${google_service_account.financials_runtime.email}"
 }
 
+# FI-1 has its own identity so it does not inherit the legacy functions'
+# object-storage permissions. BigQuery access is limited to the company
+# selector table and the Terraform-managed financials input/staging tables.
+resource "google_service_account" "fi1_financial_runtime" {
+  count        = var.manage_fi1_financial_job ? 1 : 0
+  project      = var.project_id
+  account_id   = var.fi1_financial_runtime_service_account_id
+  display_name = "Tradvisor FI-1 financial ingestion runtime"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "google_project_iam_member" "fi1_financial_bigquery_job_user" {
+  count   = var.manage_fi1_financial_job ? 1 : 0
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_bigquery_table_iam_member" "fi1_companies_reader" {
+  count      = var.manage_fi1_financial_job ? 1 : 0
+  project    = var.project_id
+  dataset_id = google_bigquery_table.brvm_companies.dataset_id
+  table_id   = google_bigquery_table.brvm_companies.table_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_bigquery_table_iam_member" "fi1_financials_editor" {
+  count      = var.manage_fi1_financial_job ? 1 : 0
+  project    = var.project_id
+  dataset_id = google_bigquery_table.financials.dataset_id
+  table_id   = google_bigquery_table.financials.table_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_bigquery_table_iam_member" "fi1_financials_staging_editor" {
+  count      = var.manage_fi1_financial_job ? 1 : 0
+  project    = var.project_id
+  dataset_id = google_bigquery_table.financials_staging.dataset_id
+  table_id   = google_bigquery_table.financials_staging.table_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "fi1_financial_openrouter" {
+  count     = var.manage_fi1_financial_job ? 1 : 0
+  project   = google_secret_manager_secret.openrouter.project
+  secret_id = google_secret_manager_secret.openrouter.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_service_account" "fi1_financial_scheduler" {
+  count        = var.manage_fi1_financial_job ? 1 : 0
+  project      = var.project_id
+  account_id   = var.fi1_financial_scheduler_service_account_id
+  display_name = "Tradvisor FI-1 Scheduler caller"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "google_cloud_run_v2_job_iam_member" "fi1_financial_scheduler_invoker" {
+  count    = var.manage_fi1_financial_job ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_job.fi1_financials[0].location
+  name     = google_cloud_run_v2_job.fi1_financials[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.fi1_financial_scheduler[0].email}"
+}
+
 # Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
   count              = var.manage_legacy_service_account_credentials ? 1 : 0
