@@ -33,6 +33,16 @@ def test_fi1_job_image_is_built_pinned_and_promoted_by_digest() -> None:
     assert "promoted_fi1_digest" in production
 
 
+def test_development_manages_fi1_job_without_activating_schedule() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/cd-development.yml").read_text()
+
+    for step_name in ("Plan development changes", "Apply reviewed development plan"):
+        step = workflow.split(f"      - name: {step_name}", 1)[1].split("      - name:", 1)[0]
+        environment = step.split("        env:\n", 1)[1].split("        run:\n", 1)[0]
+        assert 'TF_VAR_manage_fi1_financial_job: "true"' in environment
+        assert "TF_VAR_activate_fi1_financial_schedule" not in environment
+
+
 def test_release_workflow_packages_and_uploads_manifest() -> None:
     contents = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
     assert "package_artifact.py" in contents
