@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import re
+import threading
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, TypeVar
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -34,6 +36,8 @@ MODEL_ORDER = (
     "openai/gpt-4o-mini",
 )
 MAX_RUNTIME_SECONDS = 60 * 60
+EXECUTION_LEASE_SECONDS = 300
+EXECUTION_LEASE_RENEW_SECONDS = 60
 MAX_PAGE_CONCURRENCY = 4
 MAX_ANNUAL_CANDIDATES = 5
 SOURCE_TIMEOUT_SECONDS = 30
@@ -53,6 +57,99 @@ _FINANCIAL_VALUE_KEYS = (
 
 class JobDeadlineExceeded(TimeoutError):
     """The configured job time budget was exhausted."""
+
+
+class ActiveExecutionError(RuntimeError):
+    """Another FI-1 process currently owns the bounded execution lease."""
+
+
+T = TypeVar("T")
+
+
+class FirestoreExecutionLease(AbstractContextManager):
+    """Short Firestore transaction lease; only a random owner and expiry persist."""
+
+    def __init__(
+        self,
+        transact: Callable[[Callable[[Any], T]], T],
+        document: Any,
+        *,
+        lease_seconds: int = EXECUTION_LEASE_SECONDS,
+        renew_seconds: int = EXECUTION_LEASE_RENEW_SECONDS,
+        utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        token: str | None = None,
+    ) -> None:
+        if not 1 <= lease_seconds <= 600 or not 1 <= renew_seconds < lease_seconds:
+            raise ValueError("FI-1 lease bounds are invalid")
+        self._transact = transact
+        self._document = document
+        self._lease_seconds = lease_seconds
+        self._renew_seconds = renew_seconds
+        self._utcnow = utcnow
+        self._token = token or uuid4().hex
+        self._stop = threading.Event()
+        self._lost = threading.Event()
+        self._heartbeat: threading.Thread | None = None
+
+    def _transition(self, *, acquire: bool = False, release: bool = False) -> bool:
+        now = self._utcnow().astimezone(timezone.utc)
+
+        def update(transaction: Any) -> bool:
+            snapshot = self._document.get(transaction=transaction)
+            current = snapshot.to_dict() if snapshot.exists else None
+            owner = current.get("owner") if isinstance(current, Mapping) else None
+            expiry = current.get("expires_at") if isinstance(current, Mapping) else None
+            if release:
+                if owner != self._token:
+                    return False
+                transaction.delete(self._document)
+                return True
+            if acquire and owner not in (None, self._token):
+                if not isinstance(expiry, datetime) or expiry > now:
+                    return False
+            if not acquire and owner != self._token:
+                return False
+            transaction.set(
+                self._document,
+                {"owner": self._token, "expires_at": now + timedelta(seconds=self._lease_seconds)},
+            )
+            return True
+
+        return self._transact(update)
+
+    def __enter__(self) -> "FirestoreExecutionLease":
+        if not self._transition(acquire=True):
+            raise ActiveExecutionError("another FI-1 execution is active")
+        self._heartbeat = threading.Thread(
+            target=self._renew_loop, name="fi1-lease-renewal", daemon=True
+        )
+        self._heartbeat.start()
+        return self
+
+    def _renew_loop(self) -> None:
+        while not self._stop.wait(self._renew_seconds):
+            try:
+                if not self._transition():
+                    self._lost.set()
+                    return
+            except Exception:
+                self._lost.set()
+                return
+
+    def assert_owned(self) -> None:
+        if self._lost.is_set() or not self._transition():
+            self._lost.set()
+            raise ActiveExecutionError("FI-1 execution lease was lost")
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self._stop.set()
+        if self._heartbeat is not None:
+            self._heartbeat.join(timeout=self._renew_seconds + 1)
+        try:
+            self._transition(release=True)
+        except Exception:
+            if exc is None:
+                raise
 
 
 @dataclass(frozen=True)
@@ -91,6 +188,7 @@ class RuntimeAdapters:
     write_rows: Callable[[list[dict[str, Any]], str], str]
     completion: Callable[[str], Mapping[str, Any]]
     emit_event: Callable[..., None]
+    execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
     monotonic: Callable[[], float] = time.monotonic
     utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
@@ -268,13 +366,32 @@ def _default_adapters(project_id: str, dataset: str) -> RuntimeAdapters:
                 "collected_at",
             ],
         )
+        revision_frame = None
         return upsert_financials_and_archive(
             frame,
+            revision_frame,
             project_id,
             dataset,
             lambda: None,
             run_id=run_id,
         )
+
+    def execution_lease() -> FirestoreExecutionLease:
+        from google.cloud import firestore
+
+        client = firestore.Client(project=project_id)
+        document = client.document("pipeline_control/fi1_financial_ingestion")
+
+        def transact(callback: Callable[[Any], T]) -> T:
+            transaction = client.transaction()
+
+            @firestore.transactional
+            def run(active_transaction: Any) -> T:
+                return callback(active_transaction)
+
+            return run(transaction)
+
+        return FirestoreExecutionLease(transact, document)
 
     return RuntimeAdapters(
         fetch_text=_fetch_text,
@@ -287,6 +404,7 @@ def _default_adapters(project_id: str, dataset: str) -> RuntimeAdapters:
             "financials", [fingerprint]
         ),
         emit_event=emit_event,
+        execution_lease=execution_lease,
     )
 
 
@@ -306,6 +424,25 @@ def run_batch(
     ):
         raise ValueError("FI-1 runtime must be between 1 and 3600 seconds")
 
+    lease = adapters.execution_lease() if adapters.execution_lease is not None else None
+    if lease is not None:
+        with lease:
+            return _run_batch(
+                adapters,
+                api_key=api_key,
+                max_duration_seconds=max_duration_seconds,
+                lease=lease,
+            )
+    return _run_batch(adapters, api_key=api_key, max_duration_seconds=max_duration_seconds, lease=None)
+
+
+def _run_batch(
+    adapters: RuntimeAdapters,
+    *,
+    api_key: str,
+    max_duration_seconds: int,
+    lease: FirestoreExecutionLease | None,
+) -> JobOutcome:
     started = adapters.monotonic()
     deadline = started + max_duration_seconds
     counters = {
@@ -374,6 +511,8 @@ def run_batch(
     rows: list[dict[str, Any]] = []
     run_id = "fi1_" + uuid4().hex
     for candidate in candidates:
+        if lease is not None:
+            lease.assert_owned()
         _remaining(deadline, adapters.monotonic)
         current_link = existing.get((candidate.symbol, candidate.fiscal_year))
         state = decide_row_state(
@@ -424,6 +563,8 @@ def run_batch(
 
     completion: Mapping[str, Any] | None = None
     if rows:
+        if lease is not None:
+            lease.assert_owned()
         _remaining(deadline, adapters.monotonic)
         fingerprint = adapters.write_rows(rows, run_id)
         _remaining(deadline, adapters.monotonic)
@@ -433,6 +574,8 @@ def run_batch(
         ):
             raise RuntimeError("FI-1 writer returned no managed commit receipt")
         if counters["failed"] == 0:
+            if lease is not None:
+                lease.assert_owned()
             completion = adapters.completion(fingerprint)
     adapters.emit_event("ingestion.fi1.batch", "completed", count=len(rows))
     adapters.emit_event("ingestion.fi1.skipped", "completed", count=counters["skipped"])

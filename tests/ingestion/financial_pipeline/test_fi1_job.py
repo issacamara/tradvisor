@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
 import time
@@ -16,8 +17,11 @@ from functions.financials.fi1_job import (
     MAX_RUNTIME_SECONDS,
     MODEL_ORDER,
     SELECTOR_URL,
+    ActiveExecutionError,
+    FirestoreExecutionLease,
     JobDeadlineExceeded,
     RuntimeAdapters,
+    _default_adapters,
     _get_response,
     run_batch,
 )
@@ -148,6 +152,164 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert tuple(key for key in fake.writes[0][0][0] if key in EXTRACTION_KEYS) == EXTRACTION_KEYS
     assert fake.actions == ["write", "completion"]
     assert outcome.completion is not None
+
+
+def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Frame:
+        def __init__(self, rows: list[dict[str, Any]], *, columns: list[str]) -> None:
+            self.rows = rows
+            self.columns = columns
+
+    pandas = ModuleType("pandas")
+    pandas.DataFrame = Frame  # type: ignore[attr-defined]
+    helper = ModuleType("helper")
+
+    def managed_writer(*args: object, **kwargs: object) -> str:
+        calls.append((args, kwargs))
+        return "b" * 64
+
+    helper.upsert_financials_and_archive = managed_writer  # type: ignore[attr-defined]
+    observability = ModuleType("ingestion_observability")
+    observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
+    bigquery = ModuleType("google.cloud.bigquery")
+    bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
+    google = ModuleType("google")
+    cloud = ModuleType("google.cloud")
+    cloud.bigquery = bigquery  # type: ignore[attr-defined]
+    google.cloud = cloud  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pandas", pandas)
+    monkeypatch.setitem(sys.modules, "helper", helper)
+    monkeypatch.setitem(sys.modules, "ingestion_observability", observability)
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
+
+    adapters = _default_adapters("dev-project", "stocks")
+    rows = [{"symbol": "ABC", "fiscal_year": 2024}]
+    assert adapters.write_rows(rows, "fi1-run") == "b" * 64
+
+    args, kwargs = calls[0]
+    assert len(args) == 5
+    assert isinstance(args[0], Frame)
+    assert args[1] is None
+    assert args[2:4] == ("dev-project", "stocks")
+    assert callable(args[4])
+    assert kwargs == {"run_id": "fi1-run"}
+
+
+class _LeaseDocument:
+    def __init__(self, state: dict[str, object]) -> None:
+        self.state = state
+
+    def get(self, *, transaction: object):
+        del transaction
+        data = dict(self.state) if self.state else None
+        return SimpleNamespace(exists=data is not None, to_dict=lambda: data)
+
+
+class _LeaseTransaction:
+    def __init__(self, document: _LeaseDocument) -> None:
+        self.document = document
+
+    def set(self, document: _LeaseDocument, value: dict[str, object]) -> None:
+        assert document is self.document
+        self.document.state = dict(value)
+
+    def delete(self, document: _LeaseDocument) -> None:
+        assert document is self.document
+        self.document.state.clear()
+
+
+def _lease_store(document: _LeaseDocument):
+    lock = threading.Lock()
+
+    def transact(callback):
+        with lock:
+            return callback(_LeaseTransaction(document))
+
+    return transact
+
+
+def test_concurrent_fi1_runs_use_transactional_compare_and_set_lease() -> None:
+    fake = Harness()
+    document = _LeaseDocument({})
+    transact = _lease_store(document)
+    started = threading.Event()
+    release = threading.Event()
+    original_fetch = fake.adapters().fetch_text
+
+    def blocking_fetch(url: str, timeout: float) -> str:
+        if url == SELECTOR_URL:
+            started.set()
+            assert release.wait(timeout=2)
+        return original_fetch(url, timeout)
+
+    adapters = fake.adapters()
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "fetch_text": blocking_fetch,
+            "execution_lease": lambda: FirestoreExecutionLease(
+                transact, document, token="first-owner"
+            ),
+        }
+    )
+    results: list[object] = []
+    worker = threading.Thread(
+        target=lambda: results.append(run_batch(adapters, api_key="runtime-secret"))
+    )
+    worker.start()
+    assert started.wait(timeout=2)
+
+    competing = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "execution_lease": lambda: FirestoreExecutionLease(
+                transact, document, token="second-owner"
+            ),
+        }
+    )
+    with pytest.raises(ActiveExecutionError, match="another FI-1 execution is active"):
+        run_batch(competing, api_key="runtime-secret")
+
+    release.set()
+    worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert document.state == {}
+
+
+def test_expired_firestore_lease_allows_only_a_new_transactional_owner() -> None:
+    document = _LeaseDocument({})
+    now = [datetime(2026, 11, 1, tzinfo=timezone.utc)]
+    transact = _lease_store(document)
+    previous = FirestoreExecutionLease(
+        transact,
+        document,
+        lease_seconds=2,
+        renew_seconds=1,
+        utcnow=lambda: now[0],
+        token="expired-owner",
+    )
+    assert previous._transition(acquire=True)
+    now[0] += timedelta(seconds=3)
+
+    current = FirestoreExecutionLease(
+        transact,
+        document,
+        lease_seconds=2,
+        renew_seconds=1,
+        utcnow=lambda: now[0],
+        token="current-owner",
+    )
+    with current:
+        assert document.state["owner"] == "current-owner"
+    assert document.state == {}
 
 
 def test_symbol_pages_are_bounded_to_four_concurrent_requests() -> None:
