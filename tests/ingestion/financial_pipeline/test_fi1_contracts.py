@@ -14,6 +14,7 @@ from functions.financials.fi1_contracts import (
     FinancialIdentity,
     RowDecision,
     decide_row_state,
+    is_approved_document_url,
     parse_annual_candidates,
     parse_selector_symbols,
     richbourse_symbol_page_url,
@@ -59,6 +60,20 @@ def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() ->
     assert all(candidate.symbol == "ABC" for candidate in candidates)
     assert len({candidate.fiscal_year for candidate in candidates}) == 5
     assert candidates[1].document_link.endswith("abc-2024.pdf")
+
+
+def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
+    html = (
+        '<div class="ligne_paire"><a href="https://files.invalid/annual-2026.pdf">'
+        "Rapport annuel Exercice 2026</a></div>"
+    )
+
+    assert parse_annual_candidates(html, "ABC") == ()
+    assert is_approved_document_url("https://www.richbourse.com/documents/report.pdf")
+    assert not is_approved_document_url("https://files.invalid/report.pdf")
+    assert not is_approved_document_url("http://www.richbourse.com/report.pdf")
+    with pytest.raises(ValueError, match="approved RichBourse origin"):
+        AnnualCandidate("ABC", 2026, "https://files.invalid/annual-2026.pdf")
 
 
 @pytest.mark.parametrize(
@@ -207,7 +222,9 @@ def test_retry_safe_row_decisions(
 
 
 def test_candidate_exposes_logical_identity_and_only_source_reference_metadata() -> None:
-    candidate = AnnualCandidate("ABC", 2024, "https://source.invalid/report.pdf")
+    candidate = AnnualCandidate(
+        "ABC", 2024, "https://www.richbourse.com/report.pdf"
+    )
 
     assert candidate.identity == FinancialIdentity("ABC", 2024)
     assert set(vars(candidate)) == {"symbol", "fiscal_year", "document_link"}

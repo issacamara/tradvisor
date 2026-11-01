@@ -13,8 +13,9 @@ from numbers import Real
 from urllib.parse import quote, urljoin, urlparse
 
 
+RICHBOURSE_ORIGIN = "https://www.richbourse.com"
 RICHBOURSE_FINANCIALS_URL = (
-    "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
+    f"{RICHBOURSE_ORIGIN}/common/actualite-categorie/index/etats-financiers"
 )
 EXTRACTION_KEYS = (
     "fiscal_year",
@@ -59,9 +60,8 @@ class AnnualCandidate:
             raise ValueError("symbol is required")
         if isinstance(self.fiscal_year, bool) or not isinstance(self.fiscal_year, int):
             raise ValueError("fiscal_year must be an integer")
-        parsed = urlparse(self.document_link)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("document_link must be an absolute HTTP(S) URL")
+        if not is_approved_document_url(self.document_link):
+            raise ValueError("document_link must use the approved RichBourse origin")
 
     @property
     def identity(self) -> "FinancialIdentity":
@@ -193,6 +193,26 @@ def richbourse_symbol_page_url(symbol: str) -> str:
     return f"{RICHBOURSE_FINANCIALS_URL}?symbole={quote(symbol, safe='')}"
 
 
+def is_approved_document_url(url: str) -> bool:
+    """Allow only the RichBourse HTTPS origin for candidates and redirect targets.
+
+    Runtime fetchers must apply this check before each request and after every
+    redirect; they must stop when a redirect target does not pass this check.
+    """
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme.casefold() == "https"
+            and parsed.hostname is not None
+            and parsed.hostname.casefold() == "www.richbourse.com"
+            and parsed.port is None
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
 def parse_annual_candidates(
     html: str, symbol: str, *, limit: int = 5
 ) -> tuple[AnnualCandidate, ...]:
@@ -217,8 +237,7 @@ def parse_annual_candidates(
             continue
 
         document_link = urljoin(RICHBOURSE_FINANCIALS_URL, href)
-        parsed = urlparse(document_link)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        if not is_approved_document_url(document_link):
             continue
         year = int(year_match.group(1))
         # RichBourse pages are newest-first; keep the first link if a year repeats.
