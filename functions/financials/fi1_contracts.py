@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from html.parser import HTMLParser
 import math
 import re
 import unicodedata
@@ -122,19 +123,66 @@ def _plain_text(value: str) -> str:
     return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
 
 
+class _RichBoursePageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.selector_found = False
+        self.in_selector = False
+        self.option_value: str | None = None
+        self.symbols: list[str] = []
+        self.div_depth = 0
+        self.row_depth: int | None = None
+        self.current_link: tuple[str, list[str]] | None = None
+        self.links: list[tuple[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "select":
+            if attributes.get("id") == "symbole":
+                self.selector_found = True
+                self.in_selector = True
+        elif tag == "option" and self.in_selector:
+            self.option_value = (attributes.get("value") or "").strip()
+        elif tag == "div":
+            self.div_depth += 1
+            classes = set((attributes.get("class") or "").split())
+            if self.row_depth is None and classes.intersection(
+                {"ligne_paire", "ligne_impaire"}
+            ):
+                self.row_depth = self.div_depth
+        elif tag == "a" and self.row_depth is not None and self.current_link is None:
+            href = (attributes.get("href") or "").strip()
+            if href:
+                self.current_link = (href, [])
+
+    def handle_data(self, data: str) -> None:
+        if self.current_link is not None:
+            self.current_link[1].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "option" and self.in_selector:
+            if self.option_value:
+                self.symbols.append(self.option_value)
+            self.option_value = None
+        elif tag == "select" and self.in_selector:
+            self.in_selector = False
+        elif tag == "a" and self.current_link is not None:
+            href, text_parts = self.current_link
+            self.links.append((href, " ".join(" ".join(text_parts).split())))
+            self.current_link = None
+        elif tag == "div":
+            if self.row_depth == self.div_depth:
+                self.row_depth = None
+            self.div_depth = max(0, self.div_depth - 1)
+
+
 def parse_selector_symbols(html: str) -> tuple[str, ...]:
     """Read non-empty RichBourse options from its ``select#symbole`` selector."""
-    from bs4 import BeautifulSoup
-
-    select = BeautifulSoup(html, "html.parser").find("select", id="symbole")
-    if select is None:
+    parser = _RichBoursePageParser()
+    parser.feed(html)
+    if not parser.selector_found:
         raise ValueError("RichBourse symbol selector is missing")
-    symbols: list[str] = []
-    for option in select.find_all("option"):
-        value = (option.get("value") or "").strip()
-        if value and value not in symbols:
-            symbols.append(value)
-    return tuple(symbols)
+    return tuple(dict.fromkeys(parser.symbols))
 
 
 def richbourse_symbol_page_url(symbol: str) -> str:
@@ -149,26 +197,16 @@ def parse_annual_candidates(
     html: str, symbol: str, *, limit: int = 5
 ) -> tuple[AnnualCandidate, ...]:
     """Parse annual reports from one symbol-filtered page, newest fiscal years first."""
-    from bs4 import BeautifulSoup
-
     symbol = symbol.strip()
     if not symbol:
         raise ValueError("symbol is required")
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
 
-    soup = BeautifulSoup(html, "html.parser")
-    rows = soup.find_all(
-        "div",
-        class_=lambda classes: classes
-        and ("ligne_paire" in classes or "ligne_impaire" in classes),
-    )
+    parser = _RichBoursePageParser()
+    parser.feed(html)
     by_year: dict[int, AnnualCandidate] = {}
-    for row in rows:
-        link = row.find("a", href=True)
-        if link is None:
-            continue
-        title = link.get_text(" ", strip=True)
+    for href, title in parser.links:
         normalized = _plain_text(title)
         if any(term in normalized for term in _INTERIM_TERMS):
             continue
@@ -178,7 +216,7 @@ def parse_annual_candidates(
         if year_match is None:
             continue
 
-        document_link = urljoin(RICHBOURSE_FINANCIALS_URL, link["href"].strip())
+        document_link = urljoin(RICHBOURSE_FINANCIALS_URL, href)
         parsed = urlparse(document_link)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue

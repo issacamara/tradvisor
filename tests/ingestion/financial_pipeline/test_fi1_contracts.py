@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import builtins
 import logging
+import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -26,6 +28,18 @@ def test_selector_fixture_returns_distinct_symbols() -> None:
     html = (FIXTURES / "fi1_selector.html").read_text()
 
     assert parse_selector_symbols(html) == ("ABC", "XYZ")
+
+
+def test_html_contract_is_independent_of_global_beautifulsoup_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bs4_stub = ModuleType("bs4")
+    bs4_stub.BeautifulSoup = object  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "bs4", bs4_stub)
+
+    assert parse_selector_symbols(
+        '<select id="symbole"><option value="ABC">ABC</option></select>'
+    ) == ("ABC",)
 
 
 def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() -> None:
