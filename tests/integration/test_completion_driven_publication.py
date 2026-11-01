@@ -204,9 +204,9 @@ def test_terraform_exposes_one_batch_job_without_an_analytical_scheduler() -> No
     runtime = (root / "terraform" / "runtime.tf").read_text(encoding="utf-8")
 
     assert 'name = "shares"' in variables
-    assert 'name = "financials"' in variables
+    assert 'name = "financials"' not in variables
     assert 'name = "ratings"' in variables
-    scheduler = functions.split('resource "google_cloud_scheduler_job" "jobs"', 1)[1]
+    scheduler = functions.split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[1]
     assert "daily_publication" not in scheduler
     assert 'resource "google_cloud_run_v2_job" "v1_batch"' in runtime
     assert runtime.count('resource "google_cloud_run_v2_job" "v1_batch"') == 1
