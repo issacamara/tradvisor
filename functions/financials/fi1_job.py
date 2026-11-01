@@ -60,6 +60,16 @@ class JobDeadlineExceeded(TimeoutError):
     """The configured job time budget was exhausted."""
 
 
+class ProviderHTTPError(RuntimeError):
+    """OpenRouter returned an HTTP failure with a safe status-only code."""
+
+    def __init__(self, status_code: int) -> None:
+        if not 100 <= status_code <= 599:
+            raise ValueError("provider HTTP status is invalid")
+        self.status_code = status_code
+        super().__init__(f"ProviderHTTP{status_code}")
+
+
 class ActiveExecutionError(RuntimeError):
     """Another FI-1 process currently owns the bounded execution lease."""
 
@@ -406,7 +416,7 @@ def _provider_attempt(
         http_version=CurlHttpVersion.V1_1,
     )
     if response.status_code != 200:
-        raise RuntimeError(f"OpenRouter HTTP {response.status_code}")
+        raise ProviderHTTPError(response.status_code)
     payload = response.json()
     content = payload["choices"][0]["message"]["content"]
     if not isinstance(content, str):
@@ -673,7 +683,7 @@ def _run_batch(
         except Exception as error:
             counters["failed"] += 1
             adapters.emit_event(
-                "ingestion.fi1.report", "failed", error_class=type(error).__name__
+                "ingestion.fi1.report", "failed", error_class=_error_class(error)
             )
 
     completion: Mapping[str, Any] | None = None
@@ -737,9 +747,15 @@ def _extract_candidate(
             adapters.emit_event(
                 "ingestion.fi1.provider",
                 "failed",
-                error_class=type(error).__name__,
+                error_class=_error_class(error),
             )
     return None
+
+
+def _error_class(error: Exception) -> str:
+    if isinstance(error, ProviderHTTPError):
+        return f"ProviderHTTP{error.status_code}"
+    return type(error).__name__
 
 
 def main(argv: Sequence[str] | None = None) -> None:

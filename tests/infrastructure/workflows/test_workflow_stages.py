@@ -26,7 +26,6 @@ def test_workflow_sources_and_persistence_stages_are_explicit_and_stable() -> No
     assert workflows == [
         ("shares", ["scrape_shares", "insert_shares"], ["stocks.shares"], "stocks.shares"),
         ("dividends", ["scrape_dividends", "insert_dividends"], ["stocks.dividends"], "stocks.dividends"),
-        ("financials", ["scrape_financials"], ["stocks.financials"], "stocks.financials"),
         ("ratings", ["scrape_ratings", "insert_ratings"], ["stocks.ratings"], "stocks.ratings"),
     ]
     target_owners = [target for _, _, targets, _ in workflows for target in targets]
@@ -57,8 +56,8 @@ def test_shares_scraper_scaling_and_retry_budget_are_explicitly_bounded() -> Non
 
 def test_shares_retry_stays_before_insert_and_is_not_applied_to_insert() -> None:
     workflow_block = FUNCTIONS.split(
-        'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+        'resource "google_workflows_workflow" "retained_workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[0]
     scrape_condition = workflow_block.index('%{if function_name == "scrape_shares"}')
     try_block = workflow_block.index('        try:', scrape_condition)
     retry = workflow_block.index('        retry:', try_block)
@@ -67,32 +66,39 @@ def test_shares_retry_stays_before_insert_and_is_not_applied_to_insert() -> None
     assert workflow_block.count('predicate: $${retry_transient_http}') == 1
 
 
-def test_workflow_addresses_remain_count_indexed_and_failures_stop_the_chain() -> None:
+def test_workflow_addresses_are_stable_by_source_and_failures_stop_the_chain() -> None:
     assert re.search(
-        r'resource "google_workflows_workflow" "workflows"\s*\{[^}]*'
-            r'count\s+= var\.manage_legacy_workflows \? length\(var\.functions\) / 2 : 0',
+        r'resource "google_workflows_workflow" "retained_workflows"\s*\{[^}]*'
+        r'for_each\s+= var\.manage_legacy_workflows \? \{ for stage in local\.workflow_stages : stage\.source => stage \} : \{\}',
         FUNCTIONS,
         re.S,
     )
     workflow_block = FUNCTIONS.split(
-        'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
-    assert "for_each" not in workflow_block
+        'resource "google_workflows_workflow" "retained_workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[0]
+    assert re.search(r"(?m)^\s*count\s*=", workflow_block) is None
     assert re.search(r"(?m)^\s+- try:\s*$", FUNCTIONS) is None
     assert "except:" not in FUNCTIONS
+    assert 'from = google_workflows_workflow.workflows[0]' in FUNCTIONS
+    assert 'to   = google_workflows_workflow.retained_workflows["shares"]' in FUNCTIONS
+    assert 'from = google_workflows_workflow.workflows[1]' in FUNCTIONS
+    assert 'to   = google_workflows_workflow.retained_workflows["dividends"]' in FUNCTIONS
+    assert 'from = google_workflows_workflow.workflows[3]' in FUNCTIONS
+    assert 'to   = google_workflows_workflow.retained_workflows["ratings"]' in FUNCTIONS
 
 
 def test_configured_source_schedules_are_enabled_and_managed() -> None:
-    assert 'job5 = { name = "financials", schedule = "0 20 1 * *" }' in VARIABLES
     assert 'job6 = { name = "ratings", schedule = "0 20 1 * *" }' in VARIABLES
     assert "paused_schedule_keys = toset([])" in FUNCTIONS
     assert "paused = contains(local.paused_schedule_keys, each.key)" in FUNCTIONS
-    assert "prevent_destroy = true" in FUNCTIONS
+    assert 'name = "financials"' not in VARIABLES
+    assert 'from = google_cloud_scheduler_job.jobs\n  lifecycle { destroy = true }' in FUNCTIONS
+    assert 'google_cloud_scheduler_job.jobs["job5"]' not in FUNCTIONS
     assert "ignore_changes  = [description, schedule, time_zone, http_target, paused]" not in FUNCTIONS
 
 
 def test_scheduler_creates_workflow_execution_with_oauth_and_json_argument() -> None:
-    scheduler = FUNCTIONS.split('resource "google_cloud_scheduler_job" "jobs"', 1)[1]
+    scheduler = FUNCTIONS.split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[1]
 
     assert "body = base64encode(jsonencode({" in scheduler
     assert (
@@ -108,19 +114,19 @@ def test_scheduler_creates_workflow_execution_with_oauth_and_json_argument() -> 
 
 def test_eligible_workflows_handoff_successful_completion_to_publication_control() -> None:
     workflow_block = FUNCTIONS.split(
-        'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+        'resource "google_workflows_workflow" "retained_workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[0]
     assert "publication_completion" in workflow_block
     assert "google_cloud_run_v2_service.publication_control[0].uri" in workflow_block
     assert "body: $${insert_shares_response.body}" in workflow_block
-    assert "body: $${scrape_financials_response.body}" in workflow_block
+    assert "scrape_financials_response" not in workflow_block
     assert "/internal/publication-control/completion" in workflow_block
 
 
 def test_publication_completion_is_after_all_ingestion_stages() -> None:
     workflow_block = FUNCTIONS.split(
-        'resource "google_workflows_workflow" "workflows"', 1
-    )[1].split('resource "google_cloud_scheduler_job" "jobs"', 1)[0]
+        'resource "google_workflows_workflow" "retained_workflows"', 1
+    )[1].split('resource "google_cloud_scheduler_job" "retained_jobs"', 1)[0]
     loop_end = workflow_block.index("%{endfor}")
     completion = workflow_block.index("- publication_completion:")
     assert completion > loop_end

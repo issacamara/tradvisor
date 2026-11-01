@@ -5,17 +5,6 @@ variable "project_id" {
   #   default     = "sbx-31371-uw1yf3stmtx5c52rawmo"
 }
 
-variable "financials_runtime_service_account_id" {
-  description = "Dedicated service account ID for the two recurring financials functions"
-  type        = string
-  default     = "tradvisor-financials-runtime"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.financials_runtime_service_account_id))
-    error_message = "financials_runtime_service_account_id must be a valid 6-30 character service account ID."
-  }
-}
-
 variable "fi1_financial_runtime_service_account_id" {
   description = "Dedicated least-privilege service account for the FI-1 Cloud Run Job"
   type        = string
@@ -168,7 +157,7 @@ variable "functions" {
   description = "List of function names"
   type        = list(string)
   default = ["scrape_shares", "scrape_dividends", "insert_shares", "insert_dividends",
-  "scrape_financials", "insert_financials", "scrape_ratings", "insert_ratings"]
+  "scrape_ratings", "insert_ratings"]
 }
 
 variable "v1_ingestion_source_urls" {
@@ -189,9 +178,9 @@ variable "v1_ingestion_source_urls" {
 }
 
 variable "initialization_functions" {
-  description = "One-time initialization functions retained from the production ingestion topology"
+  description = "One-time initialization functions retained from the non-financial ingestion topology"
   type        = set(string)
-  default     = ["scrape_financials_init", "scrape_ratings_init"]
+  default     = ["scrape_ratings_init"]
 }
 
 variable "managed_function_sources" {
@@ -202,8 +191,6 @@ variable "managed_function_sources" {
     "insert_shares",
     "scrape_dividends",
     "insert_dividends",
-    "scrape_financials",
-    "insert_financials",
     "scrape_ratings",
     "insert_ratings",
   ]
@@ -219,16 +206,13 @@ variable "function_runtimes" {
   description = "Deployed runtime preserved for each legacy Gen 2 function"
   type        = map(string)
   default = {
-    scrape_shares          = "python311"
-    scrape_dividends       = "python311"
-    insert_shares          = "python311"
-    insert_dividends       = "python311"
-    scrape_financials      = "python311"
-    insert_financials      = "python311"
-    scrape_financials_init = "python311"
-    scrape_ratings         = "python311"
-    insert_ratings         = "python311"
-    scrape_ratings_init    = "python311"
+    scrape_shares       = "python311"
+    scrape_dividends    = "python311"
+    insert_shares       = "python311"
+    insert_dividends    = "python311"
+    scrape_ratings      = "python311"
+    insert_ratings      = "python311"
+    scrape_ratings_init = "python311"
   }
 }
 
@@ -291,11 +275,8 @@ variable "function_local_files" {
   description = "Local Python modules and data files required by each existing function artifact"
   type        = map(list(string))
   default = {
-    insert_shares          = ["scrape_shares.py"]
-    scrape_financials      = ["insert_financials.py", "scrape_financials_init.py"]
-    insert_financials      = ["financial_normalization.py"]
-    scrape_financials_init = ["company_reference.py", "insert_financials.py"]
-    scrape_ratings_init    = ["scrape_ratings.py"]
+    insert_shares       = ["scrape_shares.py"]
+    scrape_ratings_init = ["scrape_ratings.py"]
   }
 }
 
@@ -322,7 +303,6 @@ variable "jobs" {
   default = {
     job1 = { name = "shares", schedule = "0 20 * * 1-5" }
     job3 = { name = "dividends", schedule = "0 20 1 * *" }
-    job5 = { name = "financials", schedule = "0 20 1 * *" }
     job6 = { name = "ratings", schedule = "0 20 1 * *" }
   }
 }

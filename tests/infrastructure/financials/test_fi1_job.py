@@ -146,15 +146,116 @@ def test_monthly_scheduler_invokes_only_the_fi1_job_with_resource_level_iam() ->
     assert "google_project_iam_member" not in invoker
 
 
-def test_activation_pauses_only_the_legacy_financial_scheduler() -> None:
-    legacy_scheduler = _resource(FUNCTIONS, "google_cloud_scheduler_job", "jobs")
+def test_financial_scheduler_and_workflows_are_retired_from_configuration() -> None:
+    legacy_scheduler = _resource(FUNCTIONS, "google_cloud_scheduler_job", "retained_jobs")
 
-    assert "each.value.name == \"financials\" && var.activate_fi1_financial_schedule" in legacy_scheduler
+    assert 'from = google_cloud_scheduler_job.jobs\n  lifecycle { destroy = true }' in FUNCTIONS
+    assert 'from = google_workflows_workflow.workflows\n  lifecycle { destroy = true }' in FUNCTIONS
+    assert 'from = google_workflows_workflow.financials_initialization\n  lifecycle { destroy = true }' in FUNCTIONS
     assert "var.manage_legacy_schedules ? var.jobs : {}" in legacy_scheduler
-    assert 'resource "google_workflows_workflow" "workflows"' in FUNCTIONS
-    assert 'resource "google_workflows_workflow" "financials_initialization"' in FUNCTIONS
-    assert "financials" in OPERATIONS and "later legacy" in OPERATIONS
-    assert "historical archive or revision assets" in OPERATIONS
+    assert 'resource "google_workflows_workflow" "retained_workflows"' in FUNCTIONS
+    assert 'resource "google_workflows_workflow" "financials_initialization"' not in FUNCTIONS
+    assert 'name = "financials"' not in FUNCTIONS
+    assert "financials" in OPERATIONS and "retired" in OPERATIONS
+    assert "historical archive and annual-financial revision assets" in OPERATIONS
+
+
+def test_retirement_uses_explicit_retained_moves_and_whole_resource_removals() -> None:
+    moved = set(
+        re.findall(
+            r"moved\s*\{\s*from\s*=\s*([^\n]+)\s*to\s*=\s*([^\n]+)",
+            FUNCTIONS,
+        )
+    )
+    expected_moved = {
+        (
+            f'google_cloudfunctions2_function.functions["{name}"]',
+            f'google_cloudfunctions2_function.retained_functions["{name}"]',
+        )
+        for name in (
+            "scrape_shares",
+            "insert_shares",
+            "scrape_dividends",
+            "insert_dividends",
+            "scrape_ratings",
+            "insert_ratings",
+        )
+    }
+    expected_moved.add((
+        'google_cloudfunctions2_function.initialization_functions["scrape_ratings_init"]',
+        'google_cloudfunctions2_function.retained_initialization_functions["scrape_ratings_init"]',
+    ))
+    expected_moved.update(
+        (
+            f"google_workflows_workflow.workflows[{index}]",
+            f'google_workflows_workflow.retained_workflows["{source}"]',
+        )
+        for index, source in ((0, "shares"), (1, "dividends"), (3, "ratings"))
+    )
+    expected_moved.update(
+        (
+            f'google_cloud_scheduler_job.jobs["{key}"]',
+            f'google_cloud_scheduler_job.retained_jobs["{key}"]',
+        )
+        for key in ("job1", "job3", "job6")
+    )
+    for old, new in (
+        ("src-code", "retained-src-code"),
+        ("new-function-src-code", "retained-new-function-src-code"),
+    ):
+        expected_moved.update(
+            (
+                f'google_storage_bucket_object.{old}["{name}"]',
+                f'google_storage_bucket_object.{new}["{name}"]',
+            )
+            for name in (
+                "scrape_shares",
+                "insert_shares",
+                "scrape_dividends",
+                "insert_dividends",
+                "scrape_ratings",
+                "insert_ratings",
+            )
+        )
+    expected_moved.add((
+        'google_storage_bucket_object.initialization-src-code["scrape_ratings_init"]',
+        'google_storage_bucket_object.retained-initialization-src-code["scrape_ratings_init"]',
+    ))
+    assert moved == expected_moved
+
+    removed = set(
+        re.findall(r"removed\s*\{\s*from\s*=\s*([^\n]+)\s*lifecycle", FUNCTIONS)
+    )
+    assert removed == {
+        "google_cloudfunctions2_function.functions",
+        "google_cloudfunctions2_function.initialization_functions",
+        "google_workflows_workflow.workflows",
+        "google_workflows_workflow.financials_initialization",
+        "google_cloud_scheduler_job.jobs",
+        "google_storage_bucket_object.src-code",
+        "google_storage_bucket_object.new-function-src-code",
+        "google_storage_bucket_object.initialization-src-code",
+    }
+    removed_lifecycles = {
+        address: destroy
+        for address, destroy in re.findall(
+            r"removed\s*\{\s*from\s*=\s*([^\n]+)\s*lifecycle\s*\{\s*destroy\s*=\s*(true|false)",
+            FUNCTIONS,
+        )
+    }
+    assert removed_lifecycles == {
+        "google_cloudfunctions2_function.functions": "true",
+        "google_cloudfunctions2_function.initialization_functions": "true",
+        "google_workflows_workflow.workflows": "true",
+        "google_workflows_workflow.financials_initialization": "true",
+        "google_cloud_scheduler_job.jobs": "true",
+        "google_storage_bucket_object.src-code": "false",
+        "google_storage_bucket_object.new-function-src-code": "false",
+        "google_storage_bucket_object.initialization-src-code": "false",
+    }
+    assert 'from = google_storage_bucket_object.src-code\n  lifecycle { destroy = false }' in FUNCTIONS
+    assert 'from = google_storage_bucket_object.new-function-src-code\n  lifecycle { destroy = false }' in FUNCTIONS
+    assert 'from = google_storage_bucket_object.initialization-src-code\n  lifecycle { destroy = false }' in FUNCTIONS
 
 
 def test_terraform_owned_financial_tables_remain_lifecycle_protected() -> None:

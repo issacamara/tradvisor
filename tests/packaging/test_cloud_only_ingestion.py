@@ -20,9 +20,6 @@ FUNCTION_ROOTS = {
     "insert_shares": ROOT / "functions" / "shares",
     "scrape_dividends": ROOT / "functions" / "dividends",
     "insert_dividends": ROOT / "functions" / "dividends",
-    "scrape_financials": ROOT / "functions" / "financials",
-    "insert_financials": ROOT / "functions" / "financials",
-    "scrape_financials_init": ROOT / "functions" / "financials",
     "scrape_ratings": ROOT / "functions" / "ratings",
     "insert_ratings": ROOT / "functions" / "ratings",
     "scrape_ratings_init": ROOT / "functions" / "ratings",
@@ -33,8 +30,6 @@ ARTIFACTS = {
         "insert_shares",
         "scrape_dividends",
         "insert_dividends",
-        "scrape_financials",
-        "insert_financials",
         "scrape_ratings",
         "insert_ratings",
     ),
@@ -43,25 +38,18 @@ ARTIFACTS = {
         "insert_shares",
         "scrape_dividends",
         "insert_dividends",
-        "scrape_financials",
-        "insert_financials",
         "scrape_ratings",
         "insert_ratings",
     ),
-    "initialization": ("scrape_financials_init", "scrape_ratings_init"),
+    "initialization": ("scrape_ratings_init",),
 }
 FUNCTION_LOCAL_FILES = {
     "insert_shares": ("scrape_shares.py",),
-    "scrape_financials": ("insert_financials.py", "scrape_financials_init.py"),
-    "insert_financials": ("financial_normalization.py",),
 }
 INITIALIZATION_LOCAL_FILES = {
-    "scrape_financials_init": ("company_reference.py",),
     "scrape_ratings_init": ("scrape_ratings.py",),
 }
 NORMAL_MAPPING_FUNCTIONS = {
-    "scrape_financials",
-    "insert_financials",
     "scrape_ratings",
     "insert_ratings",
 }

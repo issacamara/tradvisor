@@ -9,11 +9,10 @@ separate secret resources in their respective projects and have independent
 payloads. Terraform never creates a version or receives, reads, or stores the
 key payload.
 
-Only `scrape_financials` and `insert_financials` receive the secret through the
-Cloud Functions 2nd gen `OPENROUTER_API_KEY` secret environment configuration.
-The `financials_runtime` service account receives
-`roles/secretmanager.secretAccessor` on that declared secret resource only.
-Other ingestion functions retain their existing identity and configuration.
+Only the FI-1 Cloud Run Job receives the secret through the
+`OPENROUTER_API_KEY` Secret Manager reference. Its dedicated runtime identity
+receives `roles/secretmanager.secretAccessor` on that declared secret resource
+only. Non-financial ingestion functions do not receive the key.
 
 ## Initial provisioning
 
@@ -25,7 +24,7 @@ Other ingestion functions retain their existing identity and configuration.
 3. Dispatch the reviewed delivery workflow for that environment with the
    non-secret secret ID. Use that same ID for plan and apply; review the saved
    plan to confirm it names the selected environment-local secret, then follow
-   the environment's approval gate before applying function wiring.
+   the environment's approval gate before applying job wiring.
 
 Never place the payload in Terraform inputs or state, GitHub, workflow inputs,
 source, tests, diagnostic fixtures, logs, or artifacts. Do not copy the value
@@ -36,8 +35,8 @@ between development and production.
 1. An authorized operator adds a new version directly in the correct project
    through the same secure procedure.
 2. Confirm the new version is enabled using metadata only.
-3. Run a fresh reviewed plan and approved apply so both functions refresh their
-   `latest` secret environment version. Verify function health without
+3. Run a fresh reviewed plan and approved apply so the job refreshes its
+   `latest` secret reference. Verify job configuration without
    retrieving or logging the payload.
 4. Retain the previous enabled version until the updated functions are
    verified. For rollback, select the prior version as the enabled version and
