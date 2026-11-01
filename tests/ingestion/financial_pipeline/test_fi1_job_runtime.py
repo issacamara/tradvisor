@@ -295,6 +295,37 @@ def test_provider_http_response_body_is_not_carried_into_the_error(
     assert sentinel not in repr(caught.value)
 
 
+def test_provider_prompt_matches_established_financial_extraction_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {"choices": [{"message": {"content": '{"fiscal_year": 2024}'}}]}
+
+    def post(*_args: object, **kwargs: object) -> Response:
+        captured.update(kwargs)
+        return Response()
+
+    curl_cffi = ModuleType("curl_cffi")
+    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=object())  # type: ignore[attr-defined]
+    curl_cffi.requests = SimpleNamespace(post=post)  # type: ignore[attr-defined]
+    monkeypatch.setitem(__import__("sys").modules, "curl_cffi", curl_cffi)
+
+    fi1_job._provider_attempt("document text", MODEL_ORDER[0], "secret", 1)
+
+    prompt = captured["json"]["messages"][0]["content"]  # type: ignore[index]
+    assert "BRVM annual financial statement PDF" in prompt
+    assert "produit net bancaire / PNB" in prompt
+    assert "Detect the company type first" in prompt
+    assert "UNIT NORMALIZATION" in prompt
+    assert '"cash_and_cash_equivalents"' in prompt
+
+
 def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
