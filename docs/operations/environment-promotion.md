@@ -48,7 +48,10 @@ deployment credentials.
 
 1. CI checks each PR. A push to `development` runs the full `validate` and
    `frontend` jobs before the single release job builds the backend image,
-   resolves its registry digest, and creates the commit-bound release manifest.
+   builds the FI-1 job image from its hashed dependency lock, resolves both
+   registry digests, and creates the commit-bound release manifest. The FI-1
+   digest is supplied to Terraform as `fi1_financial_job_image`; schedule and
+   job management remain controlled by their separate configuration switches.
    The CI workflow calls the reusable development delivery workflow only after
    both jobs and the single release job succeed, passing the exact run ID and
    commit-bound release ID; failed or cancelled CI runs cannot trigger delivery.
@@ -69,8 +72,9 @@ deployment credentials.
    evidence. Complete the authenticated Swing and Long-Term smoke review.
 3. Merge the tested development tree into `main` with a merge commit. The
    production push checks the matching development commit, release manifest,
-   and successful development deployment evidence, then copies that image
-   digest to the production registry after production environment approval.
+   and successful development deployment evidence, then copies both image
+   digests to the production registry without changing their content after
+   production environment approval.
    Hotfixes must pass development first.
 4. Dispatch production `plan` with the release and promoted production digest.
    Review the saved plan, then dispatch `apply` with its plan run ID. Apply

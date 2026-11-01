@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from functions.financials import fi1_job
 from functions.financials.fi1_contracts import EXTRACTION_KEYS
 from functions.financials.fi1_job import (
     MAX_RUNTIME_SECONDS,
@@ -22,9 +23,11 @@ from functions.financials.fi1_job import (
     ActiveExecutionError,
     FirestoreExecutionLease,
     JobDeadlineExceeded,
+    RuntimeConfiguration,
     RuntimeAdapters,
     _default_adapters,
     _get_response,
+    main,
     run_batch,
 )
 
@@ -38,6 +41,98 @@ VALID = {
     "cash_and_cash_equivalents": 4,
     "total_equity": 5,
 }
+
+
+def runtime_environment() -> dict[str, str]:
+    return {
+        "TRADVISOR_RUNTIME_TARGET": "financial_ingestion_job",
+        "GOOGLE_CLOUD_PROJECT": "fixture-project",
+        "TRADVISOR_TARGET_PROJECT_ID": "fixture-project",
+        "TRADVISOR_ENVIRONMENT_PROJECT_ID": "fixture-project",
+        "TRADVISOR_INGESTION_DATASET": "stocks",
+        "TRADVISOR_INGESTION_COMPANIES_TABLE": "fixture-project.stocks.brvm_companies",
+        "TRADVISOR_INGESTION_FINANCIALS_TABLE": "fixture-project.stocks.financials",
+        "TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE": "fixture-project.stocks.financials_staging",
+        "TRADVISOR_FINANCIALS_MODEL_PRIMARY": MODEL_ORDER[0],
+        "TRADVISOR_FINANCIALS_MODEL_FALLBACKS": ",".join(MODEL_ORDER[1:]),
+        "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS": "4",
+        "TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL": "5",
+        "TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL": "1",
+    }
+
+
+def test_runtime_configuration_consumes_terraform_managed_values() -> None:
+    configuration = RuntimeConfiguration.from_environment(runtime_environment())
+
+    assert configuration.project_id == "fixture-project"
+    assert configuration.dataset == "stocks"
+    assert configuration.financials_table == "fixture-project.stocks.financials"
+    assert configuration.staging_table == "fixture-project.stocks.financials_staging"
+    assert configuration.model_order == MODEL_ORDER
+    assert configuration.max_concurrent_requests == 4
+    assert configuration.max_reports_per_symbol == 5
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("TRADVISOR_RUNTIME_TARGET", "api"),
+        ("TRADVISOR_ENVIRONMENT_PROJECT_ID", "other-project"),
+        ("TRADVISOR_INGESTION_FINANCIALS_TABLE", "fixture-project.stocks.other"),
+        ("TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS", "5"),
+        ("TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL", "6"),
+        ("TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL", "2"),
+    ],
+)
+def test_runtime_configuration_rejects_unapproved_values(name: str, value: str) -> None:
+    environment = runtime_environment()
+    environment[name] = value
+
+    with pytest.raises(ValueError):
+        RuntimeConfiguration.from_environment(environment)
+
+
+def test_command_config_check_uses_injected_non_secret_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name, value in runtime_environment().items():
+        monkeypatch.setenv(name, value)
+
+    main(["--check-config"])
+
+    output = capsys.readouterr().out
+    assert '"runtime_target":"financial_ingestion_job"' in output
+    assert '"max_concurrent_requests":4' in output
+    assert "OPENROUTER_API_KEY" not in output
+
+
+def test_command_passes_injected_bounds_and_models_to_batch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name, value in runtime_environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-secret")
+    adapters = object()
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(fi1_job, "_default_adapters", lambda project, dataset: adapters)
+
+    def run(adapters_arg: object, **kwargs: object):
+        calls.append({"adapters": adapters_arg, **kwargs})
+        return SimpleNamespace(as_dict=lambda: {"completion": None})
+
+    monkeypatch.setattr(fi1_job, "run_batch", run)
+    main([])
+
+    assert calls == [
+        {
+            "adapters": adapters,
+            "api_key": "test-only-secret",
+            "model_order": MODEL_ORDER,
+            "max_page_concurrency": 4,
+            "max_annual_candidates": 5,
+        }
+    ]
+    assert "test-only-secret" not in capsys.readouterr().out
 
 
 def selector_html(*symbols: str) -> str:
@@ -105,10 +200,11 @@ class Harness:
 
         def read_existing():
             self.state_reads += 1
+            self.actions.append("state_read")
             return dict(self.existing)
 
         def write_rows(rows: list[dict[str, Any]], run_id: str) -> str:
-            self.actions.append("write")
+            self.actions.extend(("staging_load", "merge_commit"))
             self.writes.append((rows, run_id))
             return "a" * 64
 
@@ -152,7 +248,7 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert fake.downloads == ["https://www.richbourse.com/ABC-2024.pdf"]
     assert fake.writes[0][0][0]["symbol"] == "ABC"
     assert tuple(key for key in fake.writes[0][0][0] if key in EXTRACTION_KEYS) == EXTRACTION_KEYS
-    assert fake.actions == ["write", "completion"]
+    assert fake.actions == ["state_read", "staging_load", "merge_commit", "completion"]
     assert outcome.completion is not None
 
 
@@ -482,7 +578,7 @@ def test_successful_completion_follows_committed_changed_write() -> None:
 
     run(fake)
 
-    assert fake.actions == ["write", "completion"]
+    assert fake.actions == ["state_read", "staging_load", "merge_commit", "completion"]
     assert fake.completions == ["a" * 64]
 
 
@@ -498,7 +594,7 @@ def test_writer_failure_cannot_emit_completion() -> None:
 
     with pytest.raises(RuntimeError, match="commit failed"):
         run_batch(adapters, api_key="runtime-secret")
-    assert fake.actions == ["write"]
+    assert fake.actions == ["state_read", "write"]
     assert fake.completions == []
 
 

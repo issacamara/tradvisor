@@ -33,6 +33,7 @@ def _manifest(tmp_path: Path) -> dict:
         release_id="release-2026-10-16",
         commit="a" * 40,
         backend_digest="sha256:" + "b" * 64,
+        fi1_job_digest="sha256:" + "c" * 64,
         function_archives={name: tmp_path / f"{name}.tar" for name in ("shares", "dividends", "financials", "ratings")},
         frontend_artifacts={"development": development, "production": production},
         rule_versions={"swing": "swing-v1", "long_term": "long-term-v1"},
@@ -45,13 +46,18 @@ def test_manifest_records_immutable_artifacts_and_distinct_environment_checksums
     manifest = _manifest(tmp_path)
 
     assert manifest["backend"] == {"digest": "sha256:" + "b" * 64}
+    assert manifest["fi1_job"] == {"digest": "sha256:" + "c" * 64}
     assert manifest["frontend"]["development"]["sha256"] != manifest["frontend"]["production"]["sha256"]
     validate_manifest(manifest)
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("commit", "short"), ("backend", {"digest": "registry/api:latest"})],
+    [
+        ("commit", "short"),
+        ("backend", {"digest": "registry/api:latest"}),
+        ("fi1_job", {"digest": "registry/financial-ingestion:latest"}),
+    ],
 )
 def test_manifest_rejects_mutable_or_unverifiable_identity(tmp_path: Path, field: str, value: object) -> None:
     manifest = _manifest(tmp_path)
@@ -61,12 +67,20 @@ def test_manifest_rejects_mutable_or_unverifiable_identity(tmp_path: Path, field
         validate_manifest(manifest)
 
 
-def test_manifest_allows_backend_only_release(tmp_path: Path) -> None:
+def test_manifest_allows_release_without_frontend_artifacts(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     manifest["frontend"] = {}
     manifest["configuration"] = {}
 
     validate_manifest(manifest)
+
+
+def test_manifest_requires_fi1_job_image_digest(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    del manifest["fi1_job"]
+
+    with pytest.raises(ManifestError, match="missing fi1_job"):
+        validate_manifest(manifest)
 
 
 def test_manifest_rejects_wrong_target_label(tmp_path: Path) -> None:

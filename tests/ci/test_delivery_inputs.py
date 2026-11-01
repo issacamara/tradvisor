@@ -19,6 +19,20 @@ def test_delivery_workflows_require_immutable_api_digests() -> None:
         assert "does not match the release manifest backend digest" in contents
 
 
+def test_fi1_job_image_is_built_pinned_and_promoted_by_digest() -> None:
+    root = Path(__file__).parents[2]
+    release = (root / ".github/workflows/release.yml").read_text()
+    development = (root / ".github/workflows/cd-development.yml").read_text()
+    production = (root / ".github/workflows/cd-production.yml").read_text()
+    dockerfile = (root / "functions/financials/Dockerfile").read_text()
+
+    assert "requirements.lock" in dockerfile
+    assert "--require-hashes" in dockerfile
+    assert "--fi1-job-digest" in release
+    assert '["fi1_job"]["digest"]' in development
+    assert "promoted_fi1_digest" in production
+
+
 def test_release_workflow_packages_and_uploads_manifest() -> None:
     contents = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
     assert "package_artifact.py" in contents

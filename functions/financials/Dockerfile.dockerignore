@@ -1,0 +1,12 @@
+**
+!archive/
+!archive/legacy-ingestion/
+!archive/legacy-ingestion/scripts/
+!archive/legacy-ingestion/scripts/requirements.lock
+!archive/legacy-ingestion/scripts/helper.py
+!archive/legacy-ingestion/scripts/ingestion_observability.py
+!functions/
+!functions/financials/
+!functions/financials/fi1_job.py
+!functions/financials/fi1_contracts.py
+!functions/financials/insert_financials.py

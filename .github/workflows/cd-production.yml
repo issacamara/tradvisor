@@ -86,6 +86,7 @@ jobs:
           assert manifest["release_id"] == os.environ["DEVELOPMENT_COMMIT"]
           assert manifest["commit"] == os.environ["DEVELOPMENT_COMMIT"]
           assert re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["backend"]["digest"])
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["fi1_job"]["digest"])
           PY
       - name: Require successful development deployment
         id: deployment
@@ -120,6 +121,7 @@ jobs:
               "commit": os.environ["DEVELOPMENT_COMMIT"],
               "release_id": os.environ["DEVELOPMENT_COMMIT"],
               "backend_digest": manifest["backend"]["digest"],
+              "fi1_job_digest": manifest["fi1_job"]["digest"],
           }
           PY
       - name: Release gate
@@ -166,6 +168,18 @@ jobs:
           target_digest="$(gcloud artifacts docker images describe "$target_image:$GITHUB_SHA" --format='value(image_summary.digest)')"
           test "$target_digest" = "$source_digest"
           echo "Production image: $target_image@$target_digest" >> "$GITHUB_STEP_SUMMARY"
+          fi1_digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["fi1_job"]["digest"])')"
+          [[ "$fi1_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          fi1_source="$GCP_REGION-docker.pkg.dev/dev-tradvisor/$ARTIFACT_REPOSITORY/financial-ingestion"
+          fi1_target="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/financial-ingestion"
+          actual_fi1_digest="$(gcloud artifacts docker images describe "$fi1_source:$DEVELOPMENT_COMMIT" --format='value(image_summary.digest)')"
+          test "$actual_fi1_digest" = "$fi1_digest"
+          docker pull "$fi1_source@$fi1_digest"
+          docker tag "$fi1_source@$fi1_digest" "$fi1_target:$DEVELOPMENT_COMMIT"
+          docker push "$fi1_target:$DEVELOPMENT_COMMIT"
+          promoted_fi1_digest="$(gcloud artifacts docker images describe "$fi1_target:$DEVELOPMENT_COMMIT" --format='value(image_summary.digest)')"
+          test "$promoted_fi1_digest" = "$fi1_digest"
+          echo "FI-1 image: $fi1_target@$promoted_fi1_digest" >> "$GITHUB_STEP_SUMMARY"
   delivery:
     if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
     runs-on: ubuntu-latest
@@ -174,6 +188,7 @@ jobs:
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}
       GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'prod-tradvisor-tfstate' }}
       TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX || 'state/prod' }}
 
@@ -197,6 +212,16 @@ jobs:
           git fetch origin development
           git merge-base --is-ancestor "$release_commit" origin/development
           test "$(git rev-parse "$GITHUB_SHA^{tree}")" = "$(git rev-parse "$release_commit^{tree}")"
+
+      - name: Resolve promoted FI-1 job image
+        id: fi1-image
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          digest="$(python3 -c 'import json; print(json.load(open("release/manifest/release-manifest.json"))["fi1_job"]["digest"])')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPOSITORY/financial-ingestion:$RELEASE_ID@$digest"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
 
       - uses: hashicorp/setup-terraform@v3
         if: inputs.action != 'frontend'
@@ -303,6 +328,7 @@ jobs:
           TF_VAR_manage_legacy_workflows: "false"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
@@ -351,6 +377,7 @@ jobs:
           TF_VAR_manage_legacy_workflows: "false"
           TF_VAR_v1_api_image: ${{ inputs.api_image }}
           TF_VAR_v1_batch_image: ${{ inputs.api_image }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
           TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
           TF_VAR_v1_financials_table: ${{ vars.GCP_PROJECT_ID || 'prod-tradvisor' }}.stocks.financials
           TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}

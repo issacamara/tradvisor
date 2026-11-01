@@ -11,7 +11,7 @@ import os
 import re
 import threading
 import time
-from typing import Any, Callable, Mapping, TypeVar
+from typing import Any, Callable, Mapping, Sequence, TypeVar
 from urllib.parse import urljoin
 from uuid import uuid4
 
@@ -40,6 +40,7 @@ EXECUTION_LEASE_SECONDS = 300
 EXECUTION_LEASE_RENEW_SECONDS = 60
 MAX_PAGE_CONCURRENCY = 4
 MAX_ANNUAL_CANDIDATES = 5
+RUNTIME_TARGET = "financial_ingestion_job"
 SOURCE_TIMEOUT_SECONDS = 30
 SOURCE_ATTEMPTS = 3
 _RETRYABLE_SOURCE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
@@ -61,6 +62,96 @@ class JobDeadlineExceeded(TimeoutError):
 
 class ActiveExecutionError(RuntimeError):
     """Another FI-1 process currently owns the bounded execution lease."""
+
+
+@dataclass(frozen=True)
+class RuntimeConfiguration:
+    """Validated non-secret settings supplied by the Terraform-managed job."""
+
+    project_id: str
+    dataset: str
+    financials_table: str
+    staging_table: str
+    model_order: tuple[str, ...]
+    max_concurrent_requests: int
+    max_reports_per_symbol: int
+
+    @classmethod
+    def from_environment(
+        cls, environ: Mapping[str, str] | None = None
+    ) -> "RuntimeConfiguration":
+        values = os.environ if environ is None else environ
+        if values.get("TRADVISOR_RUNTIME_TARGET") != RUNTIME_TARGET:
+            raise ValueError("TRADVISOR_RUNTIME_TARGET must select the FI-1 job")
+        project_id = values.get("TRADVISOR_TARGET_PROJECT_ID", "")
+        if not project_id or values.get("TRADVISOR_ENVIRONMENT_PROJECT_ID") != project_id:
+            raise ValueError("FI-1 target and environment projects must match")
+        if values.get("GOOGLE_CLOUD_PROJECT") != project_id:
+            raise ValueError("Google Cloud project must match the FI-1 target project")
+        dataset = values.get("TRADVISOR_INGESTION_DATASET", "")
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dataset) is None:
+            raise ValueError("invalid financial dataset configuration")
+
+        prefix = f"{project_id}.{dataset}."
+        if values.get("TRADVISOR_INGESTION_COMPANIES_TABLE") != prefix + "brvm_companies":
+            raise ValueError("FI-1 company table does not match its managed dataset")
+        financials_table = values.get("TRADVISOR_INGESTION_FINANCIALS_TABLE", "")
+        staging_table = values.get("TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE", "")
+        if financials_table != prefix + "financials":
+            raise ValueError("FI-1 financial table does not match its managed dataset")
+        if staging_table != prefix + "financials_staging":
+            raise ValueError("FI-1 staging table does not match its managed dataset")
+
+        primary = values.get("TRADVISOR_FINANCIALS_MODEL_PRIMARY", "")
+        fallbacks = tuple(
+            item.strip()
+            for item in values.get("TRADVISOR_FINANCIALS_MODEL_FALLBACKS", "").split(",")
+            if item.strip()
+        )
+        model_order = (primary, *fallbacks)
+        if not primary or len(set(model_order)) != len(model_order):
+            raise ValueError("FI-1 model configuration must contain unique ordered models")
+
+        def bounded_integer(name: str, *, minimum: int, maximum: int) -> int:
+            value = values.get(name, "")
+            if not value.isdecimal():
+                raise ValueError(f"{name} must be an integer")
+            parsed = int(value)
+            if not minimum <= parsed <= maximum:
+                raise ValueError(f"{name} is outside its approved bounds")
+            return parsed
+
+        bounded_integer("TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL", minimum=1, maximum=1)
+        return cls(
+            project_id=project_id,
+            dataset=dataset,
+            financials_table=financials_table,
+            staging_table=staging_table,
+            model_order=model_order,
+            max_concurrent_requests=bounded_integer(
+                "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS",
+                minimum=1,
+                maximum=MAX_PAGE_CONCURRENCY,
+            ),
+            max_reports_per_symbol=bounded_integer(
+                "TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL",
+                minimum=1,
+                maximum=MAX_ANNUAL_CANDIDATES,
+            ),
+        )
+
+    def public_summary(self) -> dict[str, Any]:
+        """Return non-secret settings for container configuration smoke checks."""
+        return {
+            "runtime_target": RUNTIME_TARGET,
+            "project_id": self.project_id,
+            "dataset": self.dataset,
+            "financials_table": self.financials_table,
+            "staging_table": self.staging_table,
+            "model_order": list(self.model_order),
+            "max_concurrent_requests": self.max_concurrent_requests,
+            "max_reports_per_symbol": self.max_reports_per_symbol,
+        }
 
 
 T = TypeVar("T")
@@ -414,6 +505,9 @@ def run_batch(
     *,
     api_key: str,
     max_duration_seconds: int = MAX_RUNTIME_SECONDS,
+    model_order: Sequence[str] = MODEL_ORDER,
+    max_page_concurrency: int = MAX_PAGE_CONCURRENCY,
+    max_annual_candidates: int = MAX_ANNUAL_CANDIDATES,
 ) -> JobOutcome:
     """Run one FI-1 batch without persisting source or provider evidence."""
     if not api_key:
@@ -424,6 +518,12 @@ def run_batch(
         or not 1 <= max_duration_seconds <= MAX_RUNTIME_SECONDS
     ):
         raise ValueError("FI-1 runtime must be between 1 and 3600 seconds")
+    if not 1 <= max_page_concurrency <= MAX_PAGE_CONCURRENCY:
+        raise ValueError("FI-1 request concurrency must be between 1 and 4")
+    if not 1 <= max_annual_candidates <= MAX_ANNUAL_CANDIDATES:
+        raise ValueError("FI-1 reports per symbol must be between 1 and 5")
+    if not model_order or len(set(model_order)) != len(model_order):
+        raise ValueError("FI-1 model order must contain unique models")
 
     lease = adapters.execution_lease() if adapters.execution_lease is not None else None
     if lease is not None:
@@ -432,9 +532,20 @@ def run_batch(
                 adapters,
                 api_key=api_key,
                 max_duration_seconds=max_duration_seconds,
+                model_order=model_order,
+                max_page_concurrency=max_page_concurrency,
+                max_annual_candidates=max_annual_candidates,
                 lease=lease,
             )
-    return _run_batch(adapters, api_key=api_key, max_duration_seconds=max_duration_seconds, lease=None)
+    return _run_batch(
+        adapters,
+        api_key=api_key,
+        max_duration_seconds=max_duration_seconds,
+        model_order=model_order,
+        max_page_concurrency=max_page_concurrency,
+        max_annual_candidates=max_annual_candidates,
+        lease=None,
+    )
 
 
 def _run_batch(
@@ -442,6 +553,9 @@ def _run_batch(
     *,
     api_key: str,
     max_duration_seconds: int,
+    model_order: Sequence[str],
+    max_page_concurrency: int,
+    max_annual_candidates: int,
     lease: FirestoreExecutionLease | None,
 ) -> JobOutcome:
     started = adapters.monotonic()
@@ -485,10 +599,10 @@ def _run_batch(
         html = adapters.fetch_text(
             richbourse_symbol_page_url(symbol), min(SOURCE_TIMEOUT_SECONDS, timeout)
         )
-        return parse_annual_candidates(html, symbol, limit=MAX_ANNUAL_CANDIDATES)
+        return parse_annual_candidates(html, symbol, limit=max_annual_candidates)
 
     candidates_by_symbol: dict[str, tuple[AnnualCandidate, ...]] = {}
-    with ThreadPoolExecutor(max_workers=MAX_PAGE_CONCURRENCY) as executor:
+    with ThreadPoolExecutor(max_workers=max_page_concurrency) as executor:
         futures = {executor.submit(load_symbol_page, symbol): symbol for symbol in symbols}
         for future in as_completed(futures):
             symbol = futures[future]
@@ -530,7 +644,7 @@ def _run_batch(
                 min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
             )
             extraction = _extract_candidate(
-                candidate, pdf, adapters, api_key, deadline, counters
+                candidate, pdf, adapters, api_key, deadline, counters, model_order
             )
             if extraction is None:
                 counters["failed"] += 1
@@ -602,9 +716,10 @@ def _extract_candidate(
     api_key: str,
     deadline: float,
     counters: dict[str, int],
+    model_order: Sequence[str] = MODEL_ORDER,
 ) -> ValidatedExtraction | None:
     document_text = adapters.prepare_document(pdf)
-    for model in MODEL_ORDER:
+    for model in model_order:
         timeout = min(PROVIDER_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic))
         counters["attempts"] += 1
         try:
@@ -627,22 +742,31 @@ def _extract_candidate(
     return None
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     """Cloud Run Job command entrypoint."""
-    import google.auth
+    import argparse
 
-    credentials, project_id = google.auth.default()
-    del credentials
-    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", project_id)
-    if not project_id:
-        raise ValueError("Google Cloud project configuration is required")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="validate injected non-secret runtime settings without starting the job",
+    )
+    args = parser.parse_args(argv)
+    configuration = RuntimeConfiguration.from_environment()
+    if args.check_config:
+        print(json.dumps(configuration.public_summary(), separators=(",", ":"), sort_keys=True))
+        return
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is required")
-    adapters = _default_adapters(project_id, os.environ.get("FINANCIALS_DATASET", "stocks"))
+    adapters = _default_adapters(configuration.project_id, configuration.dataset)
     outcome = run_batch(
         adapters,
         api_key=api_key,
+        model_order=configuration.model_order,
+        max_page_concurrency=configuration.max_concurrent_requests,
+        max_annual_candidates=configuration.max_reports_per_symbol,
     )
     print(json.dumps(outcome.as_dict(), separators=(",", ":"), sort_keys=True))
 

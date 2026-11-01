@@ -55,6 +55,25 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall archive/legacy-ingestion/scripts functions
 
+      - name: Build and smoke-check the FI-1 job image
+        run: |
+          docker build --file functions/financials/Dockerfile --tag tradvisor-fi1-job:ci .
+          docker run --rm \
+            -e TRADVISOR_RUNTIME_TARGET=financial_ingestion_job \
+            -e GOOGLE_CLOUD_PROJECT=fixture-project \
+            -e TRADVISOR_TARGET_PROJECT_ID=fixture-project \
+            -e TRADVISOR_ENVIRONMENT_PROJECT_ID=fixture-project \
+            -e TRADVISOR_INGESTION_DATASET=stocks \
+            -e TRADVISOR_INGESTION_COMPANIES_TABLE=fixture-project.stocks.brvm_companies \
+            -e TRADVISOR_INGESTION_FINANCIALS_TABLE=fixture-project.stocks.financials \
+            -e TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE=fixture-project.stocks.financials_staging \
+            -e TRADVISOR_FINANCIALS_MODEL_PRIMARY=gemma-4-31b-it \
+            -e TRADVISOR_FINANCIALS_MODEL_FALLBACKS=nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini \
+            -e TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS=4 \
+            -e TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL=5 \
+            -e TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL=1 \
+            tradvisor-fi1-job:ci --check-config
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
