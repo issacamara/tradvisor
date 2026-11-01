@@ -367,12 +367,13 @@ def _default_adapters(project_id: str, dataset: str) -> RuntimeAdapters:
             ],
         )
         revision_frame = None
+        archive = lambda: None
         return upsert_financials_and_archive(
             frame,
             revision_frame,
             project_id,
             dataset,
-            lambda: None,
+            archive,
             run_id=run_id,
         )
 

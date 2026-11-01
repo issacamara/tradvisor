@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
 import time
+import importlib.util
+import inspect
 from types import ModuleType, SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -168,8 +170,18 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     pandas.DataFrame = Frame  # type: ignore[attr-defined]
     helper = ModuleType("helper")
 
-    def managed_writer(*args: object, **kwargs: object) -> str:
-        calls.append((args, kwargs))
+    def managed_writer(
+        frame: object,
+        revision_frame: object,
+        project_id: str,
+        dataset: str,
+        archive: object,
+        *,
+        run_id: str | None = None,
+    ) -> str:
+        calls.append(
+            ((frame, revision_frame, project_id, dataset, archive), {"run_id": run_id})
+        )
         return "b" * 64
 
     helper.upsert_financials_and_archive = managed_writer  # type: ignore[attr-defined]
@@ -200,6 +212,13 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     assert args[2:4] == ("dev-project", "stocks")
     assert callable(args[4])
     assert kwargs == {"run_id": "fi1-run"}
+
+    writer_path = Path(__file__).parents[3] / "archive/legacy-ingestion/scripts/helper.py"
+    spec = importlib.util.spec_from_file_location("fi1_managed_helper_contract", writer_path)
+    assert spec is not None and spec.loader is not None
+    helper_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper_module)
+    inspect.signature(helper_module.upsert_financials_and_archive).bind(*args, **kwargs)
 
 
 class _LeaseDocument:
@@ -309,6 +328,19 @@ def test_expired_firestore_lease_allows_only_a_new_transactional_owner() -> None
     )
     with current:
         assert document.state["owner"] == "current-owner"
+    assert document.state == {}
+
+
+def test_firestore_lease_releases_its_owner_after_batch_failure() -> None:
+    document = _LeaseDocument({})
+    lease = FirestoreExecutionLease(
+        _lease_store(document), document, token="failing-owner"
+    )
+
+    with pytest.raises(RuntimeError, match="batch failed"):
+        with lease:
+            raise RuntimeError("batch failed")
+
     assert document.state == {}
 
 
