@@ -21,9 +21,12 @@ target to be in Terraform's managed schedule set before FI-1 can be activated.
 The FI-1 Job uses its own runtime identity. It can read the Terraform-managed
 `stocks.brvm_companies` selector table, edit only
 `stocks.financials` and `stocks.financials_staging`, submit BigQuery jobs, and
-access the existing Terraform-managed OpenRouter secret. It receives no
-bucket grants. The Scheduler caller has only `roles/run.invoker` on this Job.
-Terraform continues to own and protect both financial tables.
+access the existing Terraform-managed OpenRouter secret. It also receives the
+same project-level `roles/datastore.user` grant as the existing V1 runtime so
+#362 can use the approved Firestore transactional control path for its lease.
+No new Firestore lock resource or table is created. It receives no bucket
+grants. The Scheduler caller has only `roles/run.invoker` on this Job. Terraform
+continues to own and protect both financial tables.
 
 The Job runs one task at a time (`task_count = 1`, `parallelism = 1`), has no
 automatic task retries, and is limited to 3600 seconds. Runtime configuration
@@ -31,15 +34,15 @@ caps work at four concurrent RichBourse requests, five reports per symbol,
 and one attempt per configured model. The OpenRouter key is injected from
 Secret Manager at runtime; no secret payload or version is managed here.
 
-## Execution overlap limitation
+## Execution overlap contract
 
 Cloud Run Jobs exposes task parallelism within an execution, but no Terraform
 setting that guarantees only one execution exists at a time. A manual run or a
 duplicate delivery could overlap another execution even with one task and
-`parallelism = 1`. This infrastructure does not add a lock or other state.
-Strict cross-execution exclusion remains an unresolved runtime contract for
-#362 and must be resolved before claiming the one-active-execution acceptance
-criterion is fully met.
+`parallelism = 1`. This infrastructure does not add a lock or other state. The
+one-active-execution guarantee is completed by #362's lease implementation
+through the existing Firestore control path; Terraform supplies only the
+identity grant needed to reach that path.
 
 This configuration does not authorize Terraform plan/apply, job execution,
 schedule activation, secret provisioning, provider calls, or production

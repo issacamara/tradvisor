@@ -82,6 +82,7 @@ def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
 def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> None:
     runtime = _resource(IAM, "google_service_account", "fi1_financial_runtime")
     job_user = _resource(IAM, "google_project_iam_member", "fi1_financial_bigquery_job_user")
+    firestore = _resource(IAM, "google_project_iam_member", "fi1_financial_firestore")
     companies = _resource(IAM, "google_bigquery_table_iam_member", "fi1_companies_reader")
     financials = _resource(IAM, "google_bigquery_table_iam_member", "fi1_financials_editor")
     staging = _resource(IAM, "google_bigquery_table_iam_member", "fi1_financials_staging_editor")
@@ -90,6 +91,8 @@ def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> No
     assert "var.fi1_financial_runtime_service_account_id" in runtime
     assert "prevent_destroy = true" in runtime
     assert 'role    = "roles/bigquery.jobUser"' in job_user
+    assert 'role    = "roles/datastore.user"' in firestore
+    assert "google_service_account.fi1_financial_runtime[0].email" in firestore
     assert "google_bigquery_table.brvm_companies.table_id" in companies
     assert 'role       = "roles/bigquery.dataViewer"' in companies
     assert "google_bigquery_table.financials.table_id" in financials
@@ -106,6 +109,7 @@ def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> No
         _resource(IAM, kind, name)
         for kind, name in (
             ("google_project_iam_member", "fi1_financial_bigquery_job_user"),
+            ("google_project_iam_member", "fi1_financial_firestore"),
             ("google_bigquery_table_iam_member", "fi1_companies_reader"),
             ("google_bigquery_table_iam_member", "fi1_financials_editor"),
             ("google_bigquery_table_iam_member", "fi1_financials_staging_editor"),
@@ -164,10 +168,12 @@ def test_terraform_owned_financial_tables_remain_lifecycle_protected() -> None:
     assert '"${var.project_id}.stocks.financials_staging"' in FINANCIAL
 
 
-def test_cloud_run_overlap_limit_and_remaining_runtime_gap_are_documented() -> None:
+def test_cloud_run_overlap_limit_and_firestore_lease_contract_are_documented() -> None:
     assert "task_count = 1" in OPERATIONS
     assert "parallelism = 1" in OPERATIONS
     assert "no Terraform" in OPERATIONS
     assert "does not add a lock or other state" in OPERATIONS
     assert "#362" in OPERATIONS
-    assert "strict cross-execution exclusion" in " ".join(OPERATIONS.split()).lower()
+    assert "roles/datastore.user" in OPERATIONS
+    assert "Firestore transactional control path" in OPERATIONS
+    assert "one-active-execution guarantee" in OPERATIONS

@@ -116,6 +116,7 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
   depends_on = [
     google_project_service.apis,
     google_project_iam_member.fi1_financial_bigquery_job_user,
+    google_project_iam_member.fi1_financial_firestore,
     google_bigquery_table_iam_member.fi1_companies_reader,
     google_bigquery_table_iam_member.fi1_financials_editor,
     google_bigquery_table_iam_member.fi1_financials_staging_editor,
