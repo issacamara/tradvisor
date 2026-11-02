@@ -17,3 +17,5 @@ The application emits bounded operational events for ingestion, publication, API
 | Cost driver | Bounded query, extraction, retry or transfer counters exceed their declared budget | Pause the relevant development schedule and obtain owner approval before increasing limits |
 
 Application logs are retained for thirty days. Alert evaluation is finite and scheduled; this contract does not keep a service warm, activate schedules, or promise a fixed monthly bill.
+
+FI-1 development diagnostics use a dedicated finite schema for candidate selection, skips, PDF download, text preparation, provider attempts, and terminal outcome. It may include only symbol, fiscal year, bounded announcement title, approved RichBourse document link, duration, model, and sanitized error class. The generic event formatter cannot accept these fields, and production emits none of these candidate diagnostics.

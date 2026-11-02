@@ -47,6 +47,7 @@ VALID = {
 def runtime_environment() -> dict[str, str]:
     return {
         "TRADVISOR_RUNTIME_TARGET": "financial_ingestion_job",
+        "TRADVISOR_ENVIRONMENT": "development",
         "GOOGLE_CLOUD_PROJECT": "fixture-project",
         "TRADVISOR_TARGET_PROJECT_ID": "fixture-project",
         "TRADVISOR_ENVIRONMENT_PROJECT_ID": "fixture-project",
@@ -66,6 +67,7 @@ def test_runtime_configuration_consumes_terraform_managed_values() -> None:
     configuration = RuntimeConfiguration.from_environment(runtime_environment())
 
     assert configuration.project_id == "fixture-project"
+    assert configuration.environment == "development"
     assert configuration.dataset == "stocks"
     assert configuration.financials_table == "fixture-project.stocks.financials"
     assert configuration.staging_table == "fixture-project.stocks.financials_staging"
@@ -115,7 +117,7 @@ def test_command_passes_injected_bounds_and_models_to_batch(
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-secret")
     adapters = object()
     calls: list[dict[str, object]] = []
-    monkeypatch.setattr(fi1_job, "_default_adapters", lambda project, dataset: adapters)
+    monkeypatch.setattr(fi1_job, "_default_adapters", lambda *args: adapters)
 
     def run(adapters_arg: object, **kwargs: object):
         calls.append({"adapters": adapters_arg, **kwargs})
@@ -134,6 +136,30 @@ def test_command_passes_injected_bounds_and_models_to_batch(
         }
     ]
     assert "test-only-secret" not in capsys.readouterr().out
+
+
+def test_production_default_adapters_suppress_candidate_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    observability = ModuleType("ingestion_observability")
+    observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_candidate_diagnostic = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
+    bigquery = ModuleType("google.cloud.bigquery")
+    bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
+    google = ModuleType("google")
+    cloud = ModuleType("google.cloud")
+    cloud.bigquery = bigquery  # type: ignore[attr-defined]
+    google.cloud = cloud  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ingestion_observability", observability)
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
+
+    assert _default_adapters("dev-project", "stocks", "production").emit_diagnostic is None
+    assert _default_adapters("dev-project", "stocks", "development").emit_diagnostic is not None
 
 
 def selector_html(*symbols: str) -> str:
@@ -174,6 +200,7 @@ class Harness:
         self.writes: list[tuple[list[dict[str, Any]], str]] = []
         self.completions: list[str] = []
         self.events: list[tuple[str, str, dict[str, object]]] = []
+        self.diagnostics: list[tuple[str, str, dict[str, object]]] = []
         self.state_reads = 0
         self.actions: list[str] = []
 
@@ -221,6 +248,9 @@ class Harness:
         def emit(name: str, outcome: str, **fields: object) -> None:
             self.events.append((name, outcome, fields))
 
+        def diagnostic(phase: str, outcome: str, **fields: object) -> None:
+            self.diagnostics.append((phase, outcome, fields))
+
         return RuntimeAdapters(
             fetch_text=fetch_text,
             download_pdf=download_pdf,
@@ -230,6 +260,7 @@ class Harness:
             write_rows=write_rows,
             completion=completion,
             emit_event=emit,
+            emit_diagnostic=diagnostic,
         )
 
 
@@ -251,6 +282,37 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert tuple(key for key in fake.writes[0][0][0] if key in EXTRACTION_KEYS) == EXTRACTION_KEYS
     assert fake.actions == ["state_read", "staging_load", "merge_commit", "completion"]
     assert outcome.completion is not None
+
+
+def test_candidate_diagnostics_are_development_adapter_effects_only() -> None:
+    fake = Harness()
+
+    run(fake)
+
+    assert [(phase, outcome) for phase, outcome, _ in fake.diagnostics] == [
+        ("selection", "selected"),
+        ("pdf", "succeeded"),
+        ("text", "succeeded"),
+        ("provider", "succeeded"),
+        ("terminal", "succeeded"),
+    ]
+    assert fake.diagnostics[0][2]["announcement_title"] == "Rapport annuel Exercice 2024"
+    assert fake.diagnostics[0][2]["document_link"] == "https://www.richbourse.com/ABC-2024.pdf"
+    assert all(isinstance(fields["duration_ms"], int) for _, _, fields in fake.diagnostics)
+
+
+def test_unchanged_candidate_emits_skip_without_pdf_or_provider() -> None:
+    link = "https://www.richbourse.com/ABC-2024.pdf"
+    fake = Harness(existing={("ABC", 2024): link})
+
+    run(fake)
+
+    assert [(phase, outcome) for phase, outcome, _ in fake.diagnostics] == [
+        ("selection", "selected"),
+        ("skip", "skipped"),
+    ]
+    assert fake.downloads == []
+    assert fake.attempts == []
 
 
 def test_provider_http_status_is_sanitized_in_fi1_telemetry() -> None:
@@ -357,6 +419,7 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     helper.upsert_financials_and_archive = managed_writer  # type: ignore[attr-defined]
     observability = ModuleType("ingestion_observability")
     observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_candidate_diagnostic = lambda *args, **kwargs: None  # type: ignore[attr-defined]
     observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
@@ -371,7 +434,7 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     monkeypatch.setitem(sys.modules, "google.cloud", cloud)
     monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
 
-    adapters = _default_adapters("dev-project", "stocks")
+    adapters = _default_adapters("dev-project", "stocks", "development")
     rows = [{"symbol": "ABC", "fiscal_year": 2024}]
     assert adapters.write_rows(rows, "fi1-run") == "b" * 64
 

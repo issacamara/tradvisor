@@ -60,6 +60,7 @@ jobs:
           docker build --file functions/financials/Dockerfile --tag tradvisor-fi1-job:ci .
           docker run --rm \
             -e TRADVISOR_RUNTIME_TARGET=financial_ingestion_job \
+            -e TRADVISOR_ENVIRONMENT=development \
             -e GOOGLE_CLOUD_PROJECT=fixture-project \
             -e TRADVISOR_TARGET_PROJECT_ID=fixture-project \
             -e TRADVISOR_ENVIRONMENT_PROJECT_ID=fixture-project \
