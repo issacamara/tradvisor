@@ -79,6 +79,7 @@ class RuntimeConfiguration:
     """Validated non-secret settings supplied by the Terraform-managed job."""
 
     project_id: str
+    environment: str
     dataset: str
     financials_table: str
     staging_table: str
@@ -93,6 +94,9 @@ class RuntimeConfiguration:
         values = os.environ if environ is None else environ
         if values.get("TRADVISOR_RUNTIME_TARGET") != RUNTIME_TARGET:
             raise ValueError("TRADVISOR_RUNTIME_TARGET must select the FI-1 job")
+        environment = values.get("TRADVISOR_ENVIRONMENT", "")
+        if environment not in {"development", "production"}:
+            raise ValueError("TRADVISOR_ENVIRONMENT must be development or production")
         project_id = values.get("TRADVISOR_TARGET_PROJECT_ID", "")
         if not project_id or values.get("TRADVISOR_ENVIRONMENT_PROJECT_ID") != project_id:
             raise ValueError("FI-1 target and environment projects must match")
@@ -134,6 +138,7 @@ class RuntimeConfiguration:
         bounded_integer("TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL", minimum=1, maximum=1)
         return cls(
             project_id=project_id,
+            environment=environment,
             dataset=dataset,
             financials_table=financials_table,
             staging_table=staging_table,
@@ -154,6 +159,7 @@ class RuntimeConfiguration:
         """Return non-secret settings for container configuration smoke checks."""
         return {
             "runtime_target": RUNTIME_TARGET,
+            "environment": self.environment,
             "project_id": self.project_id,
             "dataset": self.dataset,
             "financials_table": self.financials_table,
@@ -290,6 +296,7 @@ class RuntimeAdapters:
     completion: Callable[[str], Mapping[str, Any]]
     emit_event: Callable[..., None]
     execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
+    emit_diagnostic: Callable[..., None] | None = None
     monotonic: Callable[[], float] = time.monotonic
     utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
@@ -458,9 +465,15 @@ def _provider_attempt(
     return result
 
 
-def _default_adapters(project_id: str, dataset: str) -> RuntimeAdapters:
+def _default_adapters(
+    project_id: str, dataset: str, environment: str
+) -> RuntimeAdapters:
     from google.cloud import bigquery
-    from ingestion_observability import emit_event, managed_import_completion
+    from ingestion_observability import (
+        emit_event,
+        emit_fi1_candidate_diagnostic,
+        managed_import_completion,
+    )
 
     if re.fullmatch(r"[A-Za-z0-9_-]+", project_id) is None:
         raise ValueError("invalid Google Cloud project configuration")
@@ -538,6 +551,9 @@ def _default_adapters(project_id: str, dataset: str) -> RuntimeAdapters:
         ),
         emit_event=emit_event,
         execution_lease=execution_lease,
+        emit_diagnostic=(
+            emit_fi1_candidate_diagnostic if environment == "development" else None
+        ),
     )
 
 
@@ -670,6 +686,7 @@ def _run_batch(
         if lease is not None:
             lease.assert_owned()
         _remaining(deadline, adapters.monotonic)
+        _emit_candidate(adapters, candidate, "selection", "selected", started=adapters.monotonic())
         current_link = existing.get((candidate.symbol, candidate.fiscal_year))
         state = decide_row_state(
             existing_document_link=current_link,
@@ -678,17 +695,22 @@ def _run_batch(
         )
         if state is RowDecision.SKIP:
             counters["skipped"] += 1
+            _emit_candidate(adapters, candidate, "skip", "skipped", started=adapters.monotonic())
             continue
         try:
+            phase_started = adapters.monotonic()
             pdf = adapters.download_pdf(
                 candidate.document_link,
                 min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
             )
+            _emit_candidate(adapters, candidate, "pdf", "succeeded", started=phase_started)
+            phase_started = adapters.monotonic()
             extraction = _extract_candidate(
                 candidate, pdf, adapters, api_key, deadline, counters, model_order
             )
             if extraction is None:
                 counters["failed"] += 1
+                _emit_candidate(adapters, candidate, "terminal", "failed", started=phase_started)
                 continue
             decision = decide_row_state(
                 existing_document_link=current_link,
@@ -709,10 +731,15 @@ def _run_batch(
                     }
                 )
                 counters["inserted" if decision is RowDecision.INSERT else "updated"] += 1
+                _emit_candidate(adapters, candidate, "terminal", "succeeded", started=phase_started)
         except JobDeadlineExceeded:
             raise
         except Exception as error:
             counters["failed"] += 1
+            _emit_candidate(
+                adapters, candidate, "terminal", "failed", started=phase_started,
+                error_class=_error_class(error),
+            )
             adapters.emit_event(
                 "ingestion.fi1.report", "failed", error_class=_error_class(error)
             )
@@ -759,10 +786,20 @@ def _extract_candidate(
     counters: dict[str, int],
     model_order: Sequence[str] = MODEL_ORDER,
 ) -> ValidatedExtraction | None:
-    document_text = adapters.prepare_document(pdf)
+    phase_started = adapters.monotonic()
+    try:
+        document_text = adapters.prepare_document(pdf)
+    except Exception as error:
+        _emit_candidate(
+            adapters, candidate, "text", "failed", started=phase_started,
+            error_class=_error_class(error),
+        )
+        raise
+    _emit_candidate(adapters, candidate, "text", "succeeded", started=phase_started)
     for model in model_order:
         timeout = min(PROVIDER_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic))
         counters["attempts"] += 1
+        phase_started = adapters.monotonic()
         try:
             payload = adapters.provider_attempt(document_text, model, api_key, timeout)
             extraction = validate_extraction(
@@ -771,6 +808,10 @@ def _extract_candidate(
             if not any(getattr(extraction, key) is not None for key in _FINANCIAL_VALUE_KEYS):
                 raise ValueError("provider result has no usable financial values")
             adapters.emit_event("ingestion.fi1.provider", "succeeded")
+            _emit_candidate(
+                adapters, candidate, "provider", "succeeded", started=phase_started,
+                model=model,
+            )
             return extraction
         except JobDeadlineExceeded:
             raise
@@ -780,7 +821,36 @@ def _extract_candidate(
                 "failed",
                 error_class=_error_class(error),
             )
+            _emit_candidate(
+                adapters, candidate, "provider", "failed", started=phase_started,
+                error_class=_error_class(error), model=model,
+            )
     return None
+
+
+def _emit_candidate(
+    adapters: RuntimeAdapters,
+    candidate: AnnualCandidate,
+    phase: str,
+    outcome: str,
+    *,
+    started: float,
+    error_class: str | None = None,
+    model: str | None = None,
+) -> None:
+    if adapters.emit_diagnostic is None:
+        return
+    adapters.emit_diagnostic(
+        phase,
+        outcome,
+        symbol=candidate.symbol,
+        fiscal_year=candidate.fiscal_year,
+        announcement_title=candidate.announcement_title,
+        document_link=candidate.document_link,
+        duration_ms=max(0, int((adapters.monotonic() - started) * 1000)),
+        error_class=error_class,
+        model=model,
+    )
 
 
 def _error_class(error: Exception) -> str:
@@ -807,7 +877,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is required")
-    adapters = _default_adapters(configuration.project_id, configuration.dataset)
+    adapters = _default_adapters(
+        configuration.project_id, configuration.dataset, configuration.environment
+    )
     outcome = run_batch(
         adapters,
         api_key=api_key,

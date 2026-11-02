@@ -54,6 +54,7 @@ class AnnualCandidate:
     symbol: str
     fiscal_year: int
     document_link: str
+    announcement_title: str
 
     def __post_init__(self) -> None:
         if not self.symbol.strip():
@@ -62,6 +63,8 @@ class AnnualCandidate:
             raise ValueError("fiscal_year must be an integer")
         if not is_approved_document_url(self.document_link):
             raise ValueError("document_link must use the approved RichBourse origin")
+        if not self.announcement_title or len(self.announcement_title) > 256:
+            raise ValueError("announcement_title must be a bounded non-empty string")
 
     @property
     def identity(self) -> "FinancialIdentity":
@@ -241,7 +244,7 @@ def parse_annual_candidates(
             continue
         year = int(year_match.group(1))
         # RichBourse pages are newest-first; keep the first link if a year repeats.
-        by_year.setdefault(year, AnnualCandidate(symbol, year, document_link))
+        by_year.setdefault(year, AnnualCandidate(symbol, year, document_link, title[:256]))
 
     return tuple(by_year[year] for year in sorted(by_year, reverse=True)[:limit])
 

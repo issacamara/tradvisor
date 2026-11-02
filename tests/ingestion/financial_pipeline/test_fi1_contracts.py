@@ -57,6 +57,7 @@ def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() ->
         2021,
     ]
     assert candidates[0].document_link == "https://www.richbourse.com/documents/abc-2025.pdf"
+    assert candidates[0].announcement_title == "Rapport annuel Exercice 2025"
     assert all(candidate.symbol == "ABC" for candidate in candidates)
     assert len({candidate.fiscal_year for candidate in candidates}) == 5
     assert candidates[1].document_link.endswith("abc-2024.pdf")
@@ -73,7 +74,7 @@ def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
     assert not is_approved_document_url("https://files.invalid/report.pdf")
     assert not is_approved_document_url("http://www.richbourse.com/report.pdf")
     with pytest.raises(ValueError, match="approved RichBourse origin"):
-        AnnualCandidate("ABC", 2026, "https://files.invalid/annual-2026.pdf")
+        AnnualCandidate("ABC", 2026, "https://files.invalid/annual-2026.pdf", "Annual 2026")
 
 
 @pytest.mark.parametrize(
@@ -223,8 +224,10 @@ def test_retry_safe_row_decisions(
 
 def test_candidate_exposes_logical_identity_and_only_source_reference_metadata() -> None:
     candidate = AnnualCandidate(
-        "ABC", 2024, "https://www.richbourse.com/report.pdf"
+        "ABC", 2024, "https://www.richbourse.com/report.pdf", "Annual report 2024"
     )
 
     assert candidate.identity == FinancialIdentity("ABC", 2024)
-    assert set(vars(candidate)) == {"symbol", "fiscal_year", "document_link"}
+    assert set(vars(candidate)) == {
+        "symbol", "fiscal_year", "document_link", "announcement_title"
+    }

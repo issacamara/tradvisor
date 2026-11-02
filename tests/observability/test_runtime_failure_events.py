@@ -53,3 +53,33 @@ def test_packaged_entrypoint_formatter_redacts_exception_text(capsys: pytest.Cap
     assert payload["event"] == "ingestion.test"
     assert payload["error_class"] == "ValueError"
     assert "sentinel-token" not in output
+
+
+def test_fi1_candidate_diagnostic_uses_a_finite_allowlisted_schema(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = Path(__file__).parents[2] / "archive" / "legacy-ingestion" / "scripts" / "ingestion_observability.py"
+    spec = importlib.util.spec_from_file_location("fi1_diagnostic_observability", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.emit_fi1_candidate_diagnostic(
+        "provider", "failed", symbol="ABC", fiscal_year=2024,
+        announcement_title="Rapport annuel Exercice 2024",
+        document_link="https://www.richbourse.com/documents/abc-2024.pdf",
+        duration_ms=25, error_class="ProviderHTTP503", model="gemma-4-31b-it",
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["event"] == "ingestion.fi1.candidate"
+    assert set(payload) == {
+        "event", "phase", "outcome", "occurred_at", "symbol", "fiscal_year",
+        "announcement_title", "document_link", "duration_ms", "error_class", "model",
+    }
+    with pytest.raises(ValueError, match="invalid FI-1 candidate diagnostic"):
+        module.emit_fi1_candidate_diagnostic(
+            "pdf", "failed", symbol="ABC", fiscal_year=2024,
+            announcement_title="Annual", document_link="https://files.invalid/report.pdf",
+            duration_ms=1,
+        )
