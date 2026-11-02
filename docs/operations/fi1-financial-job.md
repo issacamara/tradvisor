@@ -34,7 +34,7 @@ continues to own and protect both financial tables.
 
 The Job runs one task at a time (`task_count = 1`, `parallelism = 1`), has no
 automatic task retries, and is limited to 3600 seconds. Runtime configuration
-caps work at four concurrent RichBourse requests, five reports per symbol,
+caps work at serial RichBourse requests, five reports per symbol,
 and one attempt per configured model. The OpenRouter key is injected from
 Secret Manager at runtime; no secret payload or version is managed here.
 
@@ -52,3 +52,19 @@ This configuration does not authorize Terraform plan/apply, job execution,
 schedule activation, secret provisioning, provider calls, or production
 operations. Use the repository's existing reviewed delivery gates when those
 actions are separately approved.
+
+## Runtime commit boundary
+
+The job reads `(symbol, fiscal_year, document_link)` state once, discovers the
+selector once, and requests symbol pages serially in selector order. A symbol
+is added to the in-memory write buffer only after every selected non-skipped
+report succeeds; one failed eligible report discards all newly derived rows for
+that symbol. The existing staging/`MERGE` writer runs after each ten terminal
+symbols and once for a final partial batch when that batch is non-empty. Every
+flush has a distinct run identifier, and inserted/updated counters and lookup
+state advance only after the managed receipt validates. Earlier committed
+batches remain durable if a later symbol, writer, lease, or deadline failure
+stops the run. A single sanitized completion is emitted only after all current
+run batches commit successfully and no failure remains. PDFs, extracted text,
+prompts, provider responses, credentials, and exception bodies remain
+non-retained process material.

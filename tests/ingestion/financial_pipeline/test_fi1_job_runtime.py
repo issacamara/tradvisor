@@ -5,11 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
-import time
 import importlib.util
 import inspect
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -199,6 +198,7 @@ class Harness:
         self.attempts: list[str] = []
         self.writes: list[tuple[list[dict[str, Any]], str]] = []
         self.completions: list[str] = []
+        self.completion_batches: list[tuple[str, ...]] = []
         self.events: list[tuple[str, str, dict[str, object]]] = []
         self.diagnostics: list[tuple[str, str, dict[str, object]]] = []
         self.state_reads = 0
@@ -236,13 +236,14 @@ class Harness:
             self.writes.append((rows, run_id))
             return "a" * 64
 
-        def completion(fingerprint: str):
+        def completion(fingerprints: Sequence[str]):
             self.actions.append("completion")
-            self.completions.append(fingerprint)
+            self.completion_batches.append(tuple(fingerprints))
+            self.completions.extend(fingerprints)
             return {
                 "source": "financials",
                 "status": "succeeded",
-                "managed_write": {"revision_fingerprint": fingerprint},
+            "managed_write": {"revision_fingerprint": fingerprints[-1]},
             }
 
         def emit(name: str, outcome: str, **fields: object) -> None:
@@ -577,37 +578,41 @@ def test_firestore_lease_releases_its_owner_after_batch_failure() -> None:
     assert document.state == {}
 
 
-def test_symbol_pages_are_bounded_to_four_concurrent_requests() -> None:
-    fake = Harness(symbols=tuple(f"S{i}" for i in range(9)))
-    adapters = fake.adapters()
-    original_fetch = adapters.fetch_text
-    lock = threading.Lock()
-    in_flight = 0
-    max_in_flight = 0
+def test_symbol_pages_are_requested_serially_in_selector_order() -> None:
+    symbols = tuple(f"S{i}" for i in range(9))
+    fake = Harness(symbols=symbols)
 
-    def tracked_fetch(url: str, timeout: float) -> str:
-        nonlocal in_flight, max_in_flight
-        if url == SELECTOR_URL:
-            return original_fetch(url, timeout)
-        with lock:
-            in_flight += 1
-            max_in_flight = max(max_in_flight, in_flight)
-        time.sleep(0.01)
-        try:
-            return original_fetch(url, timeout)
-        finally:
-            with lock:
-                in_flight -= 1
+    run(fake)
 
-    adapters = RuntimeAdapters(
-        **{**adapters.__dict__, "fetch_text": tracked_fetch}
-    )
-    outcome = run_batch(adapters, api_key="runtime-secret")
-
-    assert outcome.discovered_symbols == 9
     assert fake.fetches.count(SELECTOR_URL) == 1
-    assert max_in_flight <= 4
-    assert max_in_flight > 1
+    assert [url.split("symbole=", 1)[1] for url in fake.fetches[1:]] == list(symbols)
+
+
+def test_ten_terminal_symbols_flush_once_and_use_unique_batch_ids() -> None:
+    fake = Harness(symbols=tuple(f"S{i}" for i in range(11)))
+
+    run(fake)
+
+    assert [len(rows) for rows, _ in fake.writes] == [10, 1]
+    assert len({run_id for _, run_id in fake.writes}) == 2
+    assert fake.completion_batches == [("a" * 64, "a" * 64)]
+
+
+def test_failed_report_discards_all_rows_for_its_symbol() -> None:
+    fake = Harness(symbols=("ABC",), years=(2025, 2024))
+
+    def extract(pdf: bytes, model: str, key: str, timeout: float):
+        if pdf.endswith(b"2024"):
+            raise RuntimeError("failed")
+        return {**VALID, "fiscal_year": int(pdf[-4:])}
+
+    fake.extract = extract
+
+    outcome = run(fake)
+
+    assert outcome.failed == 1
+    assert fake.writes == []
+    assert fake.completions == []
 
 
 def test_at_most_newest_five_annual_reports_are_processed() -> None:
@@ -747,7 +752,7 @@ def test_failed_report_suppresses_batch_completion_even_after_other_write() -> N
     outcome = run_batch(adapters, api_key="runtime-secret")
 
     assert outcome.failed == 1
-    assert len(fake.writes) == 1
+    assert fake.writes == []
     assert fake.completions == []
 
 
