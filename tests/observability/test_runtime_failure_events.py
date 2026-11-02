@@ -55,7 +55,7 @@ def test_packaged_entrypoint_formatter_redacts_exception_text(capsys: pytest.Cap
     assert "sentinel-token" not in output
 
 
-def test_fi1_candidate_diagnostic_uses_a_finite_allowlisted_schema(
+def test_fi1_symbol_outcome_has_a_finite_allowlisted_schema(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     path = Path(__file__).parents[2] / "archive" / "legacy-ingestion" / "scripts" / "ingestion_observability.py"
@@ -64,22 +64,28 @@ def test_fi1_candidate_diagnostic_uses_a_finite_allowlisted_schema(
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    module.emit_fi1_candidate_diagnostic(
-        "provider", "failed", symbol="ABC", fiscal_year=2024,
-        announcement_title="Rapport annuel Exercice 2024",
-        document_link="https://www.richbourse.com/documents/abc-2024.pdf",
-        duration_ms=25, error_class="ProviderHTTP503", model="gemma-4-31b-it",
-    )
+    module.emit_fi1_symbol_outcome("ABC", "failed", error_class="ProviderHTTP503")
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["event"] == "ingestion.fi1.candidate"
+    assert payload["event"] == "ingestion.fi1.symbol"
     assert set(payload) == {
-        "event", "phase", "outcome", "occurred_at", "symbol", "fiscal_year",
-        "announcement_title", "document_link", "duration_ms", "error_class", "model",
+        "event", "outcome", "occurred_at", "symbol", "error_class",
     }
-    with pytest.raises(ValueError, match="invalid FI-1 candidate diagnostic"):
-        module.emit_fi1_candidate_diagnostic(
-            "pdf", "failed", symbol="ABC", fiscal_year=2024,
-            announcement_title="Annual", document_link="https://files.invalid/report.pdf",
-            duration_ms=1,
-        )
+
+    module.emit_fi1_commit_counts(inserted=2, updated=1)
+    commit = json.loads(capsys.readouterr().out)
+    assert commit["event"] == "ingestion.fi1.commit"
+    assert commit["inserted"] == 2
+    assert commit["updated"] == 1
+
+    module.emit_fi1_stage_failure("writer", error_class="RuntimeError")
+    failure = json.loads(capsys.readouterr().out)
+    assert failure["event"] == "ingestion.fi1.failure"
+    assert failure["stage"] == "writer"
+
+    with pytest.raises(ValueError, match="invalid FI-1 commit counts"):
+        module.emit_fi1_commit_counts(inserted=0, updated=0)
+    with pytest.raises(ValueError, match="invalid FI-1 symbol outcome"):
+        module.emit_fi1_symbol_outcome("operator@example.com", "failed")
+    with pytest.raises(ValueError, match="invalid FI-1 stage failure"):
+        module.emit_fi1_stage_failure("provider", error_class="RuntimeError")

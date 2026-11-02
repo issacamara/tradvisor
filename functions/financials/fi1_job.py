@@ -294,8 +294,10 @@ class RuntimeAdapters:
     write_rows: Callable[[list[dict[str, Any]], str], str]
     completion: Callable[[Sequence[str]], Mapping[str, Any]]
     emit_event: Callable[..., None]
+    emit_symbol_outcome: Callable[..., None]
+    emit_commit_counts: Callable[..., None]
+    emit_stage_failure: Callable[..., None]
     execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
-    emit_diagnostic: Callable[..., None] | None = None
     monotonic: Callable[[], float] = time.monotonic
     utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
@@ -470,7 +472,9 @@ def _default_adapters(
     from google.cloud import bigquery
     from ingestion_observability import (
         emit_event,
-        emit_fi1_candidate_diagnostic,
+        emit_fi1_commit_counts,
+        emit_fi1_stage_failure,
+        emit_fi1_symbol_outcome,
         managed_import_completion,
     )
 
@@ -547,10 +551,10 @@ def _default_adapters(
         write_rows=write_rows,
         completion=lambda fingerprints: managed_import_completion("financials", fingerprints),
         emit_event=emit_event,
+        emit_symbol_outcome=emit_fi1_symbol_outcome,
+        emit_commit_counts=emit_fi1_commit_counts,
+        emit_stage_failure=emit_fi1_stage_failure,
         execution_lease=execution_lease,
-        emit_diagnostic=(
-            emit_fi1_candidate_diagnostic if environment == "development" else None
-        ),
     )
 
 
@@ -579,10 +583,19 @@ def run_batch(
     if not model_order or len(set(model_order)) != len(model_order):
         raise ValueError("FI-1 model order must contain unique models")
 
-    lease = adapters.execution_lease() if adapters.execution_lease is not None else None
+    try:
+        lease = adapters.execution_lease() if adapters.execution_lease is not None else None
+    except Exception as error:
+        adapters.emit_stage_failure("lease", error_class=_error_class(error))
+        raise
     if lease is not None:
-        with lease:
-            return _run_batch(
+        try:
+            lease.__enter__()
+        except Exception as error:
+            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            raise
+        try:
+            result = _run_batch(
                 adapters,
                 api_key=api_key,
                 max_duration_seconds=max_duration_seconds,
@@ -591,6 +604,12 @@ def run_batch(
                 max_annual_candidates=max_annual_candidates,
                 lease=lease,
             )
+        except BaseException as error:
+            lease.__exit__(type(error), error, error.__traceback__)
+            raise
+        else:
+            lease.__exit__(None, None, None)
+            return result
     return _run_batch(
         adapters,
         api_key=api_key,
@@ -623,13 +642,10 @@ def _run_batch(
         "failed": 0,
         "attempts": 0,
     }
-    adapters.emit_event("ingestion.fi1", "started")
     try:
         existing = dict(adapters.read_existing())
     except Exception as error:
-        adapters.emit_event(
-            "ingestion.fi1.state", "failed", error_class=type(error).__name__
-        )
+        adapters.emit_stage_failure("state", error_class=_error_class(error))
         raise RuntimeError("FI-1 state read failed") from None
     _remaining(deadline, adapters.monotonic)
     try:
@@ -641,9 +657,7 @@ def _run_batch(
     except JobDeadlineExceeded:
         raise
     except Exception as error:
-        adapters.emit_event(
-            "ingestion.fi1.selector", "failed", error_class=type(error).__name__
-        )
+        adapters.emit_stage_failure("selector", error_class=_error_class(error))
         raise RuntimeError("FI-1 selector discovery failed") from None
     _remaining(deadline, adapters.monotonic)
     counters["symbols"] = len(symbols)
@@ -658,23 +672,33 @@ def _run_batch(
     rows: list[dict[str, Any]] = []
     pending_counts = {"inserted": 0, "updated": 0}
     receipts: list[str] = []
-    committed_rows = 0
     terminal_symbols = 0
 
     def flush() -> None:
-        nonlocal committed_rows, rows
+        nonlocal rows
         if not rows:
             return
-        if lease is not None:
-            lease.assert_owned()
-        _remaining(deadline, adapters.monotonic)
-        run_id = "fi1_" + uuid4().hex
-        fingerprint = adapters.write_rows(rows, run_id)
-        _remaining(deadline, adapters.monotonic)
-        if not isinstance(fingerprint, str) or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None:
-            raise RuntimeError("FI-1 writer returned no managed commit receipt")
+        try:
+            if lease is not None:
+                lease.assert_owned()
+            _remaining(deadline, adapters.monotonic)
+            run_id = "fi1_" + uuid4().hex
+            fingerprint = adapters.write_rows(rows, run_id)
+            _remaining(deadline, adapters.monotonic)
+            if not isinstance(fingerprint, str) or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None:
+                raise RuntimeError("FI-1 writer returned no managed commit receipt")
+        except ActiveExecutionError as error:
+            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            raise
+        except JobDeadlineExceeded:
+            raise
+        except Exception as error:
+            adapters.emit_stage_failure("writer", error_class=_error_class(error))
+            raise
         receipts.append(fingerprint)
-        committed_rows += len(rows)
+        adapters.emit_commit_counts(
+            inserted=pending_counts["inserted"], updated=pending_counts["updated"]
+        )
         counters["inserted"] += pending_counts["inserted"]
         counters["updated"] += pending_counts["updated"]
         for row in rows:
@@ -685,11 +709,18 @@ def _run_batch(
 
     for symbol in symbols:
         if lease is not None:
-            lease.assert_owned()
+            try:
+                lease.assert_owned()
+            except Exception as error:
+                adapters.emit_stage_failure("lease", error_class=_error_class(error))
+                raise
         _remaining(deadline, adapters.monotonic)
         symbol_rows: list[dict[str, Any]] = []
         symbol_counts = {"inserted": 0, "updated": 0}
         symbol_failed = False
+        symbol_error: Exception | None = None
+        symbol_error_class: str | None = None
+        failure_classes: list[str] = []
         try:
             candidates = load_symbol_page(symbol)
             counters["candidates"] += len(candidates)
@@ -697,17 +728,18 @@ def _run_batch(
             raise
         except Exception as error:
             counters["failed"] += 1
-            adapters.emit_event(
-                "ingestion.fi1.symbol_page", "failed", error_class=type(error).__name__
-            )
             candidates = ()
             symbol_failed = True
+            symbol_error = error
 
         for candidate in candidates:
             if lease is not None:
-                lease.assert_owned()
+                try:
+                    lease.assert_owned()
+                except Exception as error:
+                    adapters.emit_stage_failure("lease", error_class=_error_class(error))
+                    raise
             _remaining(deadline, adapters.monotonic)
-            _emit_candidate(adapters, candidate, "selection", "selected", started=adapters.monotonic())
             current_link = existing.get((candidate.symbol, candidate.fiscal_year))
             if decide_row_state(
                 existing_document_link=current_link,
@@ -715,23 +747,20 @@ def _run_batch(
                 extraction_succeeded=True,
             ) is RowDecision.SKIP:
                 counters["skipped"] += 1
-                _emit_candidate(adapters, candidate, "skip", "skipped", started=adapters.monotonic())
                 continue
-            phase_started = adapters.monotonic()
             try:
                 pdf = adapters.download_pdf(
                     candidate.document_link,
                     min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
                 )
-                _emit_candidate(adapters, candidate, "pdf", "succeeded", started=phase_started)
-                phase_started = adapters.monotonic()
                 extraction = _extract_candidate(
-                    candidate, pdf, adapters, api_key, deadline, counters, model_order
+                    candidate, pdf, adapters, api_key, deadline, counters, model_order,
+                    failure_class=failure_classes,
                 )
                 if extraction is None:
                     counters["failed"] += 1
                     symbol_failed = True
-                    _emit_candidate(adapters, candidate, "terminal", "failed", started=phase_started)
+                    symbol_error_class = failure_classes[-1] if failure_classes else None
                     continue
                 decision = decide_row_state(
                     existing_document_link=current_link,
@@ -752,24 +781,22 @@ def _run_batch(
                         }
                     )
                     symbol_counts["inserted" if decision is RowDecision.INSERT else "updated"] += 1
-                    _emit_candidate(adapters, candidate, "terminal", "succeeded", started=phase_started)
             except JobDeadlineExceeded:
                 raise
             except Exception as error:
                 counters["failed"] += 1
                 symbol_failed = True
-                _emit_candidate(
-                    adapters, candidate, "terminal", "failed", started=phase_started,
-                    error_class=_error_class(error),
-                )
-                adapters.emit_event(
-                    "ingestion.fi1.report", "failed", error_class=_error_class(error)
-                )
+                symbol_error = error
 
         if not symbol_failed:
             rows.extend(symbol_rows)
             pending_counts["inserted"] += symbol_counts["inserted"]
             pending_counts["updated"] += symbol_counts["updated"]
+        adapters.emit_symbol_outcome(
+            symbol,
+            "failed" if symbol_failed else "succeeded",
+            **({"error_class": symbol_error_class or _error_class(symbol_error)} if symbol_failed and (symbol_error_class or symbol_error) else {}),
+        )
         terminal_symbols += 1
         if terminal_symbols % 10 == 0:
             flush()
@@ -777,14 +804,16 @@ def _run_batch(
 
     completion: Mapping[str, Any] | None = None
     if receipts and counters["failed"] == 0:
-        if lease is not None:
-            lease.assert_owned()
-        completion = adapters.completion(tuple(receipts))
-    adapters.emit_event("ingestion.fi1.batch", "completed", count=committed_rows)
-    adapters.emit_event("ingestion.fi1.skipped", "completed", count=counters["skipped"])
-    adapters.emit_event("ingestion.fi1.failed", "completed", count=counters["failed"])
-    if completion is not None:
-        adapters.emit_event("ingestion.fi1.completion", "succeeded")
+        try:
+            if lease is not None:
+                lease.assert_owned()
+            completion = adapters.completion(tuple(receipts))
+        except ActiveExecutionError as error:
+            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            raise
+        except Exception as error:
+            adapters.emit_stage_failure("completion", error_class=_error_class(error))
+            raise
     return JobOutcome(
         discovered_symbols=counters["symbols"],
         annual_candidates=counters["candidates"],
@@ -805,21 +834,12 @@ def _extract_candidate(
     deadline: float,
     counters: dict[str, int],
     model_order: Sequence[str] = MODEL_ORDER,
+    failure_class: list[str] | None = None,
 ) -> ValidatedExtraction | None:
-    phase_started = adapters.monotonic()
-    try:
-        document_text = adapters.prepare_document(pdf)
-    except Exception as error:
-        _emit_candidate(
-            adapters, candidate, "text", "failed", started=phase_started,
-            error_class=_error_class(error),
-        )
-        raise
-    _emit_candidate(adapters, candidate, "text", "succeeded", started=phase_started)
+    document_text = adapters.prepare_document(pdf)
     for model in model_order:
         timeout = min(PROVIDER_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic))
         counters["attempts"] += 1
-        phase_started = adapters.monotonic()
         try:
             payload = adapters.provider_attempt(document_text, model, api_key, timeout)
             extraction = validate_extraction(
@@ -827,50 +847,14 @@ def _extract_candidate(
             )
             if not any(getattr(extraction, key) is not None for key in _FINANCIAL_VALUE_KEYS):
                 raise ValueError("provider result has no usable financial values")
-            adapters.emit_event("ingestion.fi1.provider", "succeeded")
-            _emit_candidate(
-                adapters, candidate, "provider", "succeeded", started=phase_started,
-                model=model,
-            )
             return extraction
         except JobDeadlineExceeded:
             raise
         except Exception as error:
-            adapters.emit_event(
-                "ingestion.fi1.provider",
-                "failed",
-                error_class=_error_class(error),
-            )
-            _emit_candidate(
-                adapters, candidate, "provider", "failed", started=phase_started,
-                error_class=_error_class(error), model=model,
-            )
+            if failure_class is not None:
+                failure_class.append(_error_class(error))
+            continue
     return None
-
-
-def _emit_candidate(
-    adapters: RuntimeAdapters,
-    candidate: AnnualCandidate,
-    phase: str,
-    outcome: str,
-    *,
-    started: float,
-    error_class: str | None = None,
-    model: str | None = None,
-) -> None:
-    if adapters.emit_diagnostic is None:
-        return
-    adapters.emit_diagnostic(
-        phase,
-        outcome,
-        symbol=candidate.symbol,
-        fiscal_year=candidate.fiscal_year,
-        announcement_title=candidate.announcement_title,
-        document_link=candidate.document_link,
-        duration_ms=max(0, int((adapters.monotonic() - started) * 1000)),
-        error_class=error_class,
-        model=model,
-    )
 
 
 def _error_class(error: Exception) -> str:
@@ -900,14 +884,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     adapters = _default_adapters(
         configuration.project_id, configuration.dataset, configuration.environment
     )
-    outcome = run_batch(
+    run_batch(
         adapters,
         api_key=api_key,
         model_order=configuration.model_order,
         max_page_concurrency=configuration.max_concurrent_requests,
         max_annual_candidates=configuration.max_reports_per_symbol,
     )
-    print(json.dumps(outcome.as_dict(), separators=(",", ":"), sort_keys=True))
 
 
 if __name__ == "__main__":
