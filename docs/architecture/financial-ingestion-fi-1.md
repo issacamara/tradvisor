@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-FI-1 replaces the financials-specific Cloud Functions, Workflow, and archive path with one monthly private Cloud Run Job. The job discovers the RichBourse selector once, visits each selected company page, and processes the newest five available annual statements. It skips already-ingested `(symbol, fiscal_year)` records unless the advertised document link has changed. PDFs, extracted text, prompts, and model responses are transient process memory; `stocks.financials` is the only retained ingestion record. Validated rows are written through Terraform-managed staging and a single `MERGE`, then emit a sanitized completion only after commit. OpenRouter extraction attempts the approved models in order: `gemma-4-31b-it`, `nvidia/nemotron-3.5-lightning:free`, then `openai/gpt-4o-mini`. The job retains the existing completion-driven Long-Term publication mechanism and introduces no user-facing workflow.
+FI-1 replaces the financials-specific Cloud Functions, Workflow, and archive path with one monthly private Cloud Run Job. The job discovers the RichBourse selector once, visits each selected company page serially in selector order, and processes the newest five available annual statements. It skips already-ingested `(symbol, fiscal_year)` records unless the advertised document link has changed. PDFs, extracted text, prompts, and model responses are transient process memory; `stocks.financials` is the only retained ingestion record. Complete successful symbol results are buffered and written through Terraform-managed staging in batches of at most ten terminal symbols, then emit one sanitized completion only after every current-run batch commits. OpenRouter extraction attempts the approved models in order: `gemma-4-31b-it`, `nvidia/nemotron-3.5-lightning:free`, then `openai/gpt-4o-mini`. The job retains the existing completion-driven Long-Term publication mechanism and introduces no user-facing workflow.
 
 ## 2. Business Context & Drivers
 
@@ -18,14 +18,14 @@ The V1 Long-Term workflow needs consistent annual financial inputs without maint
 
 | Req ID | Requirement | Design decision | Component(s) | Reused/New |
 |---|---|---|---|---|
-| FI-01 | Collect each selector company’s newest five available annual reports. | Fetch selector once; fetch each symbol page with bounded concurrency; reject interim reports; choose five newest annual fiscal years. | RichBourse adapter; Cloud Run Job | Reused/New |
+| FI-01 | Collect each selector company’s newest five available annual reports. | Fetch selector once; fetch each symbol page serially in selector order; reject interim reports; choose five newest annual fiscal years. | RichBourse adapter; Cloud Run Job | Reused/New |
 | FI-02 | Do not re-extract an unchanged annual statement. | Read existing state once and skip a matching `(symbol, fiscal_year, document_link)`; changed links replace the row for the same `(symbol, fiscal_year)`. | BigQuery writer; Cloud Run Job | Reused/New |
 | FI-03 | Persist the six approved nullable numeric fields. | Enforce exact JSON keys, finite numbers or nulls, and source-year agreement before write. | OpenRouter client; validation | Reused/New |
 | FI-04 | Use the approved ordered model fallback. | Attempt `gemma-4-31b-it`, then `nvidia/nemotron-3.5-lightning:free`, then `openai/gpt-4o-mini`, once each. | OpenRouter client | Reused |
 | FI-05 | Retain no PDF or extraction evidence. | Keep source and provider material only in memory; logs retain only bounded operational counters/classes. | Cloud Run Job; observability | New/Reused |
 | FI-06 | Run monthly with minimal orchestration. | Cloud Scheduler invokes one private Cloud Run Job; no financial Workflow, Pub/Sub, Tasks, or archive bucket path. | Scheduler trigger; Cloud Run Job | Reused/New |
 | FI-07 | Preserve Terraform table ownership and safe publication. | Terraform owns job, IAM, schedule, secret reference and BigQuery tables; staged `MERGE` precedes the completion event. | Terraform; BigQuery writer; completion adapter | Reused |
-| NFR-01 | Bound current-scope processing. | One active execution, maximum four concurrent RichBourse requests, one attempt per model/report, timeout no greater than 60 minutes. | Cloud Run Job | New |
+| NFR-01 | Bound current-scope processing. | One active execution, serial RichBourse access, one attempt per model/report, ten-terminal-symbol write batches, timeout no greater than 60 minutes. | Cloud Run Job | New |
 | NFR-02 | Make retries safe. | `symbol, fiscal_year` is the storage uniqueness key; unchanged links are no-ops and changed links update that key atomically. | BigQuery writer | Reused |
 | NFR-03 | Keep secrets and source content out of durable telemetry. | Inject `OPENROUTER_API_KEY` at runtime from Secret Manager; never log or persist source/provider payloads. | Terraform; Cloud Run Job | Reused/New |
 | NFR-04 | Preserve V1 delivery controls. | Build a commit-addressed immutable image, deploy it unchanged to development, verify, then promote the same digest through human approval. | Delivery workflow; Terraform | Reused |
@@ -58,7 +58,7 @@ flowchart LR
 - **Purpose:** Parse the selector and symbol-filtered pages, identify annual statement links, and reject quarterly/half-year activity reports.
 - **Reused:** Extend the existing `functions/financials/scrape_financials.py` RichBourse parsing/transport seam rather than create a second scraper.
 - **Interfaces/data:** Returns symbol, fiscal year, announcement metadata, and absolute document link; it does not persist a PDF.
-- **Technology:** Existing curl-cffi/BeautifulSoup approach with bounded retries and four concurrent requests maximum.
+- **Technology:** Existing curl-cffi/BeautifulSoup approach with bounded retries and one request at a time.
 
 ### 5.3 OpenRouter extraction and validation
 
@@ -72,7 +72,7 @@ flowchart LR
 - **Purpose:** Read current row/link state once and commit all changed valid rows atomically enough for retry-safe processing.
 - **Reused:** Keep the Terraform-managed BigQuery table and run-scoped staging/`MERGE` pattern; runtime code does not create or replace tables.
 - **Interfaces/data:** Storage identity is `symbol, fiscal_year`. `document_link` is a mutable source-reference attribute: a different link for the same identity permits replacement; a matching link is skipped.
-- **Technology:** BigQuery parameterized state query, staging table and `MERGE`.
+- **Technology:** BigQuery parameterized state query, staging table and `MERGE` after each ten terminal symbols and after the final partial batch.
 
 ### 5.5 Completion and publication adapter
 
@@ -111,7 +111,7 @@ The contract boundary consumed by the runtime wave is `functions.financials.fi1_
 
 ## 7. Data Architecture
 
-`stocks.financials` remains the canonical financial ingestion table and is Terraform-managed. Its logical row identity is `(symbol, fiscal_year)`; the source `document_link` is retained only as a mutable lookup/reference field. The job issues one read of existing `(symbol, fiscal_year, document_link)` state before processing. A matching link is skipped; a changed link may update the same identity after validation; a failed candidate leaves an existing row unchanged or an absent row absent.
+`stocks.financials` remains the canonical financial ingestion table and is Terraform-managed. Its logical row identity is `(symbol, fiscal_year)`; the source `document_link` is retained only as a mutable lookup/reference field. The job issues one read of existing `(symbol, fiscal_year, document_link)` state before processing. A matching link is skipped; a changed link may update the same identity after validation; a failed candidate leaves an existing row unchanged or an absent row absent. A symbol contributes rows to the write buffer only when all of its selected non-skipped reports succeed; a failed eligible report discards that symbol’s newly derived rows. Each non-empty batch uses a distinct staging run identifier and updates in-memory counters/state only after its managed-write receipt is validated.
 
 The validated payload persists the six requested nullable numeric fields. Null denotes unavailable information, never zero. Validation requires the exact key set, numeric finiteness, and a fiscal year matching the page/source metadata. PDFs, PDF-derived text, prompt content, and OpenRouter responses are never written to GCS, BigQuery, Firestore, logs, artifacts, or tests. They are released with process memory at the end of extraction. FI-1 deliberately cannot detect an in-place source change at an unchanged URL and cannot replay an extraction from retained evidence.
 
@@ -121,7 +121,7 @@ The validated payload persists the six requested nullable numeric fields. Null d
 |---|---|---|
 | RichBourse | Job → source | Fetch selector once; request `?symbole=<symbol>` pages; accept annual-report links only; transient PDF download. |
 | OpenRouter | Job → provider | Runtime `OPENROUTER_API_KEY`; exactly one bounded attempt per approved model; strict JSON response contract. |
-| BigQuery | Job ↔ `stocks.financials` | One state read, run-scoped staging load, one `MERGE`; logical key `(symbol, fiscal_year)`. |
+| BigQuery | Job ↔ `stocks.financials` | One state read, run-scoped staging load and `MERGE` per non-empty ten-terminal-symbol batch; logical key `(symbol, fiscal_year)`. |
 | Completion control | Job → existing control | Sanitized successful completion only after the BigQuery commit; no completion for failed/no-op work unless the existing contract explicitly represents no-op success. |
 | Cloud Scheduler | Scheduler → Job | Monthly private invocation using least-privilege job-run permission. |
 | Secret Manager | Job ← secret | Runtime-only OpenRouter credential reference; no payload in Terraform, code, logs, or tests. |
@@ -132,7 +132,7 @@ The validated payload persists the six requested nullable numeric fields. Null d
 
 **Observability.** Emit bounded counts for discovered, annual candidates, skipped, inserted, updated, failed and model attempts, plus sanitized transport/provider error classes. In development only, per-candidate diagnostics use the fixed selection/skip/PDF/text/provider/terminal schema with the candidate symbol, fiscal year, source announcement title, approved RichBourse document link, duration, model, and sanitized error class. Do not emit source/PDF content, prompts, responses, credentials, or user data; production emits no per-candidate diagnostics.
 
-**Resilience and scale.** Permit one active execution, four concurrent RichBourse requests, one model attempt per configured model/report, finite provider/transport retries, and a maximum 60-minute execution. An all-model failure is isolated to that report and retried next month; a source or writer failure must not produce a completion event.
+**Resilience and scale.** Permit one active execution, serial RichBourse requests, one model attempt per configured model/report, finite provider/transport retries, ten-terminal-symbol commit boundaries, and a maximum 60-minute execution. An all-model failure makes its symbol ineligible for the current write buffer and is retried next month; earlier committed batches remain durable if a later source or writer failure stops the run. A source or writer failure must not produce a completion event.
 
 **Deployment.** The job image is built from the merged `development` commit, identified by digest, and deployed unchanged to development. Development verification measures the 60-minute bound and validates no durable source/evidence artifacts. Promotion uses that same digest through a human-approved production gate. Rollback restores the prior job image/schedule configuration; it does not delete canonical BigQuery rows.
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -293,7 +292,7 @@ class RuntimeAdapters:
     provider_attempt: Callable[[str, str, str, float], Mapping[str, object]]
     read_existing: Callable[[], Mapping[tuple[str, int], str | None]]
     write_rows: Callable[[list[dict[str, Any]], str], str]
-    completion: Callable[[str], Mapping[str, Any]]
+    completion: Callable[[Sequence[str]], Mapping[str, Any]]
     emit_event: Callable[..., None]
     execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
     emit_diagnostic: Callable[..., None] | None = None
@@ -546,9 +545,7 @@ def _default_adapters(
         provider_attempt=_provider_attempt,
         read_existing=read_existing,
         write_rows=write_rows,
-        completion=lambda fingerprint: managed_import_completion(
-            "financials", [fingerprint]
-        ),
+        completion=lambda fingerprints: managed_import_completion("financials", fingerprints),
         emit_event=emit_event,
         execution_lease=execution_lease,
         emit_diagnostic=(
@@ -628,7 +625,7 @@ def _run_batch(
     }
     adapters.emit_event("ingestion.fi1", "started")
     try:
-        existing = adapters.read_existing()
+        existing = dict(adapters.read_existing())
     except Exception as error:
         adapters.emit_event(
             "ingestion.fi1.state", "failed", error_class=type(error).__name__
@@ -658,109 +655,132 @@ def _run_batch(
         )
         return parse_annual_candidates(html, symbol, limit=max_annual_candidates)
 
-    candidates_by_symbol: dict[str, tuple[AnnualCandidate, ...]] = {}
-    with ThreadPoolExecutor(max_workers=max_page_concurrency) as executor:
-        futures = {executor.submit(load_symbol_page, symbol): symbol for symbol in symbols}
-        for future in as_completed(futures):
-            symbol = futures[future]
-            try:
-                candidates_by_symbol[symbol] = future.result()
-            except JobDeadlineExceeded:
-                raise
-            except Exception as error:
-                counters["failed"] += 1
-                adapters.emit_event(
-                    "ingestion.fi1.symbol_page", "failed", error_class=type(error).__name__
-                )
-    candidates = [
-        candidate
-        for symbol in symbols
-        for candidate in candidates_by_symbol.get(symbol, ())
-    ]
-    _remaining(deadline, adapters.monotonic)
-    counters["candidates"] = len(candidates)
-
     rows: list[dict[str, Any]] = []
-    run_id = "fi1_" + uuid4().hex
-    for candidate in candidates:
+    pending_counts = {"inserted": 0, "updated": 0}
+    receipts: list[str] = []
+    committed_rows = 0
+    terminal_symbols = 0
+
+    def flush() -> None:
+        nonlocal committed_rows, rows
+        if not rows:
+            return
         if lease is not None:
             lease.assert_owned()
         _remaining(deadline, adapters.monotonic)
-        _emit_candidate(adapters, candidate, "selection", "selected", started=adapters.monotonic())
-        current_link = existing.get((candidate.symbol, candidate.fiscal_year))
-        state = decide_row_state(
-            existing_document_link=current_link,
-            candidate_document_link=candidate.document_link,
-            extraction_succeeded=True,
-        )
-        if state is RowDecision.SKIP:
-            counters["skipped"] += 1
-            _emit_candidate(adapters, candidate, "skip", "skipped", started=adapters.monotonic())
-            continue
+        run_id = "fi1_" + uuid4().hex
+        fingerprint = adapters.write_rows(rows, run_id)
+        _remaining(deadline, adapters.monotonic)
+        if not isinstance(fingerprint, str) or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None:
+            raise RuntimeError("FI-1 writer returned no managed commit receipt")
+        receipts.append(fingerprint)
+        committed_rows += len(rows)
+        counters["inserted"] += pending_counts["inserted"]
+        counters["updated"] += pending_counts["updated"]
+        for row in rows:
+            existing[(str(row["symbol"]), int(row["fiscal_year"]))] = str(row["document_link"])
+        rows = []
+        pending_counts["inserted"] = 0
+        pending_counts["updated"] = 0
+
+    for symbol in symbols:
+        if lease is not None:
+            lease.assert_owned()
+        _remaining(deadline, adapters.monotonic)
+        symbol_rows: list[dict[str, Any]] = []
+        symbol_counts = {"inserted": 0, "updated": 0}
+        symbol_failed = False
         try:
-            phase_started = adapters.monotonic()
-            pdf = adapters.download_pdf(
-                candidate.document_link,
-                min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
-            )
-            _emit_candidate(adapters, candidate, "pdf", "succeeded", started=phase_started)
-            phase_started = adapters.monotonic()
-            extraction = _extract_candidate(
-                candidate, pdf, adapters, api_key, deadline, counters, model_order
-            )
-            if extraction is None:
-                counters["failed"] += 1
-                _emit_candidate(adapters, candidate, "terminal", "failed", started=phase_started)
-                continue
-            decision = decide_row_state(
-                existing_document_link=current_link,
-                candidate_document_link=candidate.document_link,
-                extraction_succeeded=True,
-            )
-            if decision in {RowDecision.INSERT, RowDecision.REPLACE}:
-                values = extraction.as_dict()
-                rows.append(
-                    {
-                        "symbol": candidate.symbol,
-                        "fiscal_year": candidate.fiscal_year,
-                        **{key: values[key] for key in _FINANCIAL_VALUE_KEYS},
-                        "document_link": candidate.document_link,
-                        "collected_at": adapters.utcnow().astimezone(timezone.utc).strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                    }
-                )
-                counters["inserted" if decision is RowDecision.INSERT else "updated"] += 1
-                _emit_candidate(adapters, candidate, "terminal", "succeeded", started=phase_started)
+            candidates = load_symbol_page(symbol)
+            counters["candidates"] += len(candidates)
         except JobDeadlineExceeded:
             raise
         except Exception as error:
             counters["failed"] += 1
-            _emit_candidate(
-                adapters, candidate, "terminal", "failed", started=phase_started,
-                error_class=_error_class(error),
-            )
             adapters.emit_event(
-                "ingestion.fi1.report", "failed", error_class=_error_class(error)
+                "ingestion.fi1.symbol_page", "failed", error_class=type(error).__name__
             )
+            candidates = ()
+            symbol_failed = True
 
-    completion: Mapping[str, Any] | None = None
-    if rows:
-        if lease is not None:
-            lease.assert_owned()
-        _remaining(deadline, adapters.monotonic)
-        fingerprint = adapters.write_rows(rows, run_id)
-        _remaining(deadline, adapters.monotonic)
-        if (
-            not isinstance(fingerprint, str)
-            or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None
-        ):
-            raise RuntimeError("FI-1 writer returned no managed commit receipt")
-        if counters["failed"] == 0:
+        for candidate in candidates:
             if lease is not None:
                 lease.assert_owned()
-            completion = adapters.completion(fingerprint)
-    adapters.emit_event("ingestion.fi1.batch", "completed", count=len(rows))
+            _remaining(deadline, adapters.monotonic)
+            _emit_candidate(adapters, candidate, "selection", "selected", started=adapters.monotonic())
+            current_link = existing.get((candidate.symbol, candidate.fiscal_year))
+            if decide_row_state(
+                existing_document_link=current_link,
+                candidate_document_link=candidate.document_link,
+                extraction_succeeded=True,
+            ) is RowDecision.SKIP:
+                counters["skipped"] += 1
+                _emit_candidate(adapters, candidate, "skip", "skipped", started=adapters.monotonic())
+                continue
+            phase_started = adapters.monotonic()
+            try:
+                pdf = adapters.download_pdf(
+                    candidate.document_link,
+                    min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
+                )
+                _emit_candidate(adapters, candidate, "pdf", "succeeded", started=phase_started)
+                phase_started = adapters.monotonic()
+                extraction = _extract_candidate(
+                    candidate, pdf, adapters, api_key, deadline, counters, model_order
+                )
+                if extraction is None:
+                    counters["failed"] += 1
+                    symbol_failed = True
+                    _emit_candidate(adapters, candidate, "terminal", "failed", started=phase_started)
+                    continue
+                decision = decide_row_state(
+                    existing_document_link=current_link,
+                    candidate_document_link=candidate.document_link,
+                    extraction_succeeded=True,
+                )
+                if decision in {RowDecision.INSERT, RowDecision.REPLACE}:
+                    values = extraction.as_dict()
+                    symbol_rows.append(
+                        {
+                            "symbol": candidate.symbol,
+                            "fiscal_year": candidate.fiscal_year,
+                            **{key: values[key] for key in _FINANCIAL_VALUE_KEYS},
+                            "document_link": candidate.document_link,
+                            "collected_at": adapters.utcnow().astimezone(timezone.utc).strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            ),
+                        }
+                    )
+                    symbol_counts["inserted" if decision is RowDecision.INSERT else "updated"] += 1
+                    _emit_candidate(adapters, candidate, "terminal", "succeeded", started=phase_started)
+            except JobDeadlineExceeded:
+                raise
+            except Exception as error:
+                counters["failed"] += 1
+                symbol_failed = True
+                _emit_candidate(
+                    adapters, candidate, "terminal", "failed", started=phase_started,
+                    error_class=_error_class(error),
+                )
+                adapters.emit_event(
+                    "ingestion.fi1.report", "failed", error_class=_error_class(error)
+                )
+
+        if not symbol_failed:
+            rows.extend(symbol_rows)
+            pending_counts["inserted"] += symbol_counts["inserted"]
+            pending_counts["updated"] += symbol_counts["updated"]
+        terminal_symbols += 1
+        if terminal_symbols % 10 == 0:
+            flush()
+    flush()
+
+    completion: Mapping[str, Any] | None = None
+    if receipts and counters["failed"] == 0:
+        if lease is not None:
+            lease.assert_owned()
+        completion = adapters.completion(tuple(receipts))
+    adapters.emit_event("ingestion.fi1.batch", "completed", count=committed_rows)
     adapters.emit_event("ingestion.fi1.skipped", "completed", count=counters["skipped"])
     adapters.emit_event("ingestion.fi1.failed", "completed", count=counters["failed"])
     if completion is not None:
