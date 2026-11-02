@@ -64,7 +64,10 @@ symbols and once for a final partial batch when that batch is non-empty. Every
 flush has a distinct run identifier, and inserted/updated counters and lookup
 state advance only after the managed receipt validates. Earlier committed
 batches remain durable if a later symbol, writer, lease, or deadline failure
-stops the run. A single sanitized completion is emitted only after all current
-run batches commit successfully and no failure remains. PDFs, extracted text,
-prompts, provider responses, credentials, and exception bodies remain
-non-retained process material.
+stops the run. Each processed symbol emits one bounded terminal outcome, and
+each committed batch emits insert/update counts only after its managed receipt
+validates. State, selector, lease, writer, and completion failures emit only a
+bounded stage and error class. A single sanitized completion is sent only after
+all current run batches commit successfully and no failure remains. PDFs,
+extracted text, prompts, provider responses, credentials, titles, links, and
+exception bodies remain non-retained process material and never enter stdout.

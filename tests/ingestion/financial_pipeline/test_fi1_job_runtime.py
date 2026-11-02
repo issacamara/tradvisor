@@ -137,14 +137,16 @@ def test_command_passes_injected_bounds_and_models_to_batch(
     assert "test-only-secret" not in capsys.readouterr().out
 
 
-def test_production_default_adapters_suppress_candidate_diagnostics(
+def test_default_adapters_use_finite_fi1_event_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import sys
 
     observability = ModuleType("ingestion_observability")
     observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_candidate_diagnostic = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_symbol_outcome = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_commit_counts = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_stage_failure = lambda *args, **kwargs: None  # type: ignore[attr-defined]
     observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
@@ -157,8 +159,10 @@ def test_production_default_adapters_suppress_candidate_diagnostics(
     monkeypatch.setitem(sys.modules, "google.cloud", cloud)
     monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
 
-    assert _default_adapters("dev-project", "stocks", "production").emit_diagnostic is None
-    assert _default_adapters("dev-project", "stocks", "development").emit_diagnostic is not None
+    adapters = _default_adapters("dev-project", "stocks", "development")
+    assert adapters.emit_symbol_outcome is not None
+    assert adapters.emit_commit_counts is not None
+    assert adapters.emit_stage_failure is not None
 
 
 def selector_html(*symbols: str) -> str:
@@ -200,7 +204,9 @@ class Harness:
         self.completions: list[str] = []
         self.completion_batches: list[tuple[str, ...]] = []
         self.events: list[tuple[str, str, dict[str, object]]] = []
-        self.diagnostics: list[tuple[str, str, dict[str, object]]] = []
+        self.symbol_outcomes: list[tuple[str, str, dict[str, object]]] = []
+        self.commit_counts: list[dict[str, int]] = []
+        self.stage_failures: list[tuple[str, str]] = []
         self.state_reads = 0
         self.actions: list[str] = []
 
@@ -249,8 +255,14 @@ class Harness:
         def emit(name: str, outcome: str, **fields: object) -> None:
             self.events.append((name, outcome, fields))
 
-        def diagnostic(phase: str, outcome: str, **fields: object) -> None:
-            self.diagnostics.append((phase, outcome, fields))
+        def symbol_outcome(symbol: str, outcome: str, **fields: object) -> None:
+            self.symbol_outcomes.append((symbol, outcome, fields))
+
+        def commit_counts(**counts: int) -> None:
+            self.commit_counts.append(counts)
+
+        def stage_failure(stage: str, *, error_class: str) -> None:
+            self.stage_failures.append((stage, error_class))
 
         return RuntimeAdapters(
             fetch_text=fetch_text,
@@ -261,7 +273,9 @@ class Harness:
             write_rows=write_rows,
             completion=completion,
             emit_event=emit,
-            emit_diagnostic=diagnostic,
+            emit_symbol_outcome=symbol_outcome,
+            emit_commit_counts=commit_counts,
+            emit_stage_failure=stage_failure,
         )
 
 
@@ -285,33 +299,22 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert outcome.completion is not None
 
 
-def test_candidate_diagnostics_are_development_adapter_effects_only() -> None:
+def test_each_processed_symbol_emits_one_terminal_outcome() -> None:
     fake = Harness()
 
     run(fake)
 
-    assert [(phase, outcome) for phase, outcome, _ in fake.diagnostics] == [
-        ("selection", "selected"),
-        ("pdf", "succeeded"),
-        ("text", "succeeded"),
-        ("provider", "succeeded"),
-        ("terminal", "succeeded"),
-    ]
-    assert fake.diagnostics[0][2]["announcement_title"] == "Rapport annuel Exercice 2024"
-    assert fake.diagnostics[0][2]["document_link"] == "https://www.richbourse.com/ABC-2024.pdf"
-    assert all(isinstance(fields["duration_ms"], int) for _, _, fields in fake.diagnostics)
+    assert fake.symbol_outcomes == [("ABC", "succeeded", {})]
+    assert fake.commit_counts == [{"inserted": 1, "updated": 0}]
 
 
-def test_unchanged_candidate_emits_skip_without_pdf_or_provider() -> None:
+def test_unchanged_candidate_emits_one_success_without_pdf_or_provider() -> None:
     link = "https://www.richbourse.com/ABC-2024.pdf"
     fake = Harness(existing={("ABC", 2024): link})
 
     run(fake)
 
-    assert [(phase, outcome) for phase, outcome, _ in fake.diagnostics] == [
-        ("selection", "selected"),
-        ("skip", "skipped"),
-    ]
+    assert fake.symbol_outcomes == [("ABC", "succeeded", {})]
     assert fake.downloads == []
     assert fake.attempts == []
 
@@ -322,11 +325,8 @@ def test_provider_http_status_is_sanitized_in_fi1_telemetry() -> None:
 
     fake = Harness(extract=fail)
     outcome = run(fake, model_order=(MODEL_ORDER[0],))
-    provider_events = [event for event in fake.events if event[0] == "ingestion.fi1.provider"]
-
-    assert provider_events == [
-        ("ingestion.fi1.provider", "failed", {"error_class": "ProviderHTTP503"})
-    ]
+    assert fake.events == []
+    assert fake.symbol_outcomes == [("ABC", "failed", {"error_class": "ProviderHTTP503"})]
     assert outcome.failed == 1
     assert fake.completions == []
 
@@ -420,7 +420,9 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     helper.upsert_financials_and_archive = managed_writer  # type: ignore[attr-defined]
     observability = ModuleType("ingestion_observability")
     observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_candidate_diagnostic = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_symbol_outcome = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_commit_counts = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    observability.emit_fi1_stage_failure = lambda *args, **kwargs: None  # type: ignore[attr-defined]
     observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
@@ -738,6 +740,23 @@ def test_writer_failure_cannot_emit_completion() -> None:
         run_batch(adapters, api_key="runtime-secret")
     assert fake.actions == ["state_read", "write"]
     assert fake.completions == []
+    assert fake.commit_counts == []
+    assert fake.stage_failures == [("writer", "RuntimeError")]
+
+
+def test_completion_failure_is_a_bounded_stage_failure() -> None:
+    fake = Harness()
+    adapters = fake.adapters()
+
+    def failed_completion(_fingerprints: Sequence[str]) -> Mapping[str, Any]:
+        raise RuntimeError("completion failed")
+
+    adapters = RuntimeAdapters(**{**adapters.__dict__, "completion": failed_completion})
+
+    with pytest.raises(RuntimeError, match="completion failed"):
+        run_batch(adapters, api_key="runtime-secret")
+    assert fake.completions == []
+    assert fake.stage_failures == [("completion", "RuntimeError")]
 
 
 def test_failed_report_suppresses_batch_completion_even_after_other_write() -> None:
