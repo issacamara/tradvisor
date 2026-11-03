@@ -10,6 +10,7 @@ The implementation was checked from integration base `397251fbef08b63ad1b5db45de
 | Frontend lint | Passed | `npm run lint` |
 | Type check | Passed | `npm run typecheck` |
 | Static production build | Passed | `npm run build`; `/`, `/swing`, and `/long-term` exported |
+| Bundle-size comparison | Completed from local build artifacts | `_next/static` emitted JavaScript: development base `397251f` 1,166,324 bytes → PR source 1,166,357 bytes (+33); CSS: 46,675 → 46,765 bytes (+90); combined delta +123 bytes. This compares built local artifacts and does not represent deployed gzip transfer size. |
 | Route configuration | Covered | `frontend/src/app/static-export.test.ts` verifies static export |
 | Authentication flows | Covered | `frontend/src/features/auth/sign-in.test.tsx` verifies sign in, registration, reset, verification/admission, pending, denied, and expired feedback; denied and expired feedback remain announced and protected workspace links stay hidden |
 | Swing workflow | Covered | `frontend/src/app/swing/page.test.tsx` covers loading, empty, unavailable, retryable, failed, selection, chart-only unavailability, evidence, table data, and keyboard resizing |
@@ -28,6 +29,7 @@ The palette values in `frontend/src/app/globals.css` were checked against canvas
 | 200% zoom | Simulated effective width only; browser zoom not checked | At an effective 720 CSS px viewport (1440 px divided by 200%), the deployed Swing, Long-Term, and sign-in shell had root/body `scrollWidth` equal to 720. The tab automation API could not change the browser zoom setting, so this is not a 200% browser-zoom result. |
 | Keyboard-only focus order and focus retention | Partially checked | On deployed Swing, the first 12 keyboard stops were Sign out, brand link, Swing, Long-Term, search, filters, period controls, and price-table disclosure; the order was coherent and controls were focusable. On loaded Long-Term, the observed order was Sign out, brand, Swing, Long-Term, Growth scores tab, then company buttons. Unit tests also cover auth tab movement, Long-Term tab selection, and the Swing pane-resize affordance. Focus retention after workflow changes, full auth traversal, and mobile navigation were not manually checked. |
 | Screen-reader announcements and chart data access | Automated semantics covered; manual check pending | Tests assert live status roles and a chart data table. No screen-reader pass was completed. |
+| Reduced motion | Source review completed | The active Swing and Long-Term routes use no animations or transitions. The only `animate-pulse` found is the loading placeholder in the legacy `frontend/src/components/workspace-shell.tsx`, which these routes do not use. |
 | Credential-entry screenshot | Not captured | The available auth screenshot shows admitted access. The credential-entry state still needs visual review. |
 | Owner visual acceptance tied to PR head | Pending | The screenshots above are from the deployed base commit. Owner visual acceptance must reference the final reviewed PR head and note the remaining visual checks. |
 
