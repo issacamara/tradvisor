@@ -1,0 +1,38 @@
+.recommendationList {
+  display: grid;
+  gap: 6px;
+  max-height: min(63vh, 690px);
+  margin: 0;
+  padding: 8px 12px 14px;
+  overflow: auto;
+  border-top: 1px solid rgb(var(--color-line));
+  list-style: none;
+}
+
+.recommendation { width: 100%; min-height: 64px; padding: 10px 12px; border: 1px solid rgb(var(--color-line)); border-radius: 6px; background: rgb(var(--color-surface)); color: rgb(var(--color-ink)); text-align: left; cursor: pointer; }
+.recommendation:hover, .recommendation[aria-pressed="true"] { border-color: rgb(var(--color-selection)); background: rgb(var(--color-surface-raised)); }
+.recommendation:focus-visible { outline: 2px solid rgb(var(--color-caution)); outline-offset: 2px; }
+.recommendationTop, .recommendationMeta { display: flex; align-items: center; gap: 10px; }
+.recommendationTop > strong:first-child { min-width: 44px; font-size: 14px; }
+.recommendationMeta { justify-content: space-between; margin-top: 8px; color: rgb(var(--color-muted)); font-size: 12px; }
+.score { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.selectedSummary { min-width: 0; border: 1px solid rgb(var(--color-line)); border-radius: 6px; background: rgb(var(--color-surface)); }
+.selectedHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid rgb(var(--color-line)); }
+.selectedHeading h2 { margin: 2px 0 0; font-size: 18px; }
+.selectedSummary dl { display: flex; gap: 36px; margin: 0; padding: 13px 18px 15px; }
+.selectedSummary dl > div { display: grid; gap: 4px; }
+.selectedSummary dt { color: rgb(var(--color-muted)); font-size: 12px; }
+.selectedSummary dd { display: grid; gap: 2px; margin: 0; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.selectedSummary dd small { color: rgb(var(--color-muted)); font-size: 12px; font-weight: 400; }
+
+@media (max-width: 1080px) {
+  .recommendationList { max-height: none; overflow: visible; }
+}
+
+@media (max-width: 650px) {
+  .recommendation { min-height: 62px; padding: 9px 10px; }
+  .recommendationTop { flex-wrap: wrap; gap: 7px; }
+  .recommendationMeta { align-items: flex-start; }
+  .selectedHeading { padding: 13px; }
+  .selectedSummary dl { gap: 18px; padding: 12px 13px; }
+}

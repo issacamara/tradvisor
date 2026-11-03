@@ -21,6 +21,7 @@ function SwingController() {
   const [chart, setChart] = useState<components["schemas"]["ChartPoint"][]>([]);
   const [chartState, setChartState] = useState<ChartAvailability>("empty");
   const [marketSession, setMarketSession] = useState("Unavailable");
+  const [resultsState, setResultsState] = useState<"loading" | "published" | "no_publication" | "unavailable" | "request_failure">("loading");
   const [state, setState] = useState<RuntimeDataState>("ready");
   const [message, setMessage] = useState("");
   useEffect(() => { void (async () => {
@@ -28,10 +29,16 @@ function SwingController() {
       setState("ready");
       const result = await api.request({ method: "get", path: "/v1/swing/recommendations", parameters: { query: { limit: 100 } } });
       setItems(result.data.items);
+      setResultsState(result.data.items.length ? "published" : "no_publication");
       setMarketSession(result.data.market_session);
       setSelectedSymbol((current) => result.data.items.some((item) => item.symbol === current) ? current : result.data.items[0]?.symbol ?? null);
       setMessage("");
-    } catch (error) { setState(apiState(error)); setMessage(safeApiMessage(error)); }
+    } catch (error) {
+      const errorState = apiState(error);
+      setState(errorState);
+      setResultsState(errorState === "analysis_not_ready" ? "unavailable" : "request_failure");
+      setMessage(safeApiMessage(error));
+    }
   })(); }, [api]);
   useEffect(() => { void (async () => {
     if (!selectedSymbol || marketSession === "Unavailable") {
@@ -48,5 +55,5 @@ function SwingController() {
       setChartState(chartAvailability(chartResult.data.points));
     } catch (error) { setChart([]); setChartState(chartFailureAvailability(error)); }
   })(); }, [api, marketSession, selectedSymbol]);
-  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} chartState={chartState} marketSession={marketSession} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
+  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} chartState={chartState} marketSession={marketSession} resultsState={resultsState} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
 }
