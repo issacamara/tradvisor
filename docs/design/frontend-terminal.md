@@ -1,6 +1,6 @@
 # Recommendation-first terminal — design proposal
 
-**Status: proposed, awaiting owner visual validation.** This document and the boards below satisfy the #388 review pass; they do not authorize implementation. Record explicit owner acceptance on issue #388 before #389 starts.
+**Status: owner-validated by delegated owner decision, 2026-11-03.** The project owner delegated design decisions for #387 in the active Codex task. This document and its boards record the accepted direction and do not authorize backend, financial-rule, or cloud changes.
 
 ## Direction
 
@@ -72,4 +72,4 @@ Semantic headings and tables; announced loading/error/status updates; clear visi
 
 ## Decision record
 
-Owner choice is pending. Confirm or revise the route hierarchy, responsive arrangement, token values, density and IBM Plex/system-font direction on #388. After explicit validation, update this document to `owner-validated`, record the decision/date, and finalize component ownership before #389 begins.
+The delegated owner decision accepts the route hierarchy, responsive arrangement, token values, density and IBM Plex/system-font fallback direction shown above. Keep the proposed typeface only if local/system delivery and contrast checks hold; do not add a font dependency for this design. #389 may implement the validated shared foundation and must preserve the existing API/auth contracts and feature ownership listed above.
