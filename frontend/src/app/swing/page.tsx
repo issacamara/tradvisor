@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { InvestorNav } from "@/components/investor-nav";
+import { Button } from "@/components/ui/button";
 import { ProtectedWorkspace, useAuthSession } from "@/features/auth/session";
 import { SwingWorkspace } from "@/features/swing/workspace";
 import { chartAvailability, chartFailureAvailability, type ChartAvailability } from "@/features/swing/chart-state";
 import { apiState, safeApiMessage, type RuntimeDataState } from "@/features/auth/api-error";
-import { createApiTransport } from "@/api/transport";
+import { ApiRequestError, createApiTransport } from "@/api/transport";
 import type { components } from "@/api/generated/schema";
 
 export default function SwingPage() {
@@ -24,9 +25,15 @@ function SwingController() {
   const [resultsState, setResultsState] = useState<"loading" | "published" | "no_publication" | "unavailable" | "request_failure">("loading");
   const [state, setState] = useState<RuntimeDataState>("ready");
   const [message, setMessage] = useState("");
-  useEffect(() => { void (async () => {
+  const [retryable, setRetryable] = useState(false);
+  const [requestAttempt, setRequestAttempt] = useState(0);
+  useEffect(() => {
+    setState("ready");
+    setMessage("");
+    setRetryable(false);
+    setResultsState("loading");
+    void (async () => {
     try {
-      setState("ready");
       const result = await api.request({ method: "get", path: "/v1/swing/recommendations", parameters: { query: { limit: 100 } } });
       setItems(result.data.items);
       setResultsState(result.data.items.length ? "published" : "no_publication");
@@ -37,9 +44,11 @@ function SwingController() {
       const errorState = apiState(error);
       setState(errorState);
       setResultsState(errorState === "analysis_not_ready" ? "unavailable" : "request_failure");
-      setMessage(safeApiMessage(error));
+      setMessage(errorState === "transport_error" ? "Swing recommendations could not be loaded. Try again later." : safeApiMessage(error));
+      setRetryable(error instanceof ApiRequestError && error.retryable === true);
     }
-  })(); }, [api]);
+    })();
+  }, [api, requestAttempt]);
   useEffect(() => { void (async () => {
     if (!selectedSymbol || marketSession === "Unavailable") {
       setChart([]);
@@ -55,5 +64,5 @@ function SwingController() {
       setChartState(chartAvailability(chartResult.data.points));
     } catch (error) { setChart([]); setChartState(chartFailureAvailability(error)); }
   })(); }, [api, marketSession, selectedSymbol]);
-  return <><InvestorNav active="swing" />{message && <p role="alert" data-state={state} className="data-alert">{message}</p>}<SwingWorkspace items={items} chart={chart} chartState={chartState} marketSession={marketSession} resultsState={resultsState} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
+  return <><InvestorNav active="swing" />{message && <div role="alert" data-state={state} className="data-alert"><span>{message}</span>{retryable && <Button type="button" onClick={() => setRequestAttempt((current) => current + 1)}>Try again</Button>}</div>}<SwingWorkspace items={items} chart={chart} chartState={chartState} marketSession={marketSession} resultsState={resultsState} selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} /></>;
 }
