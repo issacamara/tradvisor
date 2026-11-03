@@ -1,0 +1,70 @@
+.page { max-width: 1880px; margin: 0 auto; padding: 28px 30px 40px; color: rgb(var(--color-ink)); }
+.heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.heading h1 { margin: 7px 0 0; font-size: clamp(24px, 2.4vw, 32px); line-height: 1.2; letter-spacing: -.025em; }
+.eyebrow { margin: 0; color: rgb(var(--color-muted)); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.eyebrow span { color: rgb(var(--color-selection)); }
+.subtitle { margin: 8px 0 0; color: rgb(var(--color-muted)); font-size: 14px; }
+.published { display: flex; gap: 7px; margin: 0 0 4px; color: rgb(var(--color-muted)); font-size: 12px; white-space: nowrap; }
+.published strong { color: rgb(var(--color-ink)); font-weight: 600; font-variant-numeric: tabular-nums; }
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 24px; overflow: hidden; border: 1px solid rgb(var(--color-line)); border-radius: 8px; background: rgb(var(--color-line)); }
+.summary > div { display: grid; gap: 4px; min-height: 88px; padding: 15px 18px; background: rgb(var(--color-surface)); }
+.summary span, .summary small { color: rgb(var(--color-muted)); font-size: 12px; }
+.summary strong { font-size: 19px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tabs { display: flex; gap: 8px; margin: 22px 0 18px; border-bottom: 1px solid rgb(var(--color-line)); }
+.tabs button { min-height: 46px; padding: 0 16px; border: 1px solid transparent; border-bottom: 2px solid transparent; background: transparent; color: rgb(var(--color-muted)); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected="true"] { border-color: rgb(var(--color-control-outline)); border-bottom-color: rgb(var(--color-selection)); border-radius: 6px 6px 0 0; background: rgb(var(--color-surface-raised)); color: rgb(var(--color-ink)); }
+.tabs button:focus-visible, .companySelect:focus-visible { outline: 2px solid rgb(var(--color-selection)); outline-offset: 2px; }
+.grid { display: grid; grid-template-columns: minmax(300px, .78fr) minmax(0, 1.22fr); align-items: start; gap: 18px; }
+.coverage, .evidence { min-width: 0; border: 1px solid rgb(var(--color-line)); border-radius: 8px; background: rgb(var(--color-surface)); }
+.panelHeading { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 18px 15px; border-bottom: 1px solid rgb(var(--color-line)); }
+.panelHeading h2, .evidence h2 { margin: 0; font-size: 17px; }
+.panelHeading p { margin: 5px 0 0; color: rgb(var(--color-muted)); font-size: 12px; }
+.panelHeading > span { color: rgb(var(--color-muted)); font-size: 12px; white-space: nowrap; }
+.coverageTable { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.coverageTable th, .coverageTable td { padding: 9px 12px; border-bottom: 1px solid rgb(var(--color-line)); }
+.coverageTable thead th { color: rgb(var(--color-muted)); font-size: 11px; font-weight: 650; text-transform: uppercase; }
+.coverageTable tbody tr:last-child th, .coverageTable tbody tr:last-child td { border-bottom: 0; }
+.companyRow { background: transparent; }
+.companyRow:hover, .companyRow.selected { background: rgb(var(--color-surface-raised)); }
+.companyRow.selected { box-shadow: inset 3px 0 rgb(var(--color-selection)); }
+.companySelect { min-width: 44px; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: rgb(var(--color-ink)); font: inherit; font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; }
+.companyScore { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.complete { color: rgb(var(--color-positive)) !important; }
+.incomplete { color: rgb(var(--color-caution)) !important; }
+.evidence { padding: 20px; }
+.evidenceHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.evidenceHeading h2 { margin-top: 6px; font-size: 22px; }
+.status { flex: none; padding: 6px 10px; border: 1px solid currentColor; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.scoreLine { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 17px; padding: 15px 0; border-top: 1px solid rgb(var(--color-line)); border-bottom: 1px solid rgb(var(--color-line)); }
+.scoreLine span { color: rgb(var(--color-muted)); font-size: 13px; }
+.scoreLine strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.statusNote { margin: 12px 0 18px; color: rgb(var(--color-muted)); font-size: 13px; line-height: 1.5; }
+.dimensionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 22px; }
+.dimension { display: grid; gap: 6px; min-height: 84px; padding: 12px; border: 1px solid rgb(var(--color-line)); border-radius: 6px; background: rgb(var(--color-surface-raised)); }
+.dimension span { color: rgb(var(--color-muted)); font-size: 12px; text-transform: capitalize; }
+.dimension strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.dimension small { font-size: 12px; text-transform: capitalize; }
+.evidence h3 { margin: 22px 0 10px; font-size: 14px; }
+.chartBlock { min-width: 0; padding: 10px 8px 4px; border: 1px solid rgb(var(--color-line)); border-radius: 6px; background: rgb(var(--color-surface-raised)); }
+.chart { display: block; width: 100%; height: auto; max-height: 220px; overflow: visible; }
+.chartBaseline { stroke: rgb(var(--color-line)); stroke-width: 1; }
+.chartYear { fill: rgb(var(--color-muted)); font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; padding: 6px 2px 4px; color: rgb(var(--color-muted)); font-size: 12px; }
+.legend span { display: flex; align-items: center; gap: 7px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; }
+.revenueMark { background: #4e9bae; }
+.earningsMark { background: #29c98b; }
+.tableWrap { max-width: 100%; overflow-x: auto; border: 1px solid rgb(var(--color-line)); border-radius: 6px; }
+.evidenceTable { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.evidenceTable th, .evidenceTable td { padding: 11px 10px; border-bottom: 1px solid rgb(var(--color-line)); vertical-align: top; }
+.evidenceTable thead th { background: rgb(var(--color-surface-raised)); color: rgb(var(--color-muted)); font-size: 11px; font-weight: 650; white-space: nowrap; }
+.evidenceTable tbody tr:last-child th, .evidenceTable tbody tr:last-child td { border-bottom: 0; }
+.evidenceTable tbody th { font-weight: 550; white-space: nowrap; }
+.evidenceTable tbody td { color: rgb(var(--color-muted)); font-variant-numeric: tabular-nums; }
+.empty { margin: 0; padding: 16px; color: rgb(var(--color-muted)); font-size: 13px; line-height: 1.5; }
+.footnote { margin: 15px 0 0; color: rgb(var(--color-muted)); font-size: 12px; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 1050px) { .grid { grid-template-columns: minmax(260px, .9fr) minmax(0, 1.1fr); gap: 12px; } .page { padding-inline: 20px; } }
+@media (max-width: 760px) { .page { padding: 20px 14px 28px; } .heading { align-items: flex-start; flex-direction: column; gap: 12px; } .published { margin: 0; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary > div:last-child { grid-column: 1 / -1; } .grid { grid-template-columns: 1fr; } .evidence { padding: 16px; } .tabs { margin-top: 18px; } .tabs button { flex: 1; padding-inline: 8px; } }
+@media (max-width: 420px) { .summary > div { min-height: 78px; padding: 12px; } .summary strong { font-size: 17px; } .coverageTable th, .coverageTable td { padding: 7px 5px; } .coverageTable thead th { font-size: 10px; } .companySelect { padding-left: 0; } .dimensionGrid { gap: 6px; } .dimension { padding: 10px; } .evidenceTable th, .evidenceTable td { padding: 9px 8px; } }
