@@ -7,8 +7,8 @@ type Company = components["schemas"]["LongTermRankedCompany"];
 type Payment = components["schemas"]["NormalizedDividend"];
 const metric = (status: components["schemas"]["ScoreMetric"]["status"], value: number | null): components["schemas"]["ScoreMetric"] => ({ basis: "actual", effective_date: null, evidence_refs: [], reason_codes: [], status, unit: "points", value });
 
-const payment = (dividend_id: string, payment_date: string, gross: string | null, net: string | null): Payment => ({
-  company_id: "FIX3", dividend_id, installment_id: dividend_id, dividend_type: "ordinary", fiscal_period_end: "2024-12-31",
+const payment = (dividend_id: string, payment_date: string, gross: string | null, net: string | null, installment_id = dividend_id): Payment => ({
+  company_id: "FIX3", dividend_id, installment_id, dividend_type: "ordinary", fiscal_period_end: "2024-12-31",
   gross_amount_per_share: gross === null ? null : { amount: gross, currency: "XOF" }, gross_total_amount: null,
   net_amount_per_share: net === null ? null : { amount: net, currency: "XOF" }, net_total_amount: null,
   payment_date, payment_status: "paid", per_share_semantics: "gross", total_semantics: "unknown", reason_codes: [], revision: {} as unknown as components["schemas"]["Revision"],
@@ -70,7 +70,8 @@ describe("LongTermWorkspace", () => {
   it("shows only supplied dividend coverage and payment facts", () => {
     const sample = company("FIX3");
     sample.dividend_research.coverage = [{ company_id: "FIX3", coverage_basis: "fiscal_year", coverage_status: "partial", covered_interval_start: "2024-01-01", covered_interval_end: "2024-12-31", payment_outcome: "payments_recorded", reason_codes: [], revision: {} as unknown as components["schemas"]["Revision"] }];
-    sample.dividend_research.payments = [payment("div1", "2025-03-01", "125", "100"), payment("div2", "2025-04-01", "80", null), payment("div3", "2025-05-01", null, null), payment("div4", "2025-06-01", null, "90")];
+    sample.dividend_research.payments = [payment("div1", "2025-03-01", "125", "100"), payment("div2", "2025-04-01", "80", null), payment("div3", "2025-05-01", null, null), payment("div4", "2025-06-01", null, "90"), payment("div5", "2025-07-01", "70", null, "part1"), payment("div5", "2025-08-01", "30", null, "part2")];
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<LongTermWorkspace items={[sample]} objective="dividend" publishedAt="2026-10-30" />);
 
     expect(screen.getByRole("table", { name: "Published dividend evidence coverage" })).toHaveTextContent("partial");
@@ -89,6 +90,10 @@ describe("LongTermWorkspace", () => {
     expect(noAmounts[2]).toHaveTextContent("Not reported");
     expect(netOnly[1]).toHaveTextContent("Not reported");
     expect(netOnly[2]).toHaveTextContent("90 XOF");
+    expect(within(screen.getByRole("row", { name: /Jul 1, 2025/ })).getAllByRole("cell")[1]).toHaveTextContent("70 XOF");
+    expect(within(screen.getByRole("row", { name: /Aug 1, 2025/ })).getAllByRole("cell")[1]).toHaveTextContent("30 XOF");
+    expect(consoleError.mock.calls.flat().some((value) => typeof value === "string" && value.includes("same key"))).toBe(false);
+    consoleError.mockRestore();
     expect(screen.getByText(/Dividend and Balanced composite scores/)).toBeInTheDocument();
   });
 });
