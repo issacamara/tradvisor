@@ -15,7 +15,7 @@ export function InvestorNav({ active }: { active: (typeof views)[number]["id"] }
       <span>TRADVISOR</span>
     </Link>
     <nav aria-label="Investor workspaces" className="workspace-nav">
-      {views.map(({ id, label, href, icon: Icon }) => <Link key={id} href={href} aria-current={active === id ? "page" : undefined} className="workspace-link">
+      {views.map(({ id, label, href, icon: Icon }) => <Link key={id} href={href} aria-current={active === id ? "page" : undefined} className="workspace-link min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selection focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
         <Icon size={16} aria-hidden="true" /><span>{label}</span>
       </Link>)}
     </nav>
