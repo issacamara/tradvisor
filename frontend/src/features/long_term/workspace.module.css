@@ -68,3 +68,7 @@
 @media (max-width: 1050px) { .grid { grid-template-columns: minmax(260px, .9fr) minmax(0, 1.1fr); gap: 12px; } .page { padding-inline: 20px; } }
 @media (max-width: 760px) { .page { padding: 20px 14px 28px; } .heading { align-items: flex-start; flex-direction: column; gap: 12px; } .published { margin: 0; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary > div:last-child { grid-column: 1 / -1; } .grid { grid-template-columns: 1fr; } .evidence { padding: 16px; } .tabs { margin-top: 18px; } .tabs button { flex: 1; padding-inline: 8px; } }
 @media (max-width: 420px) { .summary > div { min-height: 78px; padding: 12px; } .summary strong { font-size: 17px; } .coverageTable th, .coverageTable td { padding: 7px 5px; } .coverageTable thead th { font-size: 10px; } .companySelect { padding-left: 0; } .dimensionGrid { gap: 6px; } .dimension { padding: 10px; } .evidenceTable th, .evidenceTable td { padding: 9px 8px; } }
+
+@media (min-width: 1200px) {
+  .page { margin-left: 216px; }
+}

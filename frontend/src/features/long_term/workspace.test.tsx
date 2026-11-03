@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { LongTermWorkspace } from "./workspace";
 import type { components } from "@/api/generated/schema";
 
 type Company = components["schemas"]["LongTermRankedCompany"];
 type Payment = components["schemas"]["NormalizedDividend"];
+const workspaceStyles = readFileSync(`${process.cwd()}/src/features/long_term/workspace.module.css`, "utf8");
 const metric = (status: components["schemas"]["ScoreMetric"]["status"], value: number | null): components["schemas"]["ScoreMetric"] => ({ basis: "actual", effective_date: null, evidence_refs: [], reason_codes: [], status, unit: "points", value });
 
 const payment = (dividend_id: string, payment_date: string, gross: string | null, net: string | null, installment_id = dividend_id): Payment => ({
@@ -40,6 +42,10 @@ function company(symbol: string, growthStatus: components["schemas"]["ScoreMetri
 }
 
 describe("LongTermWorkspace", () => {
+  it("offsets the desktop workspace from the fixed navigation rail", () => {
+    expect(workspaceStyles).toMatch(/@media \(min-width:\s*1200px\)\s*\{\s*\.page\s*\{\s*margin-left:\s*216px;/);
+  });
+
   it("keeps separate tabs, selected company context, and annual evidence", () => {
     const onObjectiveChange = vi.fn();
     const onSymbolChange = vi.fn();
