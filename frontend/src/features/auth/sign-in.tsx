@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
+import styles from "./sign-in.module.css";
 import { useAuthSession } from "./session";
 
 export function AuthScreen() {
@@ -10,6 +11,22 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
+  const selectedMode = mode === "register" ? "register" : "sign_in";
+  const feedback = pending
+    ? "Submitting your request…"
+    : session.status === "checking"
+      ? `${session.message ? `${session.message} ` : ""}Checking your current invitation…`
+      : session.status === "unverified"
+        ? session.message || "Verify your email to continue. Workspace admission is checked after verification."
+        : session.message;
+
+  function handleModeKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const nextMode = selectedMode === "sign_in" ? "register" : "sign_in";
+    setMode(nextMode);
+    document.getElementById(nextMode === "sign_in" ? "sign-in-tab" : "register-tab")?.focus();
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -18,40 +35,119 @@ export function AuthScreen() {
       if (mode === "register") await session.register(email, password);
       else if (mode === "reset") await session.resetPassword(email);
       else await session.signIn(email, password);
-    } finally { setPending(false); }
+    } finally {
+      setPending(false);
+    }
   }
 
-  if (session.status === "admitted") return <section className="mx-auto max-w-5xl px-5 py-8" aria-live="polite">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-bold">Workspace access verified</h1><button className="rounded border border-line px-3 py-2 text-sm" onClick={() => session.signOut()}>Sign out</button></div>
-    <p className="mt-2 text-sm text-muted">Your current invitation is confirmed. Choose a workspace from the navigation.</p>
-    <nav aria-label="Investor workspaces" className="mt-5 flex flex-wrap gap-4 text-sm"><a className="underline" href="/swing/">Swing</a><a className="underline" href="/long-term/">Long-Term</a></nav>
-  </section>;
+  if (session.status === "admitted") return <main className={styles.admitted} aria-live="polite">
+    <p className={styles.eyebrow}>TRADVISOR / ACCESS VERIFIED</p>
+    <div className={styles.admittedHeading}>
+      <div>
+        <h1>Workspace access verified</h1>
+        <p>Your verified account is admitted. Choose a research workspace.</p>
+      </div>
+      <button className={styles.secondaryButton} type="button" onClick={() => session.signOut()}>Sign out</button>
+    </div>
+    <nav className={styles.workspaceLinks} aria-label="Investor workspaces">
+      <a href="/swing/">Swing</a>
+      <a href="/long-term/">Long-Term</a>
+    </nav>
+  </main>;
 
-  return <main className="mx-auto grid min-h-[70vh] max-w-5xl content-center gap-10 px-5 py-10 md:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)]">
-    <section>
-      <p className="text-sm font-semibold text-accent">TRADVISOR / INVITED ACCESS</p>
-      <h1 className="mt-3 max-w-xl text-3xl font-bold">Research with the evidence in view.</h1>
-      <p className="mt-3 max-w-xl text-sm leading-6 text-muted">Swing and Long-Term research are separate workspaces. Access is checked against your current invitation after sign-in.</p>
+  return <main className={styles.authShell}>
+    <section className={styles.intro} aria-labelledby="intro-title">
+      <p className={styles.eyebrow}>TRADVISOR / BRVM RESEARCH</p>
+      <h1 id="intro-title">Research with the evidence in view.</h1>
+      <p className={styles.introCopy}>Swing and Long-Term research are separate workspaces, built around published evidence and clear availability.</p>
+      <div className={styles.accessNote}>
+        <span className={styles.accessMark} aria-hidden="true">01</span>
+        <p>A verified email and current invitation are required. Creating an account does not grant workspace access.</p>
+      </div>
+      <nav className={styles.previewLinks} aria-label="Research workspaces">
+        <span>Swing</span><span>Long-Term</span>
+      </nav>
     </section>
-    <section aria-labelledby="auth-title" className="border-l border-line pl-0 md:pl-8">
-      <div className="mb-5 flex gap-2" role="tablist" aria-label="Account access">
-        <button type="button" role="tab" aria-selected={mode === "sign_in"} onClick={() => setMode("sign_in")} className="border-b-2 border-accent px-2 py-2 text-sm">Sign in</button>
-        <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => setMode("register")} className="border-b-2 border-transparent px-2 py-2 text-sm text-muted">Create account</button>
+
+    <section id="auth-panel" className={styles.authPanel} role="tabpanel" aria-labelledby={selectedMode === "register" ? "register-tab" : "sign-in-tab"}>
+      <p className={styles.panelEyebrow}>INVITED ACCESS</p>
+      <div className={styles.modeSwitch} role="tablist" aria-label="Account access">
+        <button
+          id="sign-in-tab"
+          type="button"
+          role="tab"
+          aria-selected={selectedMode === "sign_in"}
+          aria-controls="auth-panel"
+          tabIndex={selectedMode === "sign_in" ? 0 : -1}
+          disabled={pending}
+          className={selectedMode === "sign_in" ? styles.modeActive : styles.modeButton}
+          onKeyDown={handleModeKeyDown}
+          onClick={() => setMode("sign_in")}
+        >Sign in</button>
+        <button
+          id="register-tab"
+          type="button"
+          role="tab"
+          aria-selected={selectedMode === "register"}
+          aria-controls="auth-panel"
+          tabIndex={selectedMode === "register" ? 0 : -1}
+          disabled={pending}
+          className={mode === "register" ? styles.modeActive : styles.modeButton}
+          onKeyDown={handleModeKeyDown}
+          onClick={() => setMode("register")}
+        >Create account</button>
       </div>
-      <h2 id="auth-title" className="text-xl font-semibold">{mode === "reset" ? "Reset password" : mode === "register" ? "Create account" : "Sign in"}</h2>
-      <form onSubmit={submit} className="mt-5 grid gap-4">
-        <label className="grid gap-1 text-sm">Email address<input autoComplete="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded border border-line bg-panel px-3 py-2 text-ink" /></label>
-        {mode !== "reset" && <label className="grid gap-1 text-sm">Password<input autoComplete={mode === "register" ? "new-password" : "current-password"} type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="rounded border border-line bg-panel px-3 py-2 text-ink" /></label>}
-        <button disabled={pending} className="inline-flex min-h-10 items-center justify-center rounded bg-accent px-4 text-sm font-semibold text-canvas disabled:opacity-60">{pending ? "Working…" : mode === "reset" ? "Send reset link" : mode === "register" ? "Create account" : "Continue"}</button>
+
+      <h2 id="auth-title">{mode === "reset" ? "Reset password" : mode === "register" ? "Create account" : "Sign in"}</h2>
+      <p className={styles.formIntro}>{mode === "reset"
+        ? "Enter the email for your account."
+        : mode === "register"
+          ? "We will send a verification link before you can request access."
+          : "Use your invited account to continue."}</p>
+
+      <form className={styles.form} onSubmit={submit} aria-busy={pending}>
+        <label className={styles.field} htmlFor="auth-email">
+          <span>Email address</span>
+          <input
+            id="auth-email"
+            name="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="email"
+            type="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        {mode !== "reset" && <label className={styles.field} htmlFor="auth-password">
+          <span>Password</span>
+          <input
+            id="auth-password"
+            name="password"
+            autoComplete={mode === "register" ? "new-password" : "current-password"}
+            type="password"
+            minLength={8}
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>}
+        <button className={styles.submitButton} type="submit" disabled={pending}>
+          {pending ? "Working…" : mode === "reset" ? "Send reset link" : mode === "register" ? "Create account" : "Continue"}
+        </button>
       </form>
-      {session.message && <p role="status" className="mt-4 text-sm text-warning">{session.message}</p>}
-      {session.status === "checking" && <p role="status" className="mt-4 text-sm text-muted">Checking your current invitation…</p>}
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
-        {mode === "sign_in" && <button type="button" onClick={() => setMode("reset")} className="underline underline-offset-4">Forgot password?</button>}
-        {mode === "reset" && <button type="button" onClick={() => setMode("sign_in")} className="underline underline-offset-4">Back to sign in</button>}
-        {session.status === "unverified" && <button type="button" onClick={() => void session.resendVerification(email, password)} className="underline underline-offset-4">Resend verification email</button>}
+
+      {feedback && <p className={pending ? styles.pendingMessage : styles.sessionMessage} role="status" aria-live="polite">{feedback}</p>}
+
+      <div className={styles.formLinks}>
+        {mode === "sign_in" && <button type="button" disabled={pending} onClick={() => setMode("reset")}>Forgot password?</button>}
+        {mode === "reset" && <button type="button" disabled={pending} onClick={() => setMode("sign_in")}>Back to sign in</button>}
+        {session.status === "unverified" && <button type="button" disabled={pending} onClick={() => void session.resendVerification(email, password)}>Resend verification email</button>}
       </div>
-      <p className="mt-5 text-xs leading-5 text-muted">A verified email is required to access the workspace.</p>
+      <p className={styles.privacyNote}>A verified email and current invitation are both required for access.</p>
     </section>
   </main>;
 }
