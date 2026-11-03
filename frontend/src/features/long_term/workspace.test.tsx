@@ -1,10 +1,18 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LongTermWorkspace } from "./workspace";
 import type { components } from "@/api/generated/schema";
 
 type Company = components["schemas"]["LongTermRankedCompany"];
+type Payment = components["schemas"]["NormalizedDividend"];
 const metric = (status: components["schemas"]["ScoreMetric"]["status"], value: number | null): components["schemas"]["ScoreMetric"] => ({ basis: "actual", effective_date: null, evidence_refs: [], reason_codes: [], status, unit: "points", value });
+
+const payment = (dividend_id: string, payment_date: string, gross: string | null, net: string | null): Payment => ({
+  company_id: "FIX3", dividend_id, installment_id: dividend_id, dividend_type: "ordinary", fiscal_period_end: "2024-12-31",
+  gross_amount_per_share: gross === null ? null : { amount: gross, currency: "XOF" }, gross_total_amount: null,
+  net_amount_per_share: net === null ? null : { amount: net, currency: "XOF" }, net_total_amount: null,
+  payment_date, payment_status: "paid", per_share_semantics: "gross", total_semantics: "unknown", reason_codes: [], revision: {} as unknown as components["schemas"]["Revision"],
+});
 
 function company(symbol: string, growthStatus: components["schemas"]["ScoreMetric"]["status"] = "assessable", growthValue: number | null = 74.2): Company {
   return {
@@ -62,12 +70,22 @@ describe("LongTermWorkspace", () => {
   it("shows only supplied dividend coverage and payment facts", () => {
     const sample = company("FIX3");
     sample.dividend_research.coverage = [{ company_id: "FIX3", coverage_basis: "fiscal_year", coverage_status: "partial", covered_interval_start: "2024-01-01", covered_interval_end: "2024-12-31", payment_outcome: "payments_recorded", reason_codes: [], revision: {} as unknown as components["schemas"]["Revision"] }];
-    sample.dividend_research.payments = [{ company_id: "FIX3", dividend_id: "div1", installment_id: "part1", dividend_type: "ordinary", fiscal_period_end: "2024-12-31", gross_amount_per_share: { amount: "125", currency: "XOF" }, gross_total_amount: null, net_amount_per_share: null, net_total_amount: null, payment_date: "2025-03-01", payment_status: "paid", per_share_semantics: "gross", total_semantics: "unknown", reason_codes: [], revision: {} as unknown as components["schemas"]["Revision"] }];
+    sample.dividend_research.payments = [payment("div1", "2025-03-01", "125", "100"), payment("div2", "2025-04-01", "80", null), payment("div3", "2025-05-01", null, null)];
     render(<LongTermWorkspace items={[sample]} objective="dividend" publishedAt="2026-10-30" />);
 
     expect(screen.getByRole("table", { name: "Published dividend evidence coverage" })).toHaveTextContent("partial");
-    expect(screen.getByRole("table", { name: "Recorded dividend payment facts" })).toHaveTextContent("125 XOF · gross");
-    expect(screen.getByRole("table", { name: "Recorded dividend payment facts" })).toHaveTextContent("Mar 1, 2025");
+    const paymentTable = screen.getByRole("table", { name: "Recorded dividend payment facts" });
+    expect(paymentTable).toHaveTextContent("Gross / share · XOF");
+    expect(paymentTable).toHaveTextContent("Net / share · XOF");
+    const grossAndNet = within(screen.getByRole("row", { name: /Mar 1, 2025/ })).getAllByRole("cell");
+    const grossOnly = within(screen.getByRole("row", { name: /Apr 1, 2025/ })).getAllByRole("cell");
+    const noAmounts = within(screen.getByRole("row", { name: /May 1, 2025/ })).getAllByRole("cell");
+    expect(grossAndNet[1]).toHaveTextContent("125 XOF");
+    expect(grossAndNet[2]).toHaveTextContent("100 XOF");
+    expect(grossOnly[1]).toHaveTextContent("80 XOF");
+    expect(grossOnly[2]).toHaveTextContent("Not reported");
+    expect(noAmounts[1]).toHaveTextContent("Not reported");
+    expect(noAmounts[2]).toHaveTextContent("Not reported");
     expect(screen.getByText(/Dividend and Balanced composite scores/)).toBeInTheDocument();
   });
 });
