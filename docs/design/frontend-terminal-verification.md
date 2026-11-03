@@ -21,10 +21,12 @@ The palette values in `frontend/src/app/globals.css` were checked against canvas
 
 | Check | Result | Evidence |
 |---|---|---|
-| PR-head screenshots at 375, 768, 1024, and 1440 px | Not captured | This environment denied local app server binding (`listen EPERM` on ports 3000 and 8765), so the PR build could not be opened in a browser here. |
-| 200% zoom and horizontal overflow | Pending browser check | Requires rendering the PR head at 200% zoom. |
-| Keyboard-only focus order and focus retention | Partially covered by automated keyboard tests; manual review pending | Unit tests cover auth tabs, Long-Term tabs, and Swing pane resize. Full browser traversal remains to be recorded. |
-| Screen-reader announcements and chart data access | Automated semantics covered; manual review pending | Status roles and the chart data table are asserted in tests; no screen reader was available for this check. |
-| Owner visual acceptance tied to PR head | Pending | Must be recorded against the final reviewed PR head and its screenshots. |
+| Swing screenshots | Captured against deployed development base `397251fbef08b63ad1b5db45def3488b4b64d4bc` on 2026-11-03 | [375 px](frontend-terminal-verification/375-swing.jpg) and [1440 px](frontend-terminal-verification/1440-swing.jpg). Both show the published list and selected recommendation; chart data was still loading/unavailable. These are deployed-base screenshots, not PR-head screenshots. |
+| Responsive overflow | Passed on deployed development base at 375, 768, 1024, and 1440 CSS px | Parent operator checked Swing, Long-Term, and the sign-in route's admitted screen. At every route/width, `documentElement.scrollWidth` and `body.scrollWidth` matched `innerWidth`; no horizontal overflow was observed. Data endpoints were loading/unavailable during this pass. `/sign-in` resolved to the admitted screen, so the credential-entry screen was not checked. |
+| 200% zoom | Simulated effective width only; browser zoom not checked | At an effective 720 CSS px viewport (1440 px divided by 200%), the deployed Swing, Long-Term, and sign-in shell had root/body `scrollWidth` equal to 720. The tab automation API could not change the browser zoom setting, so this is not a 200% browser-zoom result. |
+| Keyboard-only focus order and focus retention | Partially checked | On deployed Swing, the first 12 keyboard stops were Sign out, brand link, Swing, Long-Term, search, filters, period controls, and price-table disclosure; the order was coherent and controls were focusable. Unit tests also cover auth tab movement, Long-Term tab selection, and the Swing pane-resize affordance. Focus retention after workflow changes, full auth/Long-Term traversal, and mobile navigation were not manually checked. |
+| Screen-reader announcements and chart data access | Automated semantics covered; manual check pending | Tests assert live status roles and a chart data table. No screen-reader pass was completed. |
+| Long-Term and authentication screenshots | Not captured | The available screenshots cover Swing only. Long-Term and the credential-entry state need visual review. |
+| Owner visual acceptance tied to PR head | Pending | The screenshots above are from the deployed base commit. Owner visual acceptance must reference the final reviewed PR head and note the remaining visual checks. |
 
-Automated checks are regression evidence, not WCAG 2.2 AA certification. Do not mark the browser/manual checks passed until screenshots and observations are recorded against the final PR head.
+Automated checks and responsive overflow measurements are regression evidence, not WCAG 2.2 AA certification. The visual and manual limitations above remain open for final review.
