@@ -47,6 +47,7 @@ class _FakeBigQueryClient:
         self.stages: dict[str, list[dict[str, Any]]] = {}
         self.tables: dict[str, list[dict[str, Any]]] = {}
         self.load_calls: list[tuple[str, Any]] = []
+        self.loaded_dataframes: list[pd.DataFrame] = []
         self.merge_queries: list[str] = []
         self.cleanup_queries: list[str] = []
         self.cleanup_run_ids: list[str] = []
@@ -65,6 +66,7 @@ class _FakeBigQueryClient:
         self, dataframe: pd.DataFrame, table_id: str, *, job_config: Any
     ) -> _Job:
         self.load_calls.append((table_id, job_config))
+        self.loaded_dataframes.append(dataframe.copy())
         rows = dataframe.to_dict(orient="records")
         if job_config.write_disposition == "WRITE_APPEND":
             self.stages.setdefault(table_id, []).extend(rows)
@@ -484,6 +486,43 @@ def test_financial_runs_use_managed_staging_without_cross_contamination(
     assert all("WHERE `run_id` = @run_id" in query for query in client.merge_queries)
     assert client.cleanup_run_ids[-4:] == ["run-one", "run-one", "run-two", "run-two"]
     assert client.deleted_tables == []
+
+
+def test_financial_fiscal_year_string_is_normalized_before_dataframe_load(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+    rows = _financial_rows("ABC")
+    rows["fiscal_year"] = "2025"
+
+    helper.upsert_financials_and_archive(
+        rows, None, "project", "stocks", lambda: None, run_id="string-year"
+    )
+
+    loaded_year = client.loaded_dataframes[0]["fiscal_year"].iloc[0]
+    assert loaded_year == 2025
+    assert pd.api.types.is_integer_dtype(
+        client.loaded_dataframes[0]["fiscal_year"].dtype
+    )
+
+
+@pytest.mark.parametrize(
+    "fiscal_year", ["year", "2025.0", None, 0, 10000, 2025.5, True]
+)
+def test_invalid_financial_fiscal_year_fails_before_bigquery_load(
+    loader: tuple[ModuleType, _FakeBigQueryClient], fiscal_year: object
+) -> None:
+    helper, client = loader
+    rows = _financial_rows("ABC")
+    rows["fiscal_year"] = fiscal_year
+
+    with pytest.raises(ValueError, match="fiscal_year must be an integer year"):
+        helper.upsert_financials_and_archive(
+            rows, None, "project", "stocks", lambda: None, run_id="invalid-year"
+        )
+
+    assert client.load_calls == []
+    assert client.cleanup_queries == []
 
 
 def test_missing_managed_financial_staging_fails_before_archive(
