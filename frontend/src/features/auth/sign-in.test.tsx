@@ -83,6 +83,19 @@ describe("AuthScreen", () => {
     expect(screen.queryByRole("navigation", { name: "Investor workspaces" })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["denied", "This account is not on the invitation list."],
+    ["expired", "Your session expired. Sign in again to continue."],
+  ])("announces %s access feedback and keeps protected workspaces hidden", (_state, message) => {
+    auth.status = "signed_out";
+    auth.message = message;
+    render(<AuthScreen />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(message);
+    expect(screen.queryByRole("navigation", { name: "Investor workspaces" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+  });
+
   it("offers verification resend and preserves sign-out cleanup for admitted users", () => {
     auth.status = "unverified";
     auth.message = "Verify your email before signing in.";
