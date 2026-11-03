@@ -13,6 +13,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Sequence
+from numbers import Integral
 from typing import Any, Mapping
 from uuid import uuid4
 from ingestion_observability import emit_event
@@ -608,8 +609,24 @@ def upsert_financials_and_archive(
     if df.empty:
         archive()
         return _load_identity(df, project_id, dataset, "financials", ["symbol", "fiscal_year"])
-    if df[["symbol", "fiscal_year"]].isna().any(axis=None):
+
+    years = []
+    for value in df["fiscal_year"]:
+        if isinstance(value, bool):
+            raise ValueError("fiscal_year must be an integer year between 1 and 9999")
+        if isinstance(value, Integral):
+            year = int(value)
+        elif isinstance(value, str) and re.fullmatch(r"[0-9]{1,4}", value.strip()):
+            year = int(value.strip())
+        else:
+            raise ValueError("fiscal_year must be an integer year between 1 and 9999")
+        if not 1 <= year <= 9999:
+            raise ValueError("fiscal_year must be an integer year between 1 and 9999")
+        years.append(year)
+    if df["symbol"].isna().any():
         raise ValueError("financial source keys must not contain null values")
+    df = df.copy()
+    df["fiscal_year"] = years
 
     staged_rows = df.drop_duplicates(subset=["symbol", "fiscal_year"]).copy()
     committed_load_id = _load_identity(
