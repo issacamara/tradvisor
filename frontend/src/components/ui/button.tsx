@@ -6,5 +6,5 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: b
 
 export function Button({ asChild, className, ...props }: ButtonProps) {
   const Comp = asChild ? Slot : "button";
-  return <Comp className={cn("inline-flex min-h-11 items-center justify-center rounded-md border border-line bg-panel px-3 text-sm font-semibold text-ink hover:bg-panel-raised", className)} {...props} />;
+  return <Comp className={cn("inline-flex min-h-11 items-center justify-center rounded-md border border-control-outline bg-panel px-3 text-sm font-semibold text-ink hover:bg-panel-raised", className)} {...props} />;
 }

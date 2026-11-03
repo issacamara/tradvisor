@@ -14,6 +14,7 @@
   --color-caution: 242 190 98;
   --color-failure: 242 109 117;
   --color-selection: 103 216 230;
+  --color-control-outline: 78 155 174;
   --color-chart-1: 78 155 174;
   --color-chart-2: 41 201 139;
   --color-chart-3: 103 216 230;
@@ -58,10 +59,10 @@ button, a, input, select { font: inherit; }
 .panel-heading p { margin: 3px 0 0; color: rgb(var(--color-muted)); font-size: 12px; }
 .row-count { color: rgb(var(--color-muted)); font-size: 12px; white-space: nowrap; }
 .list-tools { display: flex; gap: 8px; padding: 0 17px 14px; }
-.search-field { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0 10px; border: 1px solid rgb(var(--color-line)); border-radius: 4px; color: rgb(var(--color-muted)); background: rgb(var(--color-canvas)); }
+.search-field { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0 10px; border: 1px solid rgb(var(--color-control-outline)); border-radius: 4px; color: rgb(var(--color-muted)); background: rgb(var(--color-canvas)); }
 .search-field input { width: 100%; min-width: 0; height: 34px; border: 0; outline: 0; background: transparent; color: rgb(var(--color-ink)); font-size: 12px; }
 .search-field:focus-within { outline: 2px solid rgb(var(--color-caution)); outline-offset: 2px; }
-.segmented { display: inline-flex; align-items: stretch; gap: 2px; padding: 3px; border: 1px solid rgb(var(--color-line)); border-radius: 4px; background: rgb(var(--color-canvas)); white-space: nowrap; }
+.segmented { display: inline-flex; align-items: stretch; gap: 2px; padding: 3px; border: 1px solid rgb(var(--color-control-outline)); border-radius: 4px; background: rgb(var(--color-canvas)); white-space: nowrap; }
 .segmented button { min-width: 35px; border: 0; border-radius: 3px; padding: 4px 9px; background: transparent; color: rgb(var(--color-muted)); font-size: 12px; font-weight: 700; cursor: pointer; }
 .segmented button:hover { color: rgb(var(--color-ink)); }
 .segmented button[aria-pressed="true"] { background: rgb(var(--color-surface-raised)); color: rgb(var(--color-positive)); }
@@ -80,7 +81,7 @@ button, a, input, select { font: inherit; }
 .research-detail { display: grid; gap: 18px; min-width: 0; }
 .detail-heading { min-height: 64px; padding: 15px 18px; border-bottom: 1px solid rgb(var(--color-line)); }
 .symbol-select { display: flex; align-items: center; gap: 8px; color: rgb(var(--color-muted)); font-size: 12px; }
-.symbol-select select { min-height: 32px; min-width: 90px; border: 1px solid rgb(var(--color-line)); border-radius: 4px; padding: 0 9px; background: rgb(var(--color-canvas)); color: rgb(var(--color-ink)); }
+.symbol-select select { min-height: 32px; min-width: 90px; border: 1px solid rgb(var(--color-control-outline)); border-radius: 4px; padding: 0 9px; background: rgb(var(--color-canvas)); color: rgb(var(--color-ink)); }
 .chart-workspace { min-width: 0; padding: 16px 18px 0; }
 .chart-toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .chart-value { display: flex; align-items: baseline; gap: 8px; }
@@ -152,7 +153,7 @@ button, a, input, select { font: inherit; }
 .workspace-link { min-height: 44px; border-left: 3px solid transparent; }
 .workspace-link[aria-current="page"] { border-left-color: rgb(var(--color-selection)); border-bottom-color: transparent; background: rgb(var(--color-selection) / 0.12); color: rgb(var(--color-selection)); }
 body > header:not(.app-header) { display: flex; align-items: center; justify-content: flex-end; }
-body > header:not(.app-header) button { min-height: 44px; border-color: rgb(var(--color-line)); background: rgb(var(--color-surface-raised)); color: rgb(var(--color-ink)); }
+body > header:not(.app-header) button { min-height: 44px; border-color: rgb(var(--color-control-outline)); background: rgb(var(--color-surface-raised)); color: rgb(var(--color-ink)); }
 @media (min-width: 1200px) {
   .app-header { position: fixed; z-index: 30; inset: 0 auto 0 0; width: 216px; min-height: 100vh; height: 100dvh; flex-direction: column; align-items: stretch; gap: 20px; padding: 24px 16px 104px; background: rgb(var(--color-surface)); border-right: 1px solid rgb(var(--color-line)); border-bottom: 0; }
   .workspace-nav { width: 100%; flex: 1; flex-direction: column; align-items: stretch; gap: 8px; }

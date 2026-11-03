@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceShell } from "./workspace-shell";
@@ -7,6 +8,26 @@ import { Button } from "./ui/button";
 import tailwindConfig from "../../tailwind.config";
 
 vi.mock("next/dynamic", () => ({ default: () => () => <div data-testid="chart-boundary">chart boundary</div> }));
+
+const globalStyles = readFileSync(`${process.cwd()}/src/app/globals.css`, "utf8");
+function readCssRgbToken(name: string): [number, number, number] {
+  const match = globalStyles.match(new RegExp(`--color-${name}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+);`));
+  if (!match) throw new Error(`Missing RGB token: ${name}`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function relativeLuminance([red, green, blue]: [number, number, number]) {
+  const linearize = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue);
+}
+
+function contrastRatio(first: [number, number, number], second: [number, number, number]) {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 afterEach(cleanup);
 
@@ -51,6 +72,17 @@ describe("shared terminal chrome", () => {
     expect(colors.canvas).toContain("--color-canvas");
     expect(colors.positive).toContain("--color-positive");
     expect(colors.selection).toContain("--color-selection");
-    expect(screen.getByRole("button", { name: "Account action" })).toHaveClass("min-h-11");
+    expect(colors["control-outline"]).toContain("--color-control-outline");
+    expect(screen.getByRole("button", { name: "Account action" })).toHaveClass("min-h-11", "border-control-outline");
+  });
+
+  it("keeps control outlines at 5:1 or greater against all terminal surfaces", () => {
+    const control = readCssRgbToken("control-outline");
+    expect(control).toEqual([78, 155, 174]);
+    expect(readCssRgbToken("line")).toEqual([41, 65, 74]);
+
+    for (const surface of ["canvas", "surface", "surface-raised"]) {
+      expect(contrastRatio(control, readCssRgbToken(surface))).toBeGreaterThanOrEqual(5);
+    }
   });
 });

@@ -20,6 +20,7 @@ export default {
         failure: "rgb(var(--color-failure) / <alpha-value>)",
         danger: "rgb(var(--color-failure) / <alpha-value>)",
         selection: "rgb(var(--color-selection) / <alpha-value>)",
+        "control-outline": "rgb(var(--color-control-outline) / <alpha-value>)",
         "chart-1": "rgb(var(--color-chart-1) / <alpha-value>)",
         "chart-2": "rgb(var(--color-chart-2) / <alpha-value>)",
         "chart-3": "rgb(var(--color-chart-3) / <alpha-value>)",
