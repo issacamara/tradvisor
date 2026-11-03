@@ -52,7 +52,7 @@ export function SwingWorkspace({ items = [], chart = [], chartState = "empty", m
         {!items.length && resultsState === "loading" && <p className="empty-message">Loading published Swing recommendations…</p>}
         {!items.length && resultsState === "no_publication" && <p className="empty-message">No published Swing recommendations yet.</p>}
         {!items.length && resultsState === "unavailable" && <p className="empty-message">The latest analytical publication is unavailable.</p>}
-        {!items.length && resultsState === "request_failure" && <p className="empty-message">Swing recommendations could not be loaded. Try again later.</p>}
+        {!items.length && resultsState === "request_failure" && <p className="empty-message">The request failed. Check the status above and try again.</p>}
         {items.length > 0 && filter === "buy" && !buyCount && !query.trim() && <p className="empty-message">No Buy entries in this publication.</p>}
         {items.length > 0 && !filtered.length && (filter !== "buy" || buyCount > 0 || query.trim()) && <p className="empty-message">No symbols match this filter.</p>}
       </section>
