@@ -19,7 +19,7 @@ describe("LongTermPage", () => {
 
   it("keeps objective and company deep-link context on reload and selection", async () => {
     window.history.replaceState(null, "", "/long-term?objective=dividend&symbol=FIX1");
-    request.mockResolvedValue(response({ data: { items: [company], published_at: "2026-10-30" } }));
+    request.mockImplementation(() => Promise.resolve(response({ data: { items: [company], published_at: "2026-10-30" } })));
 
     render(<LongTermPage />);
 

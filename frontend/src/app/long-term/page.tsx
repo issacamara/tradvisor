@@ -12,7 +12,6 @@ import type { components } from "@/api/generated/schema";
 type Objective = "growth" | "dividend";
 type Company = components["schemas"]["LongTermRankedCompany"];
 const paramsFromLocation = () => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
-const initialObjective = (): Objective => paramsFromLocation().get("objective") === "dividend" ? "dividend" : "growth";
 
 export default function LongTermPage() {
   return <ProtectedWorkspace><LongTermController /></ProtectedWorkspace>;
@@ -21,14 +20,20 @@ export default function LongTermPage() {
 function LongTermController() {
   const session = useAuthSession();
   const api = useMemo(() => createApiTransport(session.request), [session.request]);
-  const [objective, setObjective] = useState<Objective>(initialObjective);
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(() => paramsFromLocation().get("symbol"));
+  const [objective, setObjective] = useState<Objective>("growth");
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [items, setItems] = useState<Company[]>([]);
   const [publishedAt, setPublishedAt] = useState("Unavailable");
   const [state, setState] = useState<RuntimeDataState | "loading">("loading");
   const [message, setMessage] = useState("");
   const [retryable, setRetryable] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    const params = paramsFromLocation();
+    setObjective(params.get("objective") === "dividend" ? "dividend" : "growth");
+    setSelectedSymbol(params.get("symbol"));
+  }, []);
 
   useEffect(() => {
     let active = true;
