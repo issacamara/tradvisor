@@ -591,6 +591,7 @@ def upsert_financials_and_archive(
 ):
     """Append one serialized financial run to managed staging before merging it."""
     from google.cloud import bigquery
+    import pandas as pd
 
     columns = [str(column) for column in df.columns]
     expected_columns = [
@@ -627,6 +628,7 @@ def upsert_financials_and_archive(
         raise ValueError("financial source keys must not contain null values")
     df = df.copy()
     df["fiscal_year"] = years
+    df["collected_at"] = pd.to_datetime(df["collected_at"], utc=True)
 
     staged_rows = df.drop_duplicates(subset=["symbol", "fiscal_year"]).copy()
     committed_load_id = _load_identity(

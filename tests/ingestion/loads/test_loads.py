@@ -488,6 +488,20 @@ def test_financial_runs_use_managed_staging_without_cross_contamination(
     assert client.deleted_tables == []
 
 
+def test_financial_collected_at_is_loaded_as_a_utc_timestamp(
+    loader: tuple[ModuleType, _FakeBigQueryClient],
+) -> None:
+    helper, client = loader
+
+    helper.upsert_financials_and_archive(
+        _financial_rows("ABC"), None, "project", "stocks", lambda: None, run_id="timestamp"
+    )
+
+    loaded = client.loaded_dataframes[0]
+    assert str(loaded["collected_at"].dtype) == "datetime64[ns, UTC]"
+    assert loaded["collected_at"].iloc[0] == pd.Timestamp("2026-10-16T00:00:00Z")
+
+
 def test_financial_fiscal_year_string_is_normalized_before_dataframe_load(
     loader: tuple[ModuleType, _FakeBigQueryClient],
 ) -> None:

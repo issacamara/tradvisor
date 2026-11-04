@@ -294,6 +294,9 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert fake.state_reads == 1
     assert fake.downloads == ["https://www.richbourse.com/ABC-2024.pdf"]
     assert fake.writes[0][0][0]["symbol"] == "ABC"
+    collected_at = fake.writes[0][0][0]["collected_at"]
+    assert isinstance(collected_at, datetime)
+    assert collected_at.tzinfo is timezone.utc
     assert tuple(key for key in fake.writes[0][0][0] if key in EXTRACTION_KEYS) == EXTRACTION_KEYS
     assert fake.actions == ["state_read", "staging_load", "merge_commit", "completion"]
     assert outcome.completion is not None
