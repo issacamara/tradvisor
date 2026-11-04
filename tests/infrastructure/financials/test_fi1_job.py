@@ -79,9 +79,10 @@ def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
         assert f"<= {maximum}" in _variable(variable)
 
 
-def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> None:
+def test_job_identity_has_only_required_bigquery_and_secret_access() -> None:
     runtime = _resource(IAM, "google_service_account", "fi1_financial_runtime")
     job_user = _resource(IAM, "google_project_iam_member", "fi1_financial_bigquery_job_user")
+    stocks = _resource(IAM, "google_bigquery_dataset_iam_member", "fi1_stocks_editor")
     firestore = _resource(IAM, "google_project_iam_member", "fi1_financial_firestore")
     companies = _resource(IAM, "google_bigquery_table_iam_member", "fi1_companies_reader")
     financials = _resource(IAM, "google_bigquery_table_iam_member", "fi1_financials_editor")
@@ -91,6 +92,10 @@ def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> No
     assert "var.fi1_financial_runtime_service_account_id" in runtime
     assert "prevent_destroy = true" in runtime
     assert 'role    = "roles/bigquery.jobUser"' in job_user
+    assert 'dataset_id = "stocks"' in stocks
+    assert 'role       = "roles/bigquery.dataEditor"' in stocks
+    assert "var.project_id" in stocks
+    assert "google_service_account.fi1_financial_runtime[0].email" in stocks
     assert 'role    = "roles/datastore.user"' in firestore
     assert "google_service_account.fi1_financial_runtime[0].email" in firestore
     assert "google_bigquery_table.brvm_companies.table_id" in companies
@@ -102,13 +107,14 @@ def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> No
     assert "google_secret_manager_secret.openrouter.secret_id" in secret
     assert 'role      = "roles/secretmanager.secretAccessor"' in secret
     assert "google_service_account.fi1_financial_runtime[0].email" in (
-        job_user + companies + financials + staging + secret
+        job_user + stocks + companies + financials + staging + secret
     )
 
     fi1_iam = "\n".join(
         _resource(IAM, kind, name)
         for kind, name in (
             ("google_project_iam_member", "fi1_financial_bigquery_job_user"),
+            ("google_bigquery_dataset_iam_member", "fi1_stocks_editor"),
             ("google_project_iam_member", "fi1_financial_firestore"),
             ("google_bigquery_table_iam_member", "fi1_companies_reader"),
             ("google_bigquery_table_iam_member", "fi1_financials_editor"),
@@ -119,6 +125,23 @@ def test_job_identity_has_only_required_bigquery_table_and_secret_access() -> No
     assert "storage." not in fi1_iam
     assert "roles/storage" not in fi1_iam
     assert "roles/secretmanager.secretAccessor" not in job_user + companies + financials + staging
+
+
+def test_fi1_job_waits_for_environment_specific_stocks_grant() -> None:
+    job = _resource(FINANCIAL, "google_cloud_run_v2_job", "fi1_financials")
+    project_id = _variable("project_id")
+    account_id = _variable("fi1_financial_runtime_service_account_id")
+
+    assert "google_bigquery_dataset_iam_member.fi1_stocks_editor" in job
+    assert 'default     = "dev-tradvisor"' in project_id
+    assert 'default     = "tradvisor-fi1-fin-runtime"' in account_id
+    project = re.search(r'default\s*=\s*"([^"]+)"', project_id)
+    account = re.search(r'default\s*=\s*"([^"]+)"', account_id)
+    assert project and account
+    assert (
+        f"{account.group(1)}@{project.group(1)}.iam.gserviceaccount.com"
+        == "tradvisor-fi1-fin-runtime@dev-tradvisor.iam.gserviceaccount.com"
+    )
 
 
 def test_monthly_scheduler_invokes_only_the_fi1_job_with_resource_level_iam() -> None:
