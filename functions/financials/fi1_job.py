@@ -775,9 +775,7 @@ def _run_batch(
                             "fiscal_year": candidate.fiscal_year,
                             **{key: values[key] for key in _FINANCIAL_VALUE_KEYS},
                             "document_link": candidate.document_link,
-                            "collected_at": adapters.utcnow().astimezone(timezone.utc).strftime(
-                                "%Y-%m-%d %H:%M:%S"
-                            ),
+                            "collected_at": adapters.utcnow().astimezone(timezone.utc),
                         }
                     )
                     symbol_counts["inserted" if decision is RowDecision.INSERT else "updated"] += 1
