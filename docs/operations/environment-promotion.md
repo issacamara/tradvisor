@@ -27,7 +27,7 @@ Each GitHub Environment must define these variables:
 - `TRADVISOR_CORS_ORIGINS`
 - `ARTIFACT_REPOSITORY` (the repository name used in each project's registry)
 - `APPROVED_API_IMAGE` (an environment-local image digest for Terraform PR plans)
-- `APPROVED_FI1_JOB_IMAGE` (the development environment's immutable FI-1 image digest for Terraform PR plans; not used by production plans)
+- `APPROVED_FI1_JOB_IMAGE` in the `development-plan` GitHub Environment (the immutable FI-1 image digest for Terraform PR plans; not used by production plans)
 
 Each environment must provide `WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, and
 `FIREBASE_API_KEY` as scoped secrets. The production environment also defines
