@@ -59,15 +59,13 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "TF_VAR_fi1_financial_job_image" in workflow
 
 
-def test_405_pr_plan_retention_is_private_and_scoped() -> None:
+def test_terraform_pr_plan_stages_development_dispatcher_prepare_phase() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
-    step = workflow.split("      - name: Retain development PR plan privately for review", 1)[1].split("      -", 1)[0]
-    assert "github.event.pull_request.number == 406" in step
-    assert '"gcloud", "storage", "cp", "--no-clobber"' in step
-    assert "deletion-review.json" in step
-    assert "reviewed-plans/development/" in step
-    assert "stdout=subprocess.DEVNULL" in step
-    assert "stderr=subprocess.DEVNULL" in step
+    step = workflow.split("      - name: Stage development dispatcher prepare phase", 1)[1].split("      -", 1)[0]
+    assert "if: env.TF_VAR_environment == 'development'" in step
+    assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in step
+    assert 'deletion_protection = false' in step
+    assert 'prevent_destroy = false' in step
 
 
 def test_release_workflow_packages_and_uploads_manifest() -> None:
