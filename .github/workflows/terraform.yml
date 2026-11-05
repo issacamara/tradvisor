@@ -134,4 +134,26 @@ jobs:
         working-directory: terraform
         run: |
           [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
-          gcloud storage cp --no-clobber tfplan "gs://$TF_STATE_BUCKET/reviewed-plans/development/pr-plans/$GITHUB_RUN_ID/tfplan" --project "$GCP_PROJECT_ID" --quiet
+          terraform show -json tfplan | jq -c '[.resource_changes[]? | select(any(.change.actions[]?; . == "delete")) | {address, type, actions: .change.actions}]' > deletion-review.json
+          tar -czf issue-405-review-plan.tar.gz tfplan deletion-review.json
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          destination = (
+              f"gs://{os.environ['TF_STATE_BUCKET']}/reviewed-plans/development/"
+              f"pr-plans/{os.environ['GITHUB_RUN_ID']}/review-plan.tar.gz"
+          )
+          try:
+              subprocess.run(
+                  ["gcloud", "storage", "cp", "--no-clobber", "issue-405-review-plan.tar.gz", destination,
+                   "--project", os.environ["GCP_PROJECT_ID"], "--quiet"],
+                  check=True,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+          except subprocess.CalledProcessError:
+              print("Unable to store the private Terraform review bundle.", file=sys.stderr)
+              raise
+          PY
