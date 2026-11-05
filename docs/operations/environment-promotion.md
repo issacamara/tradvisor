@@ -27,7 +27,6 @@ Each GitHub Environment must define these variables:
 - `TRADVISOR_CORS_ORIGINS`
 - `ARTIFACT_REPOSITORY` (the repository name used in each project's registry)
 - `APPROVED_API_IMAGE` (an environment-local image digest for Terraform PR plans)
-- `APPROVED_FI1_JOB_IMAGE` in the `development-plan` GitHub Environment (the immutable FI-1 image digest for Terraform PR plans; not used by production plans)
 
 Each environment must provide `WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, and
 `FIREBASE_API_KEY` as scoped secrets. The production environment also defines
@@ -85,7 +84,9 @@ deployment credentials.
    promotion and apply require the production environment approval gate.
 
 `terraform.yml` runs a target-state plan for same-repository PRs and merged
-Terraform changes. It emits only action counts. It does not apply on merge:
+Terraform changes. Development plans resolve the FI-1 image digest from the
+latest successful development deployment evidence artifact. It emits only
+action counts. It does not apply on merge:
 the reviewed, exact-plan gate governs both environments. Delivery saves plan
 bundles privately under each environment's existing GCS state bucket, keyed
 by plan run ID; no Terraform plan or state file is uploaded as a public GitHub

@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -36,13 +37,65 @@ jobs:
       TF_VAR_terraform_deployer_service_account: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
       TF_VAR_v1_api_image: ${{ vars.APPROVED_API_IMAGE }}
       TF_VAR_v1_batch_image: ${{ vars.APPROVED_API_IMAGE }}
-      TF_VAR_fi1_financial_job_image: ${{ vars.APPROVED_FI1_JOB_IMAGE }}
       TF_VAR_v1_batch_command: '["python", "-m", "backend.commands.daily_publication"]'
       TF_VAR_v1_financials_table: ${{ format('{0}.stocks.financials', vars.GCP_PROJECT_ID) }}
       TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
+      - name: Find latest successful development deployment
+        id: deployment
+        if: env.TF_VAR_environment == 'development'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          candidates="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | select(.name | startswith("tradvisor-development-deployed-")) | [.name, (.workflow_run.id | tostring), .created_at] | @tsv' \
+            | sort -r -k3)"
+          while IFS=$'\t' read -r artifact_name run_id _; do
+            [[ "$run_id" =~ ^[0-9]+$ ]] || continue
+            [[ "$artifact_name" =~ ^tradvisor-development-deployed-[a-zA-Z0-9._-]+$ ]] || continue
+            run_metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              --jq '[.head_branch, .event, .conclusion] | @tsv')"
+            if [ "$run_metadata" = $'development\tpush\tsuccess' ] || \
+              [ "$run_metadata" = $'development\tworkflow_dispatch\tsuccess' ]; then
+              echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              break
+            fi
+          done <<< "$candidates"
+          test -n "${artifact_name:-}"
+      - uses: actions/download-artifact@v4
+        if: env.TF_VAR_environment == 'development'
+        with:
+          name: ${{ steps.deployment.outputs.artifact_name }}
+          run-id: ${{ steps.deployment.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: development-deployment
+      - name: Resolve deployed FI-1 image digest
+        id: fi1-image
+        if: env.TF_VAR_environment == 'development'
+        env:
+          DEPLOYMENT_ARTIFACT: ${{ steps.deployment.outputs.artifact_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          evidence = json.loads(Path("development-deployment/development-deployment.json").read_text())
+          assert re.fullmatch(r"[0-9a-f]{40}", evidence["release_id"])
+          assert os.environ["DEPLOYMENT_ARTIFACT"] == f"tradvisor-development-deployed-{evidence['release_id']}"
+          assert evidence["commit"] == evidence["release_id"]
+          digest = evidence["fi1_job_digest"]
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+          image = f"{os.environ['GCP_REGION']}-docker.pkg.dev/{os.environ['GCP_PROJECT_ID']}/{os.environ['ARTIFACT_REPOSITORY']}/financial-ingestion@{digest}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"image={image}", file=output)
+          PY
       - name: Validate isolated target and approved image
+        env:
+          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
         shell: bash
         run: |
           if [ "$TF_VAR_environment" = production ]; then
@@ -69,6 +122,8 @@ jobs:
           service_account: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
       - name: Plan without publishing state or plan contents
         working-directory: terraform
+        env:
+          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
         run: |
           terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
           terraform plan -out=tfplan -input=false -no-color >/dev/null
