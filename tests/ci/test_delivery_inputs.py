@@ -43,6 +43,14 @@ def test_development_manages_fi1_job_without_activating_schedule() -> None:
         assert "TF_VAR_activate_fi1_financial_schedule" not in environment
 
 
+def test_terraform_pr_plan_manages_development_fi1_with_approved_digest() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    assert "TF_VAR_manage_fi1_financial_job:" in workflow
+    assert "vars.APPROVED_FI1_JOB_IMAGE" in workflow
+    assert 'TF_VAR_environment" = development' in workflow
+    assert "TF_VAR_fi1_financial_job_image" in workflow
+
+
 def test_release_workflow_packages_and_uploads_manifest() -> None:
     contents = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
     assert "package_artifact.py" in contents
