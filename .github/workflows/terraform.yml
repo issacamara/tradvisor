@@ -129,3 +129,9 @@ jobs:
           terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
           terraform plan -out=tfplan -input=false -no-color >/dev/null
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
+      - name: Retain development PR plan privately for review
+        if: github.event_name == 'pull_request' && github.base_ref == 'development' && github.event.pull_request.number == 406
+        working-directory: terraform
+        run: |
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          gcloud storage cp --no-clobber tfplan "gs://$TF_STATE_BUCKET/reviewed-plans/development/pr-plans/$GITHUB_RUN_ID/tfplan" --project "$GCP_PROJECT_ID" --quiet
