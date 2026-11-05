@@ -31,9 +31,10 @@ resource "google_secret_manager_secret" "openrouter" {
   depends_on = [data.google_project.project]
 }
 
-# FI-1 has its own identity so it does not inherit the legacy functions'
-# object-storage permissions. BigQuery access is limited to the company
-# selector table and the Terraform-managed financials input/staging tables.
+# The dataset-level Data Editor grant allows table creation and covers every
+# table in stocks; company reads and financials input/staging access stay
+# table-scoped. FI-1's own identity avoids inheriting legacy object-storage
+# permissions.
 resource "google_service_account" "fi1_financial_runtime" {
   count        = var.manage_fi1_financial_job ? 1 : 0
   project      = var.project_id
