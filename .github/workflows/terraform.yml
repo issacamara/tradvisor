@@ -43,6 +43,28 @@ jobs:
       TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stage development dispatcher prepare phase
+        if: env.TF_VAR_environment == 'development'
+        working-directory: terraform
+        run: |
+          printf '%s\n' \
+            'resource "google_cloud_run_v2_service" "workflow_dispatcher" {' \
+            '  count               = 1' \
+            '  name                = "${var.v1_api_service_name}-workflow-dispatcher"' \
+            '  location            = var.region' \
+            '  project             = var.project_id' \
+            '  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"' \
+            '  deletion_protection = false' \
+            '  template {' \
+            '    containers {' \
+            '      image = var.v1_api_image' \
+            '    }' \
+            '  }' \
+            '  lifecycle {' \
+            '    prevent_destroy = false' \
+            '    ignore_changes  = [template]' \
+            '  }' \
+            '}' > retired-workflow-dispatcher.tf
       - name: Find latest successful development deployment
         id: deployment
         if: env.TF_VAR_environment == 'development'
@@ -129,31 +151,3 @@ jobs:
           terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
           terraform plan -out=tfplan -input=false -no-color >/dev/null
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'
-      - name: Retain development PR plan privately for review
-        if: github.event_name == 'pull_request' && github.base_ref == 'development' && github.event.pull_request.number == 406
-        working-directory: terraform
-        run: |
-          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
-          terraform show -json tfplan | jq -c '[.resource_changes[]? | select(any(.change.actions[]?; . == "delete")) | {address, type, actions: .change.actions}]' > deletion-review.json
-          tar -czf issue-405-review-plan.tar.gz tfplan deletion-review.json
-          python3 - <<'PY'
-          import os
-          import subprocess
-          import sys
-
-          destination = (
-              f"gs://{os.environ['TF_STATE_BUCKET']}/reviewed-plans/development/"
-              f"pr-plans/{os.environ['GITHUB_RUN_ID']}/review-plan.tar.gz"
-          )
-          try:
-              subprocess.run(
-                  ["gcloud", "storage", "cp", "--no-clobber", "issue-405-review-plan.tar.gz", destination,
-                   "--project", os.environ["GCP_PROJECT_ID"], "--quiet"],
-                  check=True,
-                  stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL,
-              )
-          except subprocess.CalledProcessError:
-              print("Unable to store the private Terraform review bundle.", file=sys.stderr)
-              raise
-          PY
