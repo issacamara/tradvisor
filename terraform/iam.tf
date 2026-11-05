@@ -31,10 +31,10 @@ resource "google_secret_manager_secret" "openrouter" {
   depends_on = [data.google_project.project]
 }
 
-# The dataset-level Data Editor grant allows table creation and covers every
-# table in stocks; company reads and financials input/staging access stay
-# table-scoped. FI-1's own identity avoids inheriting legacy object-storage
-# permissions.
+# This dataset-level Data Editor grant permits table creation and edit access
+# to every table in stocks. Separately declared table-level grants for the
+# company selector and financials input/staging tables remain in place.
+# FI-1's own identity avoids inheriting legacy object-storage permissions.
 resource "google_service_account" "fi1_financial_runtime" {
   count        = var.manage_fi1_financial_job ? 1 : 0
   project      = var.project_id
