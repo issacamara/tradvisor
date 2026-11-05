@@ -59,6 +59,14 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "TF_VAR_fi1_financial_job_image" in workflow
 
 
+def test_405_pr_plan_retention_is_private_and_scoped() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    step = workflow.split("      - name: Retain development PR plan privately for review", 1)[1].split("      -", 1)[0]
+    assert "github.event.pull_request.number == 406" in step
+    assert "gcloud storage cp --no-clobber tfplan" in step
+    assert "reviewed-plans/development/pr-plans/$GITHUB_RUN_ID/tfplan" in step
+
+
 def test_release_workflow_packages_and_uploads_manifest() -> None:
     contents = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
     assert "package_artifact.py" in contents
