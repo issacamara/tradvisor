@@ -49,6 +49,7 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "actions: read" in workflow
     assert "tradvisor-development-deployed-" in workflow
     assert "actions/download-artifact@v4" in workflow
+    assert "ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}" in workflow
     assert "development\\tpush\\tsuccess" in workflow
     assert "development\\tworkflow_dispatch\\tsuccess" in workflow
     assert 'evidence["fi1_job_digest"]' in workflow

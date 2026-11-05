@@ -22,6 +22,7 @@ jobs:
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX }}
       TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
