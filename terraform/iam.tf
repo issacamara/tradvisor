@@ -31,9 +31,10 @@ resource "google_secret_manager_secret" "openrouter" {
   depends_on = [data.google_project.project]
 }
 
-# FI-1 has its own identity so it does not inherit the legacy functions'
-# object-storage permissions. BigQuery access is limited to the company
-# selector table and the Terraform-managed financials input/staging tables.
+# This dataset-level Data Editor grant permits table creation and edit access
+# to every table in stocks. Separately declared table-level grants for the
+# company selector and financials input/staging tables remain in place.
+# FI-1's own identity avoids inheriting legacy object-storage permissions.
 resource "google_service_account" "fi1_financial_runtime" {
   count        = var.manage_fi1_financial_job ? 1 : 0
   project      = var.project_id
@@ -50,6 +51,14 @@ resource "google_project_iam_member" "fi1_financial_bigquery_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "fi1_stocks_editor" {
+  count      = var.manage_fi1_financial_job ? 1 : 0
+  project    = var.project_id
+  dataset_id = "stocks"
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
 }
 
 # Reuse the existing V1 Firestore transactional control path for the FI-1

@@ -84,7 +84,9 @@ deployment credentials.
    promotion and apply require the production environment approval gate.
 
 `terraform.yml` runs a target-state plan for same-repository PRs and merged
-Terraform changes. It emits only action counts. It does not apply on merge:
+Terraform changes. Development plans resolve the FI-1 image digest from the
+latest successful development deployment evidence artifact. It emits only
+action counts. It does not apply on merge:
 the reviewed, exact-plan gate governs both environments. Delivery saves plan
 bundles privately under each environment's existing GCS state bucket, keyed
 by plan run ID; no Terraform plan or state file is uploaded as a public GitHub

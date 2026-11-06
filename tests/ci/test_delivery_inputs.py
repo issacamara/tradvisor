@@ -43,6 +43,31 @@ def test_development_manages_fi1_job_without_activating_schedule() -> None:
         assert "TF_VAR_activate_fi1_financial_schedule" not in environment
 
 
+def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    assert "TF_VAR_manage_fi1_financial_job:" in workflow
+    assert "actions: read" in workflow
+    assert "tradvisor-development-deployed-" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}" in workflow
+    assert "development\\tpush\\tsuccess" in workflow
+    assert "development\\tworkflow_dispatch\\tsuccess" in workflow
+    assert 'evidence["fi1_job_digest"]' in workflow
+    assert 'sha256:[0-9a-f]{64}' in workflow
+    assert "vars.APPROVED_FI1_JOB_IMAGE" not in workflow
+    assert 'TF_VAR_environment" = development' in workflow
+    assert "TF_VAR_fi1_financial_job_image" in workflow
+
+
+def test_terraform_pr_plan_stages_development_dispatcher_prepare_phase() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    step = workflow.split("      - name: Stage development dispatcher prepare phase", 1)[1].split("      -", 1)[0]
+    assert "if: env.TF_VAR_environment == 'development'" in step
+    assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in step
+    assert 'deletion_protection = false' in step
+    assert 'prevent_destroy = false' in step
+
+
 def test_release_workflow_packages_and_uploads_manifest() -> None:
     contents = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
     assert "package_artifact.py" in contents
