@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 import threading
 import importlib.util
@@ -361,10 +362,10 @@ def test_provider_http_response_body_is_not_carried_into_the_error(
     assert sentinel not in repr(caught.value)
 
 
-def test_provider_prompt_matches_established_financial_extraction_guidance(
+def test_provider_sends_owner_prompt_and_document_separately_for_every_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: list[dict[str, object]] = []
 
     class Response:
         status_code = 200
@@ -374,7 +375,7 @@ def test_provider_prompt_matches_established_financial_extraction_guidance(
             return {"choices": [{"message": {"content": '{"fiscal_year": 2024}'}}]}
 
     def post(*_args: object, **kwargs: object) -> Response:
-        captured.update(kwargs)
+        captured.append(kwargs)
         return Response()
 
     curl_cffi = ModuleType("curl_cffi")
@@ -382,14 +383,19 @@ def test_provider_prompt_matches_established_financial_extraction_guidance(
     curl_cffi.requests = SimpleNamespace(post=post)  # type: ignore[attr-defined]
     monkeypatch.setitem(__import__("sys").modules, "curl_cffi", curl_cffi)
 
-    fi1_job._provider_attempt("document text", MODEL_ORDER[0], "secret", 1)
+    for model in MODEL_ORDER:
+        fi1_job._provider_attempt("synthetic document text", model, "secret", 1)
 
-    prompt = captured["json"]["messages"][0]["content"]  # type: ignore[index]
-    assert "BRVM annual financial statement PDF" in prompt
-    assert "produit net bancaire / PNB" in prompt
-    assert "Detect the company type first" in prompt
-    assert "UNIT NORMALIZATION" in prompt
-    assert '"cash_and_cash_equivalents"' in prompt
+    assert [request["json"]["model"] for request in captured] == list(MODEL_ORDER)  # type: ignore[index]
+    for request in captured:
+        messages = request["json"]["messages"]  # type: ignore[index]
+        assert messages == [
+            {"role": "system", "content": fi1_job.OWNER_EXTRACTION_PROMPT},
+            {"role": "user", "content": "synthetic document text"},
+        ]
+        assert sha256(messages[0]["content"].encode()).hexdigest() == (
+            "dd961426d36af4c219e8aae0fca92264cc0869e777f21b17767b2879ed51185c"
+        )
 
 
 def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytest.MonkeyPatch) -> None:

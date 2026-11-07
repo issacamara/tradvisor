@@ -138,6 +138,9 @@ def test_extraction_requires_source_year_and_returns_only_six_contract_fields() 
     )
     with pytest.raises(ValueError, match="does not match source metadata"):
         validate_extraction(payload, source_fiscal_year=2023)
+    payload["fiscal_year"] = None
+    with pytest.raises(ValueError, match="does not match source metadata"):
+        validate_extraction(payload, source_fiscal_year=2024)
     with pytest.raises(ValueError, match="finite numbers or null"):
         type(validated)(2024, float("nan"), None, None, None, None)
 
