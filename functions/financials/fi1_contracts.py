@@ -217,7 +217,7 @@ def is_approved_document_url(url: str) -> bool:
 
 
 def parse_annual_candidates(
-    html: str, symbol: str, *, limit: int = 5
+    html: str, symbol: str, *, current_year: int, limit: int = 5
 ) -> tuple[AnnualCandidate, ...]:
     """Parse annual reports from one symbol-filtered page, newest fiscal years first."""
     symbol = symbol.strip()
@@ -243,6 +243,8 @@ def parse_annual_candidates(
         if not is_approved_document_url(document_link):
             continue
         year = int(year_match.group(1))
+        if not current_year - 5 <= year < current_year:
+            continue
         # RichBourse pages are newest-first; keep the first link if a year repeats.
         by_year.setdefault(year, AnnualCandidate(symbol, year, document_link, title[:256]))
 

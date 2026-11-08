@@ -647,6 +647,7 @@ def _run_batch(
     max_annual_candidates: int,
     lease: FirestoreExecutionLease | None,
 ) -> JobOutcome:
+    current_year = adapters.utcnow().year
     started = adapters.monotonic()
     deadline = started + max_duration_seconds
     counters = {
@@ -683,7 +684,9 @@ def _run_batch(
         html = adapters.fetch_text(
             richbourse_symbol_page_url(symbol), min(SOURCE_TIMEOUT_SECONDS, timeout)
         )
-        return parse_annual_candidates(html, symbol, limit=max_annual_candidates)
+        return parse_annual_candidates(
+            html, symbol, current_year=current_year, limit=max_annual_candidates
+        )
 
     rows: list[dict[str, Any]] = []
     pending_counts = {"inserted": 0, "updated": 0}

@@ -277,11 +277,25 @@ class Harness:
             emit_symbol_outcome=symbol_outcome,
             emit_commit_counts=commit_counts,
             emit_stage_failure=stage_failure,
+            utcnow=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
 
 
 def run(harness: Harness, **kwargs: Any):
     return run_batch(harness.adapters(), api_key="runtime-secret", **kwargs)
+
+
+@pytest.mark.parametrize(("year", "expected"), [(2026, [2025, 2021]), (2027, [2026, 2025])])
+def test_batch_uses_current_year_for_report_selection(year: int, expected: list[int]) -> None:
+    fake = Harness(years=(2026, 2025, 2021, 2020))
+    adapters = fake.adapters()
+    adapters = RuntimeAdapters(
+        **{**adapters.__dict__, "utcnow": lambda: datetime(year, 1, 1, tzinfo=timezone.utc)}
+    )
+
+    run_batch(adapters, api_key="runtime-secret")
+
+    assert [row["fiscal_year"] for row in fake.writes[0][0]] == expected
 
 
 def test_full_batch_uses_only_injected_offline_adapters() -> None:

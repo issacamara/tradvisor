@@ -47,7 +47,7 @@ def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() ->
     html = (FIXTURES / "fi1_symbol_page.html").read_text()
 
     assert richbourse_symbol_page_url(" ABC ").endswith("?symbole=ABC")
-    candidates = parse_annual_candidates(html, "ABC")
+    candidates = parse_annual_candidates(html, "ABC", current_year=2026)
 
     assert [candidate.fiscal_year for candidate in candidates] == [
         2025,
@@ -69,7 +69,7 @@ def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
         "Rapport annuel Exercice 2026</a></div>"
     )
 
-    assert parse_annual_candidates(html, "ABC") == ()
+    assert parse_annual_candidates(html, "ABC", current_year=2027) == ()
     assert is_approved_document_url("https://www.richbourse.com/documents/report.pdf")
     assert not is_approved_document_url("https://files.invalid/report.pdf")
     assert not is_approved_document_url("http://www.richbourse.com/report.pdf")
@@ -234,3 +234,28 @@ def test_candidate_exposes_logical_identity_and_only_source_reference_metadata()
     assert set(vars(candidate)) == {
         "symbol", "fiscal_year", "document_link", "announcement_title"
     }
+
+
+@pytest.mark.parametrize("limit", range(1, 6))
+def test_annual_window_filters_before_limit_and_preserves_order(limit: int) -> None:
+    html = "".join(
+        f'<div class="ligne_paire"><a href="/{year}.pdf">Rapport annuel Exercice {year}</a></div>'
+        for year in (2027, 2026, 2025, 2025, 2024, 2023, 2022, 2021, 2020)
+    )
+    candidates = parse_annual_candidates(html, "ABC", current_year=2026, limit=limit)
+    assert [candidate.fiscal_year for candidate in candidates] == [
+        2025, 2024, 2023, 2022, 2021
+    ][:limit]
+
+
+def test_annual_window_missing_years_and_rollover() -> None:
+    html = "".join(
+        f'<div class="ligne_paire"><a href="/{year}.pdf">Rapport annuel Exercice {year}</a></div>'
+        for year in (2026, 2025, 2021, 2020)
+    )
+    assert [c.fiscal_year for c in parse_annual_candidates(html, "ABC", current_year=2026)] == [
+        2025, 2021
+    ]
+    assert [c.fiscal_year for c in parse_annual_candidates(html, "ABC", current_year=2027)] == [
+        2026, 2025
+    ]
