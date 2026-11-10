@@ -77,6 +77,10 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
           value = tostring(var.fi1_financial_job_max_reports_per_symbol)
         }
         env {
+          name  = "TRADVISOR_FINANCIALS_SELECTION_MODE"
+          value = "previous_year"
+        }
+        env {
           name  = "TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL"
           value = "1"
         }
