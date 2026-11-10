@@ -136,12 +136,21 @@ class RuntimeConfiguration:
     model_order: tuple[str, ...]
     max_concurrent_requests: int
     max_reports_per_symbol: int
+    selection_mode: str
 
     @classmethod
     def from_environment(
         cls, environ: Mapping[str, str] | None = None
     ) -> "RuntimeConfiguration":
         values = os.environ if environ is None else environ
+        selection_mode = values.get("TRADVISOR_FINANCIALS_SELECTION_MODE", "historical")
+        if not isinstance(selection_mode, str) or selection_mode not in {
+            "historical",
+            "previous_year",
+        }:
+            raise ValueError(
+                "TRADVISOR_FINANCIALS_SELECTION_MODE must be historical or previous_year"
+            )
         if values.get("TRADVISOR_RUNTIME_TARGET") != RUNTIME_TARGET:
             raise ValueError("TRADVISOR_RUNTIME_TARGET must select the FI-1 job")
         environment = values.get("TRADVISOR_ENVIRONMENT", "")
@@ -203,6 +212,7 @@ class RuntimeConfiguration:
                 minimum=1,
                 maximum=MAX_ANNUAL_CANDIDATES,
             ),
+            selection_mode=selection_mode,
         )
 
     def public_summary(self) -> dict[str, Any]:
@@ -217,6 +227,7 @@ class RuntimeConfiguration:
             "model_order": list(self.model_order),
             "max_concurrent_requests": self.max_concurrent_requests,
             "max_reports_per_symbol": self.max_reports_per_symbol,
+            "selection_mode": self.selection_mode,
         }
 
 
@@ -582,10 +593,16 @@ def run_batch(
     model_order: Sequence[str] = MODEL_ORDER,
     max_page_concurrency: int = MAX_PAGE_CONCURRENCY,
     max_annual_candidates: int = MAX_ANNUAL_CANDIDATES,
+    selection_mode: str = "historical",
 ) -> JobOutcome:
     """Run one FI-1 batch without persisting source or provider evidence."""
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is required")
+    if not isinstance(selection_mode, str) or selection_mode not in {
+        "historical",
+        "previous_year",
+    }:
+        raise ValueError("FI-1 selection mode must be historical or previous_year")
     if (
         isinstance(max_duration_seconds, bool)
         or not isinstance(max_duration_seconds, int)
@@ -618,6 +635,7 @@ def run_batch(
                 model_order=model_order,
                 max_page_concurrency=max_page_concurrency,
                 max_annual_candidates=max_annual_candidates,
+                selection_mode=selection_mode,
                 lease=lease,
             )
         except BaseException as error:
@@ -633,6 +651,7 @@ def run_batch(
         model_order=model_order,
         max_page_concurrency=max_page_concurrency,
         max_annual_candidates=max_annual_candidates,
+        selection_mode=selection_mode,
         lease=None,
     )
 
@@ -645,9 +664,10 @@ def _run_batch(
     model_order: Sequence[str],
     max_page_concurrency: int,
     max_annual_candidates: int,
+    selection_mode: str,
     lease: FirestoreExecutionLease | None,
 ) -> JobOutcome:
-    current_year = adapters.utcnow().year
+    current_year = adapters.utcnow().astimezone(timezone.utc).year
     started = adapters.monotonic()
     deadline = started + max_duration_seconds
     counters = {
@@ -685,7 +705,11 @@ def _run_batch(
             richbourse_symbol_page_url(symbol), min(SOURCE_TIMEOUT_SECONDS, timeout)
         )
         return parse_annual_candidates(
-            html, symbol, current_year=current_year, limit=max_annual_candidates
+            html,
+            symbol,
+            current_year=current_year,
+            limit=max_annual_candidates,
+            selection_mode=selection_mode,
         )
 
     rows: list[dict[str, Any]] = []
@@ -907,6 +931,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         model_order=configuration.model_order,
         max_page_concurrency=configuration.max_concurrent_requests,
         max_annual_candidates=configuration.max_reports_per_symbol,
+        selection_mode=configuration.selection_mode,
     )
 
 
