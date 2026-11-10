@@ -217,7 +217,12 @@ def is_approved_document_url(url: str) -> bool:
 
 
 def parse_annual_candidates(
-    html: str, symbol: str, *, current_year: int, limit: int = 5
+    html: str,
+    symbol: str,
+    *,
+    current_year: int,
+    limit: int = 5,
+    selection_mode: str = "historical",
 ) -> tuple[AnnualCandidate, ...]:
     """Parse annual reports from one symbol-filtered page, newest fiscal years first."""
     symbol = symbol.strip()
@@ -225,6 +230,11 @@ def parse_annual_candidates(
         raise ValueError("symbol is required")
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
+    if not isinstance(selection_mode, str) or selection_mode not in (
+        "historical",
+        "previous_year",
+    ):
+        raise ValueError("selection_mode must be 'historical' or 'previous_year'")
 
     parser = _RichBoursePageParser()
     parser.feed(html)
@@ -243,7 +253,10 @@ def parse_annual_candidates(
         if not is_approved_document_url(document_link):
             continue
         year = int(year_match.group(1))
-        if not current_year - 5 <= year < current_year:
+        if selection_mode == "previous_year":
+            if year != current_year - 1:
+                continue
+        elif not current_year - 5 <= year < current_year:
             continue
         # RichBourse pages are newest-first; keep the first link if a year repeats.
         by_year.setdefault(year, AnnualCandidate(symbol, year, document_link, title[:256]))

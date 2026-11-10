@@ -246,6 +246,67 @@ def test_annual_window_filters_before_limit_and_preserves_order(limit: int) -> N
     assert [candidate.fiscal_year for candidate in candidates] == [
         2025, 2024, 2023, 2022, 2021
     ][:limit]
+    assert parse_annual_candidates(
+        html, "ABC", current_year=2026, limit=limit, selection_mode="historical"
+    ) == candidates
+
+
+@pytest.mark.parametrize("limit", [1, 5])
+def test_previous_year_mode_filters_before_limit_and_keeps_first_duplicate(limit: int) -> None:
+    html = "".join(
+        f'<div class="ligne_paire"><a href="/{year}-{suffix}.pdf">'
+        f"Rapport annuel Exercice {year}</a></div>"
+        for year, suffix in (
+            (2027, "future"),
+            (2026, "current"),
+            (2025, "first"),
+            (2025, "duplicate"),
+            (2024, "older"),
+            (2023, "older"),
+            (2022, "older"),
+            (2021, "older"),
+            (2020, "older"),
+        )
+    )
+
+    candidates = parse_annual_candidates(
+        html, "ABC", current_year=2026, limit=limit, selection_mode="previous_year"
+    )
+
+    assert [candidate.fiscal_year for candidate in candidates] == [2025]
+    assert candidates[0].document_link.endswith("/2025-first.pdf")
+
+
+@pytest.mark.parametrize("limit", [1, 5])
+def test_previous_year_mode_does_not_substitute_an_older_report(limit: int) -> None:
+    html = "".join(
+        f'<div class="ligne_paire"><a href="/{year}.pdf">Rapport annuel Exercice {year}</a></div>'
+        for year in (2024, 2021)
+    )
+
+    assert parse_annual_candidates(
+        html, "ABC", current_year=2026, limit=limit, selection_mode="previous_year"
+    ) == ()
+
+
+def test_previous_year_mode_advances_with_supplied_year() -> None:
+    html = "".join(
+        f'<div class="ligne_paire"><a href="/{year}.pdf">Rapport annuel Exercice {year}</a></div>'
+        for year in (2027, 2026, 2025, 2024)
+    )
+
+    candidates = parse_annual_candidates(
+        html, "ABC", current_year=2027, selection_mode="previous_year"
+    )
+    assert [candidate.fiscal_year for candidate in candidates] == [2026]
+
+
+@pytest.mark.parametrize("selection_mode", [None, "", "latest", 2025])
+def test_selection_mode_rejects_unknown_values(selection_mode: object) -> None:
+    with pytest.raises(ValueError, match="selection_mode must be"):
+        parse_annual_candidates(
+            "", "ABC", current_year=2026, selection_mode=selection_mode  # type: ignore[arg-type]
+        )
 
 
 def test_annual_window_missing_years_and_rollover() -> None:
