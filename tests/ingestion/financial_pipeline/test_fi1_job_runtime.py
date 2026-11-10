@@ -74,6 +74,7 @@ def test_runtime_configuration_consumes_terraform_managed_values() -> None:
     assert configuration.model_order == MODEL_ORDER
     assert configuration.max_concurrent_requests == 4
     assert configuration.max_reports_per_symbol == 5
+    assert configuration.selection_mode == "historical"
 
 
 @pytest.mark.parametrize(
@@ -85,6 +86,8 @@ def test_runtime_configuration_consumes_terraform_managed_values() -> None:
         ("TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS", "5"),
         ("TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL", "6"),
         ("TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL", "2"),
+        ("TRADVISOR_FINANCIALS_SELECTION_MODE", ""),
+        ("TRADVISOR_FINANCIALS_SELECTION_MODE", "unexpected"),
     ],
 )
 def test_runtime_configuration_rejects_unapproved_values(name: str, value: str) -> None:
@@ -95,26 +98,35 @@ def test_runtime_configuration_rejects_unapproved_values(name: str, value: str) 
         RuntimeConfiguration.from_environment(environment)
 
 
+@pytest.mark.parametrize("selection_mode", ["historical", "previous_year"])
 def test_command_config_check_uses_injected_non_secret_environment(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    selection_mode: str,
 ) -> None:
     for name, value in runtime_environment().items():
         monkeypatch.setenv(name, value)
+    monkeypatch.setenv("TRADVISOR_FINANCIALS_SELECTION_MODE", selection_mode)
 
     main(["--check-config"])
 
     output = capsys.readouterr().out
     assert '"runtime_target":"financial_ingestion_job"' in output
     assert '"max_concurrent_requests":4' in output
+    assert f'"selection_mode":"{selection_mode}"' in output
     assert "OPENROUTER_API_KEY" not in output
 
 
-def test_command_passes_injected_bounds_and_models_to_batch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("selection_mode", ["historical", "previous_year"])
+def test_command_passes_injected_bounds_models_and_mode_to_batch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    selection_mode: str,
 ) -> None:
     for name, value in runtime_environment().items():
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-secret")
+    monkeypatch.setenv("TRADVISOR_FINANCIALS_SELECTION_MODE", selection_mode)
     adapters = object()
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(fi1_job, "_default_adapters", lambda *args: adapters)
@@ -133,6 +145,7 @@ def test_command_passes_injected_bounds_and_models_to_batch(
             "model_order": MODEL_ORDER,
             "max_page_concurrency": 4,
             "max_annual_candidates": 5,
+            "selection_mode": selection_mode,
         }
     ]
     assert "test-only-secret" not in capsys.readouterr().out
@@ -296,6 +309,94 @@ def test_batch_uses_current_year_for_report_selection(year: int, expected: list[
     run_batch(adapters, api_key="runtime-secret")
 
     assert [row["fiscal_year"] for row in fake.writes[0][0]] == expected
+
+
+def test_previous_year_mode_selects_only_utc_previous_year() -> None:
+    fake = Harness(years=(2026, 2025, 2024, 2021))
+    adapters = fake.adapters()
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            # Local calendar says 2027-01-01, but the instant is still 2026 UTC.
+            "utcnow": lambda: datetime(2027, 1, 1, 0, 30, tzinfo=timezone(timedelta(hours=1))),
+        }
+    )
+
+    outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="previous_year")
+
+    assert outcome.annual_candidates == 1
+    assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2025]
+    assert [url.rsplit("-", 1)[-1].split(".", 1)[0] for url in fake.downloads] == ["2025"]
+
+
+def test_previous_year_without_target_report_has_no_extraction_or_write() -> None:
+    fake = Harness(years=(2024, 2021))
+
+    outcome = run(fake, selection_mode="previous_year")
+
+    assert outcome.annual_candidates == 0
+    assert fake.downloads == []
+    assert fake.attempts == []
+    assert fake.writes == []
+    assert fake.completions == []
+
+
+def test_previous_year_target_stays_fixed_when_clock_crosses_utc_new_year() -> None:
+    fake = Harness(symbols=("ABC", "DEF"), years=(2026, 2025, 2024))
+    clock_values = iter(
+        [
+            datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc),
+            datetime(2027, 1, 1, 0, 1, tzinfo=timezone.utc),
+            datetime(2027, 1, 1, 0, 2, tzinfo=timezone.utc),
+        ]
+    )
+    adapters = fake.adapters()
+    adapters = RuntimeAdapters(**{**adapters.__dict__, "utcnow": lambda: next(clock_values)})
+
+    outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="previous_year")
+
+    assert outcome.annual_candidates == 2
+    assert [row["fiscal_year"] for rows, _ in fake.writes for row in rows] == [2025, 2025]
+
+
+def test_invalid_run_batch_mode_fails_before_lease_or_adapter_access() -> None:
+    fake = Harness()
+    adapters = fake.adapters()
+    lease_calls: list[bool] = []
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "execution_lease": lambda: lease_calls.append(True),
+        }
+    )
+
+    with pytest.raises(ValueError, match="selection mode"):
+        run_batch(adapters, api_key="runtime-secret", selection_mode="")
+
+    assert lease_calls == []
+    assert fake.fetches == []
+    assert fake.downloads == []
+    assert fake.state_reads == 0
+
+
+@pytest.mark.parametrize("selection_mode", ["", "unknown"])
+def test_main_rejects_invalid_mode_before_constructing_backing_adapters(
+    monkeypatch: pytest.MonkeyPatch, selection_mode: str
+) -> None:
+    for name, value in runtime_environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("TRADVISOR_FINANCIALS_SELECTION_MODE", selection_mode)
+    adapter_calls: list[bool] = []
+    monkeypatch.setattr(
+        fi1_job,
+        "_default_adapters",
+        lambda *args: adapter_calls.append(True),
+    )
+
+    with pytest.raises(ValueError, match="TRADVISOR_FINANCIALS_SELECTION_MODE"):
+        main([])
+
+    assert adapter_calls == []
 
 
 def test_full_batch_uses_only_injected_offline_adapters() -> None:
@@ -513,7 +614,13 @@ def _lease_store(document: _LeaseDocument):
     return transact
 
 
-def test_concurrent_fi1_runs_use_transactional_compare_and_set_lease() -> None:
+@pytest.mark.parametrize(
+    ("first_mode", "competing_mode"),
+    [("historical", "previous_year"), ("previous_year", "historical")],
+)
+def test_concurrent_fi1_modes_use_the_same_transactional_lease(
+    first_mode: str, competing_mode: str
+) -> None:
     fake = Harness()
     document = _LeaseDocument({})
     transact = _lease_store(document)
@@ -539,7 +646,9 @@ def test_concurrent_fi1_runs_use_transactional_compare_and_set_lease() -> None:
     )
     results: list[object] = []
     worker = threading.Thread(
-        target=lambda: results.append(run_batch(adapters, api_key="runtime-secret"))
+        target=lambda: results.append(
+            run_batch(adapters, api_key="runtime-secret", selection_mode=first_mode)
+        )
     )
     worker.start()
     assert started.wait(timeout=2)
@@ -553,7 +662,7 @@ def test_concurrent_fi1_runs_use_transactional_compare_and_set_lease() -> None:
         }
     )
     with pytest.raises(ActiveExecutionError, match="another FI-1 execution is active"):
-        run_batch(competing, api_key="runtime-secret")
+        run_batch(competing, api_key="runtime-secret", selection_mode=competing_mode)
 
     release.set()
     worker.join(timeout=3)
