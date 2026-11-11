@@ -86,8 +86,23 @@ mode considers only 2025 annual reports, and in 2027 it considers only 2026
 annual reports. It selects at most one eligible annual report per symbol after
 the existing origin, redirect, annual-report, and unchanged-link checks. A
 symbol with no eligible report, or whose link is unchanged, does no extraction
-or write work. The execution still records its bounded terminal outcome and
-completion is published only after all changed batches commit.
+or write work. Selection uses the report's fiscal-year label, not its
+publication or announcement date: a 2025 fiscal-year report published during
+2026 remains eligible in `previous_year` mode. Extraction must return the same
+fiscal year as the source label.
+
+The FI-1 Job sends the existing sanitized `financials` completion only after
+changed rows have committed and the whole run has no failures; the existing
+completion-control path then requests Long-Term publication. A run with no
+committed changed rows (for example, no candidates or only unchanged links)
+does not emit completion, and any failed run suppresses completion even if an
+earlier batch committed. A bounded `lease` failure means another FI-1
+execution currently owns the shared lease. Let that execution finish and
+release its lease before retrying; do not start an overlapping run or clear the
+lease manually. After the earlier execution has ended, a new invocation reads
+current committed BigQuery state: committed batches remain durable and are
+skipped by matching link, while incomplete work can be retried from persisted
+state. Do not attempt to resume in-memory work from the failed process.
 
 When the selection-mode variable is omitted, the runtime preserves the
 backward-compatible `historical` mode: it considers the existing Y−5 through
