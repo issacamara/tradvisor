@@ -57,3 +57,37 @@ Use the following checklist only after separate owner approval for development d
 - [ ] Record the workflow, Terraform plan and sanitized verification result against the exact commit and image digest.
 
 Required approvals remain separate: development Terraform apply/deployment, FI-1 schedule activation, any paid provider call or BigQuery query, and production promotion. Production promotion requires a human to review and approve the same immutable image digest; no production action is authorized by this record. Schedule activation and provider/query execution are not part of this verification checklist unless separately approved.
+
+## #415 selection-mode verification and operating guidance
+
+This section defines offline checks and sanitized evidence for the two supported
+FI-1 selection modes. It does not update the historical cutover result above or
+claim that a cloud release, job execution, or schedule activation occurred.
+
+| Acceptance check | Offline evidence | Expected result |
+|---|---|---|
+| Omitted mode | Runtime configuration and image `--check-config` smoke | Configuration reports `historical`, preserving existing callers. |
+| Explicit `historical` mode | Runtime configuration/parser suites and image smoke | The existing Y−5 through Y−1 window and report cap remain in effect. |
+| Explicit `previous_year` mode | Runtime configuration/parser suites and image smoke | Only UTC calendar year Y−1 is eligible, with no more than one report per symbol. |
+| Invalid or blank mode | Runtime configuration suite and image smoke | Validation fails before backing-service access. |
+| Monthly operation | Reviewed Terraform/runtime configuration | The monthly Scheduler passes `previous_year`; mode is not inferred. |
+
+For an approved monthly verification, record the exact development commit and
+manifest-bound immutable FI-1 image identity, workflow and plan run identifiers,
+effective non-secret selection mode, schedule activation state, and sanitized
+pass/fail outcomes. If a Job execution is separately authorized, record its
+identifier and bounded terminal result. A no-candidate or unchanged-link symbol
+must cause no extraction, provider request, or write. A changed run may publish
+completion only after all changed batches commit successfully. Keep historical
+catch-up as a separately authorized manual execution using an execution-only
+`historical` override; never persist that override in the scheduled Job.
+
+Rollback uses the last reviewed image and configuration through the development
+delivery workflow. Verify the effective mode offline before delivery and keep
+the schedule paused unless activation has separate approval. Do not treat this
+checklist as approval to apply Terraform, activate a schedule, execute the Job,
+make a paid provider call or BigQuery query, or operate in production. Public
+evidence is limited to sanitized commit/run references, image identity where
+approved for publication, selection mode, activation state, and outcomes. Never
+publish private infrastructure details, source documents, extracted data,
+prompts, provider responses, credentials, or raw logs.

@@ -58,22 +58,40 @@ jobs:
       - name: Build and smoke-check the FI-1 job image
         run: |
           docker build --file functions/financials/Dockerfile --tag tradvisor-fi1-job:ci .
-          docker run --rm \
-            -e TRADVISOR_RUNTIME_TARGET=financial_ingestion_job \
-            -e TRADVISOR_ENVIRONMENT=development \
-            -e GOOGLE_CLOUD_PROJECT=fixture-project \
-            -e TRADVISOR_TARGET_PROJECT_ID=fixture-project \
-            -e TRADVISOR_ENVIRONMENT_PROJECT_ID=fixture-project \
-            -e TRADVISOR_INGESTION_DATASET=stocks \
-            -e TRADVISOR_INGESTION_COMPANIES_TABLE=fixture-project.stocks.brvm_companies \
-            -e TRADVISOR_INGESTION_FINANCIALS_TABLE=fixture-project.stocks.financials \
-            -e TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE=fixture-project.stocks.financials_staging \
-            -e TRADVISOR_FINANCIALS_MODEL_PRIMARY=gemma-4-31b-it \
-            -e TRADVISOR_FINANCIALS_MODEL_FALLBACKS=nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini \
-            -e TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS=4 \
-            -e TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL=5 \
-            -e TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL=1 \
-            tradvisor-fi1-job:ci --check-config
+          docker_check_config() {
+            docker run --rm \
+              -e TRADVISOR_RUNTIME_TARGET=financial_ingestion_job \
+              -e TRADVISOR_ENVIRONMENT=development \
+              -e GOOGLE_CLOUD_PROJECT=fixture-project \
+              -e TRADVISOR_TARGET_PROJECT_ID=fixture-project \
+              -e TRADVISOR_ENVIRONMENT_PROJECT_ID=fixture-project \
+              -e TRADVISOR_INGESTION_DATASET=stocks \
+              -e TRADVISOR_INGESTION_COMPANIES_TABLE=fixture-project.stocks.brvm_companies \
+              -e TRADVISOR_INGESTION_FINANCIALS_TABLE=fixture-project.stocks.financials \
+              -e TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE=fixture-project.stocks.financials_staging \
+              -e TRADVISOR_FINANCIALS_MODEL_PRIMARY=gemma-4-31b-it \
+              -e TRADVISOR_FINANCIALS_MODEL_FALLBACKS=nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini \
+              -e TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS=4 \
+              -e TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL=5 \
+              -e TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL=1 \
+              "$@" \
+              tradvisor-fi1-job:ci --check-config
+          }
+
+          docker_check_config | grep -q '"selection_mode":"historical"'
+          docker_check_config \
+            -e TRADVISOR_FINANCIALS_SELECTION_MODE=historical \
+            | grep -q '"selection_mode":"historical"'
+          docker_check_config \
+            -e TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year \
+            | grep -q '"selection_mode":"previous_year"'
+          if docker_check_config \
+            -e TRADVISOR_FINANCIALS_SELECTION_MODE=invalid \
+            > /tmp/fi1-invalid-mode.log 2>&1; then
+            echo "FI-1 accepted an invalid selection mode."
+            exit 1
+          fi
+          grep -q TRADVISOR_FINANCIALS_SELECTION_MODE /tmp/fi1-invalid-mode.log
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
