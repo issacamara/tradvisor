@@ -74,6 +74,11 @@ exception bodies remain non-retained process material and never enter stdout.
 
 ## Financial-year selection and operations
 
+Design authority is the [FI-1 architecture amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6779080647)
+delivered through predecessor PRs [#416](https://github.com/issacamara/tradvisor/pull/416),
+[#417](https://github.com/issacamara/tradvisor/pull/417), and
+[#418](https://github.com/issacamara/tradvisor/pull/418) for issues #412–#414.
+
 The scheduled monthly run uses the Terraform-injected
 `TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year`. At the start of each
 execution the Job captures the current UTC calendar year once; in 2026 this

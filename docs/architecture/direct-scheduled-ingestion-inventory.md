@@ -43,6 +43,11 @@ changes.
 
 ## FI-1 monthly and historical behavior
 
+This operating inventory follows the [FI-1 architecture amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6779080647)
+and the predecessor deliveries: [PR #416](https://github.com/issacamara/tradvisor/pull/416),
+[PR #417](https://github.com/issacamara/tradvisor/pull/417), and
+[PR #418](https://github.com/issacamara/tradvisor/pull/418), which delivered issues #412–#414.
+
 The monthly financial Scheduler is configured to pass
 `TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year` to the FI-1 Job. The Job
 captures UTC calendar year Y once per execution and considers only annual

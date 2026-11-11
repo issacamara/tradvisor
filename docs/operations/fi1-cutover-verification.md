@@ -60,6 +60,11 @@ Required approvals remain separate: development Terraform apply/deployment, FI-1
 
 ## #415 selection-mode verification and operating guidance
 
+Implementation authority is the [FI-1 architecture amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6779080647),
+delivered by predecessor PRs [#416](https://github.com/issacamara/tradvisor/pull/416),
+[#417](https://github.com/issacamara/tradvisor/pull/417), and
+[#418](https://github.com/issacamara/tradvisor/pull/418) for issues #412–#414.
+
 This section defines offline checks and sanitized evidence for the two supported
 FI-1 selection modes. It does not update the historical cutover result above or
 claim that a cloud release, job execution, or schedule activation occurred.

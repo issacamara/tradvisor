@@ -92,6 +92,13 @@ jobs:
             exit 1
           fi
           grep -q TRADVISOR_FINANCIALS_SELECTION_MODE /tmp/fi1-invalid-mode.log
+          if docker_check_config \
+            -e TRADVISOR_FINANCIALS_SELECTION_MODE= \
+            > /tmp/fi1-blank-mode.log 2>&1; then
+            echo "FI-1 accepted a blank selection mode."
+            exit 1
+          fi
+          grep -q TRADVISOR_FINANCIALS_SELECTION_MODE /tmp/fi1-blank-mode.log
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
