@@ -40,3 +40,39 @@ schedule. No Terraform plan/apply, schedule activation, job execution, paid
 provider call, paid query, or production operation is authorized by this
 documentation. Use the separately approved delivery path for environment
 changes.
+
+## FI-1 monthly and historical behavior
+
+This operating inventory follows the [FI-1 architecture amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6779080647)
+and the predecessor deliveries: [PR #416](https://github.com/issacamara/tradvisor/pull/416),
+[PR #417](https://github.com/issacamara/tradvisor/pull/417), and
+[PR #418](https://github.com/issacamara/tradvisor/pull/418), which delivered issues #412–#414.
+
+The monthly financial Scheduler is configured to pass
+`TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year` to the FI-1 Job. The Job
+captures UTC calendar year Y once per execution and considers only annual
+reports for Y−1, with at most one eligible report per symbol. Normal origin,
+redirect, report-type, duplicate-year, and unchanged-link rules still apply.
+No eligible or unchanged report produces no extraction, provider request, or
+financial write for that symbol. Completion remains contingent on every
+changed batch committing successfully.
+
+Omitting the mode remains a backward-compatible `historical` selection across
+Y−5 through Y−1, bounded by the configured cap. Blank and unsupported values
+fail validation before service access. Historical catch-up is for explicitly
+authorized manual executions only; it must use an execution-only mode override
+and must not persistently change the monthly Scheduler or Job configuration.
+Development execution and any paid provider/query activity require their own
+approval. The configured schedule remains paused until separately activated.
+If a report arrives after its fiscal year is no longer Y−1, the monthly run
+will skip it; an authorized historical run can select it only while it remains
+inside the Y−5..Y−1 window. Missing older history can leave Long-Term Growth
+coverage incomplete even though existing financial rows are retained, and
+same-URL source corrections remain undetected.
+
+For rollback, restore the last reviewed release configuration and immutable
+image through the approved delivery workflow, then verify its effective mode
+offline. Keep schedule activation separate and preserve the paused state unless
+it is separately approved. This inventory describes intended configuration;
+it is not evidence that a release, rollback, execution, or schedule activation
+occurred.

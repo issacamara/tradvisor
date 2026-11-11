@@ -71,3 +71,83 @@ bounded stage and error class. A single sanitized completion is sent only after
 all current run batches commit successfully and no failure remains. PDFs,
 extracted text, prompts, provider responses, credentials, titles, links, and
 exception bodies remain non-retained process material and never enter stdout.
+
+## Financial-year selection and operations
+
+Design authority is the [FI-1 architecture amendment](https://github.com/issacamara/tradvisor/issues/1#issuecomment-6779080647)
+delivered through predecessor PRs [#416](https://github.com/issacamara/tradvisor/pull/416),
+[#417](https://github.com/issacamara/tradvisor/pull/417), and
+[#418](https://github.com/issacamara/tradvisor/pull/418) for issues #412–#414.
+
+The scheduled monthly run uses the Terraform-injected
+`TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year`. At the start of each
+execution the Job captures the current UTC calendar year once; in 2026 this
+mode considers only 2025 annual reports, and in 2027 it considers only 2026
+annual reports. It selects at most one eligible annual report per symbol after
+the existing origin, redirect, annual-report, and unchanged-link checks. A
+symbol with no eligible report, or whose link is unchanged, does no extraction
+or write work. Selection uses the report's fiscal-year label, not its
+publication or announcement date: a 2025 fiscal-year report published during
+2026 remains eligible in `previous_year` mode. Extraction must return the same
+fiscal year as the source label.
+
+The FI-1 Job sends the existing sanitized `financials` completion only after
+changed rows have committed and the whole run has no failures; the existing
+completion-control path then requests Long-Term publication. A run with no
+committed changed rows (for example, no candidates or only unchanged links)
+does not emit completion, and any failed run suppresses completion even if an
+earlier batch committed. A bounded `lease` failure means another FI-1
+execution currently owns the shared lease. Let that execution finish and
+release its lease before retrying; do not start an overlapping run or clear the
+lease manually. After the earlier execution has ended, a new invocation reads
+current committed BigQuery state: committed batches remain durable and are
+skipped by matching link, while incomplete work can be retried from persisted
+state. Do not attempt to resume in-memory work from the failed process.
+
+When the selection-mode variable is omitted, the runtime preserves the
+backward-compatible `historical` mode: it considers the existing Y−5 through
+Y−1 window, up to the configured cap of five reports per symbol. An explicit
+blank or unknown value fails configuration validation before backing services
+are accessed. Do not infer the mode from a schedule name or report count.
+
+Historical catch-up is an operational exception for an explicitly authorized
+manual run. Use the same immutable FI-1 image and inject
+`TRADVISOR_FINANCIALS_SELECTION_MODE=historical` for that execution only; do
+not change the scheduled Job's persistent environment or activate a schedule
+to perform catch-up. For example, after approval, an operator can invoke the
+existing Job with an execution-scoped environment override:
+
+```sh
+gcloud run jobs execute FI1_JOB \
+  --project=DEV_PROJECT \
+  --region=REGION \
+  --wait \
+  --update-env-vars=TRADVISOR_FINANCIALS_SELECTION_MODE=historical
+```
+
+Replace placeholders only after confirming the development Job, project, and
+region. Before execution, verify effective permission for both
+`run.jobs.run` and `run.jobs.runWithOverrides` on the target Job; the override
+permission is required when using `--update-env-vars`. Obtain separate
+approval for the development Job execution and for any paid provider call or
+BigQuery query. The override applies to this execution and does not change the
+stored Job or monthly schedule. Record only the approved change/run identifiers,
+selected mode, sanitized outcome, and result. Do not retain source documents,
+extracted data, prompts, provider responses, credentials, or raw exception
+messages.
+
+If a missing fiscal-year report arrives after its year is no longer Y−1, the
+monthly mode will not select it. For example, a 2025 report arriving in 2027
+requires an authorized historical run; it remains eligible only while inside
+the historical Y−5..Y−1 window. A report older than that window needs separate
+review. Existing financial rows for older years remain stored, but missing
+history can leave Long-Term Growth coverage incomplete. A source correction
+that keeps the same document URL remains outside detection because unchanged
+links are skipped.
+
+If the monthly `previous_year` behavior needs to be rolled back, restore the
+last reviewed FI-1 release configuration and image through the approved
+development delivery workflow, retaining the monthly trigger's paused state
+unless schedule activation is separately approved. Validate the resolved
+selection mode with the image's offline `--check-config` smoke check before
+delivery. A rollback must not run a catch-up execution or change production.
