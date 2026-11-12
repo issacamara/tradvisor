@@ -296,23 +296,22 @@ def read_chart(
     if not isinstance(raw, Mapping):
         raise AnalysisNotReady
     payload = dict(raw)
-    payload.update({"symbol": symbol, "from": from_date, "to": to_date, "batch_id": context.active.batch_id})
+    payload.update({"symbol": symbol, "batch_id": context.active.batch_id})
     try:
-        chart = StockChartData.model_validate(payload)
+        chart = StockChartData.model_validate_json(json.dumps(payload, default=str))
     except (TypeError, ValueError) as error:
         raise AnalysisNotReady from error
     points = tuple(point for point in chart.points if from_date <= point.session_date <= to_date)
     if series is not None:
         selected_points = []
         for point in points:
-            selected_points.append(ChartPoint.model_validate({
-                **point.model_dump(mode="python"),
-                "indicators": {
-                    name: point.indicators[name]
-                    for name in series
-                    if name != "ohlcv" and name in point.indicators
-                },
-            }))
+            payload = point.model_dump(mode="json")
+            payload["indicators"] = {
+                name: payload["indicators"][name]
+                for name in series
+                if name != "ohlcv" and name in payload["indicators"]
+            }
+            selected_points.append(ChartPoint.model_validate_json(json.dumps(payload)))
         points = tuple(selected_points)
     return StockChartData.model_validate({
         "symbol": symbol,
