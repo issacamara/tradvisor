@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from backend.analysis.batch import CalculationOutput
+from backend.analysis.batch import BatchValidationError, CalculationOutput
 from backend.analysis.batch import StockCalculation
 from backend.analysis.batch import build_analytical_batch
 from backend.jobs.daily import AnalyticalInputSnapshot
@@ -62,6 +62,41 @@ def test_bigquery_output_calculator_rejects_unknown_status() -> None:
 
     with pytest.raises(ValueError, match="status must be available or unavailable"):
         BigQueryOutputCalculator().calculate(invalid, symbol="NTLC")
+
+
+def test_bigquery_output_calculator_rejects_invalid_available_chart_without_details() -> None:
+    invalid = snapshot()
+    point = {
+        "session_date": "2026-09-27",
+        "status": "traded",
+        "open": None,
+        "high": None,
+        "low": None,
+        "close": None,
+        "last_traded_close": None,
+        "analytical_carried_close": None,
+        "volume": None,
+        "indicators": {},
+        "source_evidence": [],
+    }
+    invalid.payload["calculations"]["NTLC"]["chart"] = {  # type: ignore[index]
+        "status": "available",
+        "value": {
+            "symbol": "NTLC",
+            "from": "2026-09-27",
+            "to": "2026-09-27",
+            "batch_id": "batch-pending",
+            "points": [point, point],
+        },
+    }
+
+    with pytest.raises(
+        BatchValidationError, match="available chart output failed schema validation"
+    ) as error:
+        BigQueryOutputCalculator().calculate(invalid, symbol="NTLC")
+
+    assert "NTLC" not in str(error.value)
+    assert "2026-09-27" not in str(error.value)
 
 
 def test_bigquery_output_calculator_serializes_chart_prices_as_xof_money() -> None:
