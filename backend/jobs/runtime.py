@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, Protocol, cast
 
-from backend.analysis.batch import CalculationOutput, StockCalculation
+from backend.analysis.batch import BatchValidationError, CalculationOutput, StockCalculation
 from backend.configuration import RuntimeConfiguration
 from backend.analysis.atr import calculate_atr14
 from backend.analysis.ema import calculate_ema20_50
@@ -28,9 +28,11 @@ from backend.analysis.warmup import required_market_days
 from backend.jobs.daily import (
     AnalyticalInputSnapshot,
     AnalyticalSnapshotReader,
+    DailyError,
     DailyAnalyticalWorker,
     VersionedCalculator,
 )
+from backend.openapi import StockChartData
 from backend.publication.analysis import AnalyticalPublisher
 from backend.store.firestore_sdk import FirestoreSdkStore
 
@@ -71,16 +73,26 @@ class BigQuerySharesReader(AnalyticalSnapshotReader):
             "ORDER BY symbol, date",
             job_config=bigquery.QueryJobConfig(),
         ).result())
-        market_data = [
-            {
+        market_by_session: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in market_rows:
+            if row["date"] is None:
+                continue
+            item = {
                 "symbol": str(row["symbol"]),
                 "session_date": row["date"].isoformat(),
                 "open": row["open"], "high": row["high"], "low": row["low"],
                 "close": row["close"], "volume": row["volume"],
             }
-            for row in market_rows
-            if row["date"] is not None
-        ]
+            key = (item["symbol"], item["session_date"])
+            previous = market_by_session.get(key)
+            if previous is not None:
+                if previous != item:
+                    raise DailyError(
+                        "market input contains conflicting OHLCV observations for one symbol/session"
+                    )
+                continue
+            market_by_session[key] = item
+        market_data = [market_by_session[key] for key in sorted(market_by_session)]
         financial_data: list[dict[str, Any]] = []
         financial_table = self._financial_table
         if financial_table:
@@ -195,6 +207,16 @@ class BigQueryOutputCalculator(VersionedCalculator):
             for name in snapshot.expected_output_names
             if name not in present
         )
+        for output in result:
+            if output.name == "chart" and output.status == "available":
+                try:
+                    StockChartData.model_validate_json(
+                        json.dumps(output.value, default=str)
+                    )
+                except (TypeError, ValueError):
+                    raise BatchValidationError(
+                        "available chart output failed schema validation"
+                    ) from None
         return StockCalculation(symbol=symbol, outputs=tuple(result))
 
 

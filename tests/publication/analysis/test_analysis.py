@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -22,6 +22,9 @@ from backend.publication.analysis import (
     PublicationError,
     ServingStock,
 )
+from backend.jobs.daily import DailyAnalyticalWorker, DailyError
+from backend.jobs.runtime import BigQueryOutputCalculator, BigQuerySharesReader
+from backend.read_api.analysis import read_chart
 from backend.store.repositories import DocumentKey, Page, VersionedDocument
 from backend.store.transactions import Transaction
 
@@ -220,6 +223,80 @@ def test_batch_pinned_pages_remain_on_requested_version_after_promotion() -> Non
         f"analysis_batches/{quote(second.batch_id, safe='')}/results" in query
         for query in store.queries
     )
+
+
+def test_duplicate_market_sessions_publish_once_and_conflicts_preserve_active_batch() -> None:
+    class QueryResult:
+        def __init__(self, rows: list[dict[str, Any]]) -> None:
+            self._rows = rows
+
+        def result(self) -> list[dict[str, Any]]:
+            return self._rows
+
+    class QueryClient:
+        def __init__(self, rows: list[dict[str, Any]]) -> None:
+            self.market_rows = rows
+
+        def query(self, query: str, *, job_config: Any) -> QueryResult:
+            del job_config
+            return QueryResult(self.market_rows if "SELECT symbol, date" in query else [])
+
+    def market_row(close: int, session: date = date(2026, 7, 10)) -> dict[str, Any]:
+        return {
+            "symbol": "AAA",
+            "date": session,
+            "open": 100,
+            "high": 110,
+            "low": 90,
+            "close": close,
+            "volume": 10,
+        }
+
+    client = QueryClient(
+        [market_row(105) for _ in range(260)] + [market_row(106, date(2026, 7, 11))]
+    )
+    store = MemoryStore()
+    publisher = AnalyticalPublisher(store)
+    reader = BigQuerySharesReader(
+        client,
+        "dev.dataset.market",
+        "dev.dataset.financial",
+        active_publication=publisher.active_publication,
+    )
+    worker = DailyAnalyticalWorker(
+        snapshots=reader,
+        calculator=BigQueryOutputCalculator(),
+        publisher=publisher,
+    )
+
+    first = worker.run("shares-latest")
+    assert first.status == "published"
+    assert first.batch_id is not None
+    active = publisher.active_publication()
+    assert active is not None
+    published_stock = publisher.read_batch(first.batch_id, limit=1).items[0]
+    swing = next(output for output in published_stock.outputs if output.name == "swing")
+    assert swing.status == "available"
+    assert swing.value["entry_action"] == "insufficient_data"
+
+    chart = read_chart(
+        publisher,
+        symbol="AAA",
+        from_date=date(2026, 7, 10),
+        to_date=date(2026, 7, 11),
+        series=None,
+        cursor_secret=b"test-secret",
+        now=lambda: datetime.now(timezone.utc),
+    )
+    assert [point.session_date for point in chart.points] == [
+        date(2026, 7, 10),
+        date(2026, 7, 11),
+    ]
+
+    client.market_rows = [market_row(105), market_row(106)]
+    with pytest.raises(DailyError, match="conflicting OHLCV observations"):
+        worker.run("shares-latest")
+    assert publisher.active_publication() == active
 
 
 def test_immutable_result_conflict_is_not_overwritten_or_promoted() -> None:
