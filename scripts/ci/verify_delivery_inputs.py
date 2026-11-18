@@ -51,7 +51,6 @@ def validate(root: Path) -> None:
         "helper.py",
         "ingestion_observability.py",
         "fi1_job.py",
-        "fi1_contracts.py",
         "insert_financials.py",
     ):
         if runtime_file not in fi1_dockerignore:

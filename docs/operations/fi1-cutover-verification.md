@@ -28,7 +28,7 @@ Run the listed offline checks against the candidate integration head before cuto
 
 | FI-1 area | Offline evidence |
 |---|---|
-| Source parsing, extraction validation, model fallback and bounded attempts | `tests/ingestion/financial_pipeline/test_fi1_contracts.py`, `tests/ingestion/financial_pipeline/test_fi1_job_runtime.py` |
+| Source parsing, extraction validation, model fallback and bounded attempts | `tests/ingestion/financial_pipeline/test_fi1_parsing.py`, `tests/ingestion/financial_pipeline/test_fi1_job_runtime.py` |
 | State read, staging, MERGE ordering, idempotency and failure behavior | `tests/ingestion/financial_pipeline/test_fi1_job_runtime.py` |
 | No source/extraction persistence and sanitized completion | `tests/ingestion/financial_pipeline/test_fi1_job_runtime.py`, `tests/infrastructure/financials/test_fi1_job.py` |
 | Locked packaging and release digest/config binding | `tests/ci/test_delivery_inputs.py`, `tests/infrastructure/release/test_manifest.py`, `tests/packaging/test_cloud_only_ingestion.py` |

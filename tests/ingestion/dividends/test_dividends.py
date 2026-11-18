@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "dividends" / "scrape_dividends.py"
+previous_bs4 = sys.modules.get("bs4")
 
 # The pure normalization helpers are tested without installing the legacy
 # scraper's network/runtime dependencies.
@@ -29,6 +30,10 @@ assert SPEC is not None and SPEC.loader is not None
 module = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = module
 SPEC.loader.exec_module(module)
+if previous_bs4 is None:
+    sys.modules.pop("bs4", None)
+else:
+    sys.modules["bs4"] = previous_bs4
 
 
 def test_normalized_payment_preserves_explicit_facts_without_inference() -> None:

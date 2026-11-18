@@ -9,7 +9,7 @@ COPY archive/legacy-ingestion/scripts/requirements.lock /app/requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes -r /app/requirements.lock
 
 RUN mkdir -p /app/functions/financials
-COPY functions/financials/fi1_job.py functions/financials/fi1_contracts.py /app/functions/financials/
+COPY functions/financials/fi1_job.py /app/functions/financials/
 COPY functions/financials/insert_financials.py /app/insert_financials.py
 COPY archive/legacy-ingestion/scripts/helper.py /app/helper.py
 COPY archive/legacy-ingestion/scripts/ingestion_observability.py /app/ingestion_observability.py

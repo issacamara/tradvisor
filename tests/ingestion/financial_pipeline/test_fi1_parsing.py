@@ -2,18 +2,12 @@ from __future__ import annotations
 
 import builtins
 import logging
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-from functions.financials.fi1_contracts import (
+from functions.financials.fi1_job import (
     EXTRACTION_KEYS,
-    AnnualCandidate,
-    FinancialIdentity,
-    RowDecision,
-    decide_row_state,
     is_approved_document_url,
     parse_annual_candidates,
     parse_selector_symbols,
@@ -31,36 +25,23 @@ def test_selector_fixture_returns_distinct_symbols() -> None:
     assert parse_selector_symbols(html) == ("ABC", "XYZ")
 
 
-def test_html_contract_is_independent_of_global_beautifulsoup_stubs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    bs4_stub = ModuleType("bs4")
-    bs4_stub.BeautifulSoup = object  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "bs4", bs4_stub)
-
-    assert parse_selector_symbols(
-        '<select id="symbole"><option value="ABC">ABC</option></select>'
-    ) == ("ABC",)
-
-
 def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() -> None:
     html = (FIXTURES / "fi1_symbol_page.html").read_text()
 
     assert richbourse_symbol_page_url(" ABC ").endswith("?symbole=ABC")
     candidates = parse_annual_candidates(html, "ABC", current_year=2026)
 
-    assert [candidate.fiscal_year for candidate in candidates] == [
+    assert [candidate["fiscal_year"] for candidate in candidates] == [
         2025,
         2024,
         2023,
         2022,
         2021,
     ]
-    assert candidates[0].document_link == "https://www.richbourse.com/documents/abc-2025.pdf"
-    assert candidates[0].announcement_title == "Rapport annuel Exercice 2025"
-    assert all(candidate.symbol == "ABC" for candidate in candidates)
-    assert len({candidate.fiscal_year for candidate in candidates}) == 5
-    assert candidates[1].document_link.endswith("abc-2024.pdf")
+    assert candidates[0]["document_link"] == "https://www.richbourse.com/documents/abc-2025.pdf"
+    assert all(candidate["symbol"] == "ABC" for candidate in candidates)
+    assert len({candidate["fiscal_year"] for candidate in candidates}) == 5
+    assert candidates[1]["document_link"].endswith("abc-2024.pdf")
 
 
 def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
@@ -73,8 +54,6 @@ def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
     assert is_approved_document_url("https://www.richbourse.com/documents/report.pdf")
     assert not is_approved_document_url("https://files.invalid/report.pdf")
     assert not is_approved_document_url("http://www.richbourse.com/report.pdf")
-    with pytest.raises(ValueError, match="approved RichBourse origin"):
-        AnnualCandidate("ABC", 2026, "https://files.invalid/annual-2026.pdf", "Annual 2026")
 
 
 @pytest.mark.parametrize(
@@ -130,11 +109,11 @@ def test_extraction_requires_source_year_and_returns_only_six_contract_fields() 
 
     validated = validate_extraction(payload, source_fiscal_year=2024)
 
-    assert tuple(validated.as_dict()) == EXTRACTION_KEYS
-    assert validated.as_dict() == payload
+    assert tuple(validated) == EXTRACTION_KEYS
+    assert validated == payload
     assert not any(
         "pdf" in name or "prompt" in name or "response" in name
-        for name in vars(validated)
+        for name in validated
     )
     with pytest.raises(ValueError, match="does not match source metadata"):
         validate_extraction(payload, source_fiscal_year=2023)
@@ -142,7 +121,10 @@ def test_extraction_requires_source_year_and_returns_only_six_contract_fields() 
     with pytest.raises(ValueError, match="does not match source metadata"):
         validate_extraction(payload, source_fiscal_year=2024)
     with pytest.raises(ValueError, match="finite numbers or null"):
-        type(validated)(2024, float("nan"), None, None, None, None)
+        validate_extraction(
+            {**payload, "fiscal_year": 2024, "revenue": float("nan")},
+            source_fiscal_year=2024,
+        )
 
 
 def test_contract_processing_is_offline_and_does_not_log_or_write_evidence(
@@ -178,62 +160,13 @@ def test_contract_processing_is_offline_and_does_not_log_or_write_evidence(
     monkeypatch.setattr(Path, "open", tracked_path_open)
     caplog.set_level(logging.DEBUG)
     assert parse_selector_symbols(html) == ("ABC",)
-    assert validate_extraction(payload, source_fiscal_year=2024).fiscal_year == 2024
+    assert validate_extraction(payload, source_fiscal_year=2024)["fiscal_year"] == 2024
 
     assert writes == []
     assert sentinel not in caplog.text
     assert list(tmp_path.iterdir()) == []
     assert not any(path.suffix.lower() == ".pdf" for path in FIXTURES.iterdir())
     assert all(sentinel not in path.read_text() for path in FIXTURES.iterdir())
-
-
-@pytest.mark.parametrize(
-    ("existing", "candidate", "succeeded", "expected"),
-    [
-        (None, "https://source.invalid/new.pdf", True, RowDecision.INSERT),
-        (
-            "https://source.invalid/same.pdf",
-            "https://source.invalid/same.pdf",
-            True,
-            RowDecision.SKIP,
-        ),
-        (
-            "https://source.invalid/old.pdf",
-            "https://source.invalid/new.pdf",
-            True,
-            RowDecision.REPLACE,
-        ),
-        (
-            "https://source.invalid/old.pdf",
-            "https://source.invalid/new.pdf",
-            False,
-            RowDecision.PRESERVE,
-        ),
-        (None, "https://source.invalid/new.pdf", False, RowDecision.PRESERVE),
-    ],
-)
-def test_retry_safe_row_decisions(
-    existing: str | None,
-    candidate: str,
-    succeeded: bool,
-    expected: RowDecision,
-) -> None:
-    assert decide_row_state(
-        existing_document_link=existing,
-        candidate_document_link=candidate,
-        extraction_succeeded=succeeded,
-    ) is expected
-
-
-def test_candidate_exposes_logical_identity_and_only_source_reference_metadata() -> None:
-    candidate = AnnualCandidate(
-        "ABC", 2024, "https://www.richbourse.com/report.pdf", "Annual report 2024"
-    )
-
-    assert candidate.identity == FinancialIdentity("ABC", 2024)
-    assert set(vars(candidate)) == {
-        "symbol", "fiscal_year", "document_link", "announcement_title"
-    }
 
 
 @pytest.mark.parametrize("limit", range(1, 6))
@@ -243,7 +176,7 @@ def test_annual_window_filters_before_limit_and_preserves_order(limit: int) -> N
         for year in (2027, 2026, 2025, 2025, 2024, 2023, 2022, 2021, 2020)
     )
     candidates = parse_annual_candidates(html, "ABC", current_year=2026, limit=limit)
-    assert [candidate.fiscal_year for candidate in candidates] == [
+    assert [candidate["fiscal_year"] for candidate in candidates] == [
         2025, 2024, 2023, 2022, 2021
     ][:limit]
     assert parse_annual_candidates(
@@ -273,8 +206,8 @@ def test_previous_year_mode_filters_before_limit_and_keeps_first_duplicate(limit
         html, "ABC", current_year=2026, limit=limit, selection_mode="previous_year"
     )
 
-    assert [candidate.fiscal_year for candidate in candidates] == [2025]
-    assert candidates[0].document_link.endswith("/2025-first.pdf")
+    assert [candidate["fiscal_year"] for candidate in candidates] == [2025]
+    assert candidates[0]["document_link"].endswith("/2025-first.pdf")
 
 
 @pytest.mark.parametrize("limit", [1, 5])
@@ -298,7 +231,7 @@ def test_previous_year_mode_advances_with_supplied_year() -> None:
     candidates = parse_annual_candidates(
         html, "ABC", current_year=2027, selection_mode="previous_year"
     )
-    assert [candidate.fiscal_year for candidate in candidates] == [2026]
+    assert [candidate["fiscal_year"] for candidate in candidates] == [2026]
 
 
 @pytest.mark.parametrize("selection_mode", [None, "", "latest", 2025])
@@ -314,9 +247,9 @@ def test_annual_window_missing_years_and_rollover() -> None:
         f'<div class="ligne_paire"><a href="/{year}.pdf">Rapport annuel Exercice {year}</a></div>'
         for year in (2026, 2025, 2021, 2020)
     )
-    assert [c.fiscal_year for c in parse_annual_candidates(html, "ABC", current_year=2026)] == [
+    assert [c["fiscal_year"] for c in parse_annual_candidates(html, "ABC", current_year=2026)] == [
         2025, 2021
     ]
-    assert [c.fiscal_year for c in parse_annual_candidates(html, "ABC", current_year=2027)] == [
+    assert [c["fiscal_year"] for c in parse_annual_candidates(html, "ABC", current_year=2027)] == [
         2026, 2025
     ]

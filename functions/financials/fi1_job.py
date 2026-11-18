@@ -5,29 +5,37 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import math
 import json
 import os
 import re
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence, TypeVar
-from urllib.parse import urljoin
+import unicodedata
+from numbers import Real
+from urllib.parse import quote, urljoin, urlparse
 from uuid import uuid4
 
-from functions.financials.fi1_contracts import (
-    AnnualCandidate,
-    RowDecision,
-    ValidatedExtraction,
-    decide_row_state,
-    is_approved_document_url,
-    parse_annual_candidates,
-    parse_selector_symbols,
-    richbourse_symbol_page_url,
-    validate_extraction,
-)
-
-
 SELECTOR_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
+RICHBOURSE_ORIGIN = "https://www.richbourse.com"
+EXTRACTION_KEYS = (
+    "fiscal_year",
+    "revenue",
+    "net_income",
+    "total_debt",
+    "cash_and_cash_equivalents",
+    "total_equity",
+)
+_YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
+_INTERIM_TERMS = (
+    "trimestre", "trimestriel", "semestr", "semester", "quarter", "half year",
+    "six month", "mi-annee",
+)
+_ANNUAL_TERMS = (
+    "annuel", "exercice", "etat financier", "etats financiers", "rapport annuel",
+    "bilan annuel", "comptes annuels",
+)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_ORDER = (
     "gemma-4-31b-it",
@@ -104,6 +112,129 @@ _FINANCIAL_VALUE_KEYS = (
     "cash_and_cash_equivalents",
     "total_equity",
 )
+
+
+def _plain_text(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.casefold())
+    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+
+
+def parse_selector_symbols(html: str) -> tuple[str, ...]:
+    from bs4 import BeautifulSoup
+
+    selector = BeautifulSoup(html, "html.parser").find("select", id="symbole")
+    if selector is None:
+        raise ValueError("RichBourse symbol selector is missing")
+    return tuple(
+        dict.fromkeys(
+            value
+            for option in selector.find_all("option")
+            if (value := (option.get("value") or "").strip())
+        )
+    )
+
+
+def richbourse_symbol_page_url(symbol: str) -> str:
+    symbol = symbol.strip()
+    if not symbol:
+        raise ValueError("symbol is required")
+    return f"{SELECTOR_URL}?symbole={quote(symbol, safe='')}"
+
+
+def is_approved_document_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme.casefold() == "https"
+            and parsed.hostname is not None
+            and parsed.hostname.casefold() == "www.richbourse.com"
+            and parsed.port is None
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
+def parse_annual_candidates(
+    html: str,
+    symbol: str,
+    *,
+    current_year: int,
+    limit: int = 5,
+    selection_mode: str = "historical",
+) -> tuple[dict[str, Any], ...]:
+    from bs4 import BeautifulSoup
+
+    symbol = symbol.strip()
+    if not symbol:
+        raise ValueError("symbol is required")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    if not isinstance(selection_mode, str) or selection_mode not in {
+        "historical", "previous_year"
+    }:
+        raise ValueError("selection_mode must be 'historical' or 'previous_year'")
+
+    soup = BeautifulSoup(html, "html.parser")
+    by_year: dict[int, dict[str, Any]] = {}
+    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
+        link = row.find("a", href=True)
+        if link is None:
+            continue
+        title = link.get_text(" ", strip=True)
+        normalized = _plain_text(title)
+        if any(term in normalized for term in _INTERIM_TERMS):
+            continue
+        if not any(term in normalized for term in _ANNUAL_TERMS):
+            continue
+        year_match = _YEAR.search(normalized)
+        if year_match is None:
+            continue
+
+        document_link = urljoin(SELECTOR_URL, link["href"].strip())
+        if not is_approved_document_url(document_link):
+            continue
+        year = int(year_match.group(1))
+        if selection_mode == "previous_year":
+            if year != current_year - 1:
+                continue
+        elif not current_year - 5 <= year < current_year:
+            continue
+        by_year.setdefault(
+            year,
+            {"symbol": symbol, "fiscal_year": year, "document_link": document_link},
+        )
+
+    return tuple(by_year[year] for year in sorted(by_year, reverse=True)[:limit])
+
+
+def validate_extraction(
+    payload: Mapping[str, object], *, source_fiscal_year: int
+) -> dict[str, Real | int | None]:
+    if not isinstance(payload, Mapping) or set(payload) != set(EXTRACTION_KEYS):
+        raise ValueError("extraction must contain exactly the FI-1 keys")
+    if (
+        isinstance(source_fiscal_year, bool)
+        or not isinstance(source_fiscal_year, int)
+        or isinstance(payload["fiscal_year"], bool)
+        or not isinstance(payload["fiscal_year"], int)
+        or payload["fiscal_year"] != source_fiscal_year
+    ):
+        raise ValueError("extracted fiscal year does not match source metadata")
+
+    values: dict[str, Real | int | None] = {"fiscal_year": source_fiscal_year}
+    for key in EXTRACTION_KEYS[1:]:
+        value = payload[key]
+        if value is not None:
+            try:
+                finite = math.isfinite(value)
+            except (OverflowError, TypeError, ValueError):
+                finite = False
+            if isinstance(value, bool) or not isinstance(value, Real) or not finite:
+                raise ValueError("extraction values must be finite numbers or null")
+        values[key] = value
+    return values
 
 
 class JobDeadlineExceeded(TimeoutError):
@@ -699,7 +830,7 @@ def _run_batch(
     _remaining(deadline, adapters.monotonic)
     counters["symbols"] = len(symbols)
 
-    def load_symbol_page(symbol: str) -> tuple[AnnualCandidate, ...]:
+    def load_symbol_page(symbol: str) -> tuple[dict[str, Any], ...]:
         timeout = _remaining(deadline, adapters.monotonic)
         html = adapters.fetch_text(
             richbourse_symbol_page_url(symbol), min(SOURCE_TIMEOUT_SECONDS, timeout)
@@ -783,17 +914,16 @@ def _run_batch(
                     adapters.emit_stage_failure("lease", error_class=_error_class(error))
                     raise
             _remaining(deadline, adapters.monotonic)
-            current_link = existing.get((candidate.symbol, candidate.fiscal_year))
-            if decide_row_state(
-                existing_document_link=current_link,
-                candidate_document_link=candidate.document_link,
-                extraction_succeeded=True,
-            ) is RowDecision.SKIP:
+            symbol = candidate["symbol"]
+            fiscal_year = candidate["fiscal_year"]
+            document_link = candidate["document_link"]
+            current_link = existing.get((symbol, fiscal_year))
+            if current_link == document_link:
                 counters["skipped"] += 1
                 continue
             try:
                 pdf = adapters.download_pdf(
-                    candidate.document_link,
+                    document_link,
                     min(SOURCE_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic)),
                 )
                 extraction = _extract_candidate(
@@ -805,23 +935,16 @@ def _run_batch(
                     symbol_failed = True
                     symbol_error_class = failure_classes[-1] if failure_classes else None
                     continue
-                decision = decide_row_state(
-                    existing_document_link=current_link,
-                    candidate_document_link=candidate.document_link,
-                    extraction_succeeded=True,
+                symbol_rows.append(
+                    {
+                        "symbol": symbol,
+                        "fiscal_year": fiscal_year,
+                        **{key: extraction[key] for key in _FINANCIAL_VALUE_KEYS},
+                        "document_link": document_link,
+                        "collected_at": adapters.utcnow().astimezone(timezone.utc),
+                    }
                 )
-                if decision in {RowDecision.INSERT, RowDecision.REPLACE}:
-                    values = extraction.as_dict()
-                    symbol_rows.append(
-                        {
-                            "symbol": candidate.symbol,
-                            "fiscal_year": candidate.fiscal_year,
-                            **{key: values[key] for key in _FINANCIAL_VALUE_KEYS},
-                            "document_link": candidate.document_link,
-                            "collected_at": adapters.utcnow().astimezone(timezone.utc),
-                        }
-                    )
-                    symbol_counts["inserted" if decision is RowDecision.INSERT else "updated"] += 1
+                symbol_counts["inserted" if current_link is None else "updated"] += 1
             except JobDeadlineExceeded:
                 raise
             except Exception as error:
@@ -868,7 +991,7 @@ def _run_batch(
 
 
 def _extract_candidate(
-    candidate: AnnualCandidate,
+    candidate: Mapping[str, Any],
     pdf: bytes,
     adapters: RuntimeAdapters,
     api_key: str,
@@ -876,7 +999,7 @@ def _extract_candidate(
     counters: dict[str, int],
     model_order: Sequence[str] = MODEL_ORDER,
     failure_class: list[str] | None = None,
-) -> ValidatedExtraction | None:
+) -> dict[str, Real | int | None] | None:
     document_text = adapters.prepare_document(pdf)
     for model in model_order:
         timeout = min(PROVIDER_TIMEOUT_SECONDS, _remaining(deadline, adapters.monotonic))
@@ -884,9 +1007,9 @@ def _extract_candidate(
         try:
             payload = adapters.provider_attempt(document_text, model, api_key, timeout)
             extraction = validate_extraction(
-                payload, source_fiscal_year=candidate.fiscal_year
+                payload, source_fiscal_year=candidate["fiscal_year"]
             )
-            if not any(getattr(extraction, key) is not None for key in _FINANCIAL_VALUE_KEYS):
+            if not any(extraction[key] is not None for key in _FINANCIAL_VALUE_KEYS):
                 raise ValueError("provider result has no usable financial values")
             return extraction
         except JobDeadlineExceeded:
