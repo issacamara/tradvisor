@@ -375,7 +375,9 @@ def test_main_rejects_invalid_mode_before_constructing_backing_adapters(
         main([])
 
     assert error.value.code == 1
-    assert capsys.readouterr().out == "FI-1 configuration failed\n"
+    output = capsys.readouterr().out
+    assert output.startswith("FI-1 configuration failed: ")
+    assert "TRADVISOR_FINANCIALS_SELECTION_MODE" in output
     assert adapter_calls == []
 
 

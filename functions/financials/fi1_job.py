@@ -1049,6 +1049,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     try:
         configuration = RuntimeConfiguration.from_environment()
+    except ValueError as error:
+        # Configuration validation errors use fixed, non-secret messages that
+        # identify the rejected setting. Keep the detail bounded for job logs.
+        detail = str(error).replace("\n", " ").replace("\r", " ")[:160]
+        print(f"FI-1 configuration failed: {detail}")
+        raise SystemExit(1) from None
     except Exception:
         print("FI-1 configuration failed")
         raise SystemExit(1) from None
