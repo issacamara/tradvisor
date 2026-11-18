@@ -15,6 +15,10 @@ anyio==4.15.1 \
     #   httpx
     #   starlette
     #   watchfiles
+beautifulsoup4==4.12.3 \
+    --hash=sha256:74e3d1928edc070d21748185c46e3fb33490f22f52a3addee9aee0f4f7781051 \
+    --hash=sha256:b80878c9f40111313e55da8ba20bdba06d8fa3969fc68304167741bbf9e082ed
+    # via tradvisor-backend (backend/pyproject.toml)
 build==1.6.1 \
     --hash=sha256:51cc11666391ab6f092070437ac747002ff46f3e4113a3622177ee6b488bfc53 \
     --hash=sha256:ecd351a4be9d35a9eaaba244a7687143c9c7d4aea6ac964e7e7ddab20cbcf4e7
@@ -1219,6 +1223,10 @@ six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via python-dateutil
+soupsieve==3.0.4 \
+    --hash=sha256:8412826614f9c632227067d0985aeb9f584bd15efc852955430e097a9fe7afbf \
+    --hash=sha256:924fab84ae21604c19e175e1f39815eb6fa83ba23836e09e9de180925e5bc4c0
+    # via beautifulsoup4
 starlette==0.45.3 \
     --hash=sha256:2cbcba2a75806f8a41c722141486f37c28e30a0921c5f6fe4346cb0dcee1302f \
     --hash=sha256:dfb6d332576f136ec740296c7e8bb8c8a7125044e7c6da30744718880cdd059d

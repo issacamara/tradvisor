@@ -17,9 +17,6 @@ from numbers import Real
 from urllib.parse import quote, urljoin, urlparse
 from uuid import uuid4
 
-from bs4 import BeautifulSoup
-
-
 SELECTOR_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 RICHBOURSE_ORIGIN = "https://www.richbourse.com"
 EXTRACTION_KEYS = (
@@ -123,6 +120,8 @@ def _plain_text(value: str) -> str:
 
 
 def parse_selector_symbols(html: str) -> tuple[str, ...]:
+    from bs4 import BeautifulSoup
+
     selector = BeautifulSoup(html, "html.parser").find("select", id="symbole")
     if selector is None:
         raise ValueError("RichBourse symbol selector is missing")
@@ -165,6 +164,8 @@ def parse_annual_candidates(
     limit: int = 5,
     selection_mode: str = "historical",
 ) -> tuple[dict[str, Any], ...]:
+    from bs4 import BeautifulSoup
+
     symbol = symbol.strip()
     if not symbol:
         raise ValueError("symbol is required")
