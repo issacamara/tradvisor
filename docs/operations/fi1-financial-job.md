@@ -1,5 +1,10 @@
 # FI-1 financial ingestion Job
 
+The archive scripts dependency input and lock remain shared by existing archive
+function packages and retain their Firestore dependency. FI-1 no longer uses
+that client, but dependency cleanup would change unrelated package sources and
+is deferred to a separately scoped change.
+
 Terraform provisions the FI-1 Cloud Run Job and its direct monthly Cloud
 Scheduler target only when `manage_fi1_financial_job` is true. The image input,
 `fi1_financial_job_image`, must be an immutable `@sha256:` digest supplied by

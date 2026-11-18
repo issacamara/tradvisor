@@ -108,6 +108,7 @@ The FI-1 job keeps its parsing and validation helpers beside the runtime entrypo
 | Dedicated financial runtime identity/OpenRouter secret metadata | Runtime credentials | Delivers secret-specific access without putting payloads in source or Terraform state. |
 | Managed import completion/publication control | Post-commit analytical refresh | Preserves the existing Long-Term correction-publication path. |
 | Container build/release workflow | Job image delivery | Supports commit-addressed immutable image promotion across environments. |
+| Shared legacy archive requirements input and lock | Existing archive function packages | Retain their existing dependency set, including Firestore; removing a shared dependency changes unrelated package sources and must be handled in a separately scoped cleanup. |
 
 ## 7. Data Architecture
 

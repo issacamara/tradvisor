@@ -90,7 +90,6 @@ def test_archive_includes_common_resources_and_declared_local_modules() -> None:
 def test_archive_inputs_exclude_duckdb_and_persistent_local_paths() -> None:
     requirements = (SCRIPTS / "requirements.in").read_text().lower()
     assert "duckdb" not in requirements
-    assert "google-cloud-firestore" not in requirements
     assert "config.yml" not in (TERRAFORM / "buckets.tf").read_text().lower()
 
 
@@ -102,8 +101,9 @@ def test_archive_requirements_are_complete_hashed_locks() -> None:
     assert requirements == "-r requirements.lock"
     assert "--hash=sha256:" in lock
     assert "duckdb" not in lock.lower()
-    assert "google-cloud-firestore" not in declared
-    assert "google-cloud-firestore" not in lock.lower()
+    assert re.search(r"^google-cloud-firestore==2\.19\.0$", declared, re.MULTILINE)
+    assert "google-cloud-firestore==2.19.0 \\\n" in lock
+    assert "# via -r archive/legacy-ingestion/scripts/requirements.in" in lock
     packages = (
         "functions-framework",
         "google-cloud-storage",

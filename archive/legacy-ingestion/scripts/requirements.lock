@@ -437,6 +437,7 @@ google-api-core==2.30.3 \
     #   google-api-python-client
     #   google-cloud-bigquery
     #   google-cloud-core
+    #   google-cloud-firestore
     #   google-cloud-resource-manager
     #   google-cloud-storage
     #   google-generativeai
@@ -454,6 +455,7 @@ google-auth==2.62.0 \
     #   google-auth-httplib2
     #   google-cloud-bigquery
     #   google-cloud-core
+    #   google-cloud-firestore
     #   google-cloud-resource-manager
     #   google-cloud-storage
     #   google-generativeai
@@ -470,7 +472,12 @@ google-cloud-core==2.8.0 \
     --hash=sha256:e235b0952f7ffe7b9c71a4cf96b506d9cfb557e22557c412f0df9b7068b5d007
     # via
     #   google-cloud-bigquery
+    #   google-cloud-firestore
     #   google-cloud-storage
+google-cloud-firestore==2.19.0 \
+    --hash=sha256:1b2ce6e0b791aee89a1e4f072beba1012247e89baca361eed721fb467fe054b0 \
+    --hash=sha256:b49f0019d7bd0d4ab5972a4cff13994b0aabe72d24242200d904db2fb49df7f7
+    # via -r archive/legacy-ingestion/scripts/requirements.in
 google-cloud-resource-manager==1.14.2 \
     --hash=sha256:962e2d904c550d7bac48372607904ff7bb3277e3bb4a36d80cc9a37e28e6eb74 \
     --hash=sha256:d0fa954dedd1d2b8e13feae9099c01b8aac515b648e612834f9942d2795a9900
@@ -968,6 +975,7 @@ proto-plus==1.28.2 \
     # via
     #   google-ai-generativelanguage
     #   google-api-core
+    #   google-cloud-firestore
     #   google-cloud-resource-manager
 protobuf==5.29.6 \
     --hash=sha256:36ade6ff88212e91aef4e687a971a11d7d24d6948a66751abc1b3238648f5d05 \
@@ -984,6 +992,7 @@ protobuf==5.29.6 \
     # via
     #   google-ai-generativelanguage
     #   google-api-core
+    #   google-cloud-firestore
     #   google-cloud-resource-manager
     #   google-generativeai
     #   googleapis-common-protos
