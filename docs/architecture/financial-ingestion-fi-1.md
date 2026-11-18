@@ -130,7 +130,7 @@ The validated payload persists the six requested nullable numeric fields. Null d
 
 **Security.** The financial job uses the dedicated financial runtime identity and resource-level OpenRouter secret accessor grant. Scheduler receives only the Cloud Run Job invocation permission. Runtime configuration and secrets are injected, never baked into the image.
 
-**Observability.** Emit exactly one bounded terminal symbol outcome for each processed symbol, committed insert/update counts only after each managed-write receipt validates, and bounded state/selector/lease/writer/completion failure events. No candidate selection/skip/PDF/text/provider/phase telemetry is emitted. Do not emit source/PDF content, prompts, responses, credentials, titles, links, or exception bodies.
+**Observability.** Print one short terminal outcome for each processed symbol, insert/update counts only after each managed-write receipt validates, and a brief message for fatal state, selector, lease, writer, completion, configuration, or deadline failures. No candidate selection/skip/PDF/text/provider/phase detail is printed. Do not print source/PDF content, prompts, responses, credentials, titles, links, or exception bodies.
 
 **Resilience and scale.** Permit one active execution, serial RichBourse requests, one model attempt per configured model/report, finite provider/transport retries, ten-terminal-symbol commit boundaries, and a maximum 60-minute execution. An all-model failure makes its symbol ineligible for the current write buffer and is retried next month; earlier committed batches remain durable if a later source or writer failure stops the run. A source or writer failure must not produce a completion event.
 

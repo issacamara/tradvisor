@@ -17,8 +17,6 @@ _SENSITIVE = re.compile(
 _T = TypeVar("_T")
 _ELIGIBLE_SOURCES = frozenset({"shares", "financials"})
 _FINGERPRINT = re.compile(r"[a-f0-9]{64}\Z")
-_FI1_SYMBOL_OUTCOMES = frozenset({"succeeded", "failed"})
-_FI1_FAILURE_STAGES = frozenset({"state", "selector", "lease", "writer", "completion"})
 
 
 def _safe(value: str, *, limit: int = 128) -> str:
@@ -39,65 +37,6 @@ def emit_event(name: str, outcome: str, *, count: int | None = None, error_class
         fields["count"] = count
     if error_class:
         fields["error_class"] = _safe(error_class, limit=128)
-    print(json.dumps(fields, separators=(",", ":"), sort_keys=True))
-
-
-def emit_fi1_symbol_outcome(
-    symbol: str, outcome: Literal["succeeded", "failed"], *, error_class: str | None = None
-) -> None:
-    """Emit one bounded terminal outcome for one processed symbol."""
-    safe_symbol = _safe(symbol, limit=32)
-    if safe_symbol == "redacted" or outcome not in _FI1_SYMBOL_OUTCOMES:
-        raise ValueError("invalid FI-1 symbol outcome")
-    if outcome == "succeeded" and error_class is not None:
-        raise ValueError("successful FI-1 symbol outcome cannot include an error")
-    fields: dict[str, Any] = {
-        "event": "ingestion.fi1.symbol",
-        "outcome": outcome,
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
-        "symbol": safe_symbol,
-    }
-    if error_class is not None:
-        fields["error_class"] = _safe(error_class, limit=128)
-    print(json.dumps(fields, separators=(",", ":"), sort_keys=True))
-
-
-def emit_fi1_commit_counts(*, inserted: int, updated: int) -> None:
-    """Emit mutation counts only after a managed write receipt is validated."""
-    if (
-        not isinstance(inserted, int)
-        or not isinstance(updated, int)
-        or inserted < 0
-        or updated < 0
-        or inserted + updated <= 0
-        or inserted + updated > 1_000_000_000
-    ):
-        raise ValueError("invalid FI-1 commit counts")
-    fields = {
-        "event": "ingestion.fi1.commit",
-        "outcome": "committed",
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
-        "inserted": inserted,
-        "updated": updated,
-    }
-    print(json.dumps(fields, separators=(",", ":"), sort_keys=True))
-
-
-def emit_fi1_stage_failure(
-    stage: Literal["state", "selector", "lease", "writer", "completion"],
-    *,
-    error_class: str,
-) -> None:
-    """Emit only the bounded FI-1 stages that can fail before an outcome."""
-    if stage not in _FI1_FAILURE_STAGES or _safe(error_class, limit=128) == "redacted":
-        raise ValueError("invalid FI-1 stage failure")
-    fields = {
-        "event": "ingestion.fi1.failure",
-        "outcome": "failed",
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
-        "stage": stage,
-        "error_class": _safe(error_class, limit=128),
-    }
     print(json.dumps(fields, separators=(",", ":"), sort_keys=True))
 
 

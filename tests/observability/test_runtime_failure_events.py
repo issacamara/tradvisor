@@ -55,37 +55,20 @@ def test_packaged_entrypoint_formatter_redacts_exception_text(capsys: pytest.Cap
     assert "sentinel-token" not in output
 
 
-def test_fi1_symbol_outcome_has_a_finite_allowlisted_schema(
+def test_generic_formatter_remains_available_without_fi1_event_builders(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     path = Path(__file__).parents[2] / "archive" / "legacy-ingestion" / "scripts" / "ingestion_observability.py"
-    spec = importlib.util.spec_from_file_location("fi1_diagnostic_observability", path)
+    spec = importlib.util.spec_from_file_location("generic_ingestion_observability", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    module.emit_fi1_symbol_outcome("ABC", "failed", error_class="ProviderHTTP503")
+    module.emit_event("ingestion.other", "succeeded", count=2)
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["event"] == "ingestion.fi1.symbol"
-    assert set(payload) == {
-        "event", "outcome", "occurred_at", "symbol", "error_class",
-    }
-
-    module.emit_fi1_commit_counts(inserted=2, updated=1)
-    commit = json.loads(capsys.readouterr().out)
-    assert commit["event"] == "ingestion.fi1.commit"
-    assert commit["inserted"] == 2
-    assert commit["updated"] == 1
-
-    module.emit_fi1_stage_failure("writer", error_class="RuntimeError")
-    failure = json.loads(capsys.readouterr().out)
-    assert failure["event"] == "ingestion.fi1.failure"
-    assert failure["stage"] == "writer"
-
-    with pytest.raises(ValueError, match="invalid FI-1 commit counts"):
-        module.emit_fi1_commit_counts(inserted=0, updated=0)
-    with pytest.raises(ValueError, match="invalid FI-1 symbol outcome"):
-        module.emit_fi1_symbol_outcome("operator@example.com", "failed")
-    with pytest.raises(ValueError, match="invalid FI-1 stage failure"):
-        module.emit_fi1_stage_failure("provider", error_class="RuntimeError")
+    assert payload["event"] == "ingestion.other"
+    assert payload["count"] == 2
+    assert not hasattr(module, "emit_fi1_symbol_outcome")
+    assert not hasattr(module, "emit_fi1_commit_counts")
+    assert not hasattr(module, "emit_fi1_stage_failure")
