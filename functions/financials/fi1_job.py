@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import math
 import json
 import os
 import re
-import threading
 import time
-from typing import Any, Callable, Mapping, Sequence, TypeVar
+from typing import Any, Callable, Mapping, Sequence
 import unicodedata
 from numbers import Real
 from urllib.parse import quote, urljoin, urlparse
@@ -94,8 +92,6 @@ Output format:\x20
 
 """
 MAX_RUNTIME_SECONDS = 60 * 60
-EXECUTION_LEASE_SECONDS = 300
-EXECUTION_LEASE_RENEW_SECONDS = 60
 MAX_PAGE_CONCURRENCY = 4
 MAX_ANNUAL_CANDIDATES = 5
 RUNTIME_TARGET = "financial_ingestion_job"
@@ -256,10 +252,6 @@ class ProviderHTTPError(RuntimeError):
         super().__init__(f"ProviderHTTP{status_code}")
 
 
-class ActiveExecutionError(RuntimeError):
-    """Another FI-1 process currently owns the bounded execution lease."""
-
-
 @dataclass(frozen=True)
 class RuntimeConfiguration:
     """Validated non-secret settings supplied by the Terraform-managed job."""
@@ -367,95 +359,6 @@ class RuntimeConfiguration:
         }
 
 
-T = TypeVar("T")
-
-
-class FirestoreExecutionLease(AbstractContextManager):
-    """Short Firestore transaction lease; only a random owner and expiry persist."""
-
-    def __init__(
-        self,
-        transact: Callable[[Callable[[Any], T]], T],
-        document: Any,
-        *,
-        lease_seconds: int = EXECUTION_LEASE_SECONDS,
-        renew_seconds: int = EXECUTION_LEASE_RENEW_SECONDS,
-        utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-        token: str | None = None,
-    ) -> None:
-        if not 1 <= lease_seconds <= 600 or not 1 <= renew_seconds < lease_seconds:
-            raise ValueError("FI-1 lease bounds are invalid")
-        self._transact = transact
-        self._document = document
-        self._lease_seconds = lease_seconds
-        self._renew_seconds = renew_seconds
-        self._utcnow = utcnow
-        self._token = token or uuid4().hex
-        self._stop = threading.Event()
-        self._lost = threading.Event()
-        self._heartbeat: threading.Thread | None = None
-
-    def _transition(self, *, acquire: bool = False, release: bool = False) -> bool:
-        now = self._utcnow().astimezone(timezone.utc)
-
-        def update(transaction: Any) -> bool:
-            snapshot = self._document.get(transaction=transaction)
-            current = snapshot.to_dict() if snapshot.exists else None
-            owner = current.get("owner") if isinstance(current, Mapping) else None
-            expiry = current.get("expires_at") if isinstance(current, Mapping) else None
-            if release:
-                if owner != self._token:
-                    return False
-                transaction.delete(self._document)
-                return True
-            if acquire and owner not in (None, self._token):
-                if not isinstance(expiry, datetime) or expiry > now:
-                    return False
-            if not acquire and owner != self._token:
-                return False
-            transaction.set(
-                self._document,
-                {"owner": self._token, "expires_at": now + timedelta(seconds=self._lease_seconds)},
-            )
-            return True
-
-        return self._transact(update)
-
-    def __enter__(self) -> "FirestoreExecutionLease":
-        if not self._transition(acquire=True):
-            raise ActiveExecutionError("another FI-1 execution is active")
-        self._heartbeat = threading.Thread(
-            target=self._renew_loop, name="fi1-lease-renewal", daemon=True
-        )
-        self._heartbeat.start()
-        return self
-
-    def _renew_loop(self) -> None:
-        while not self._stop.wait(self._renew_seconds):
-            try:
-                if not self._transition():
-                    self._lost.set()
-                    return
-            except Exception:
-                self._lost.set()
-                return
-
-    def assert_owned(self) -> None:
-        if self._lost.is_set() or not self._transition():
-            self._lost.set()
-            raise ActiveExecutionError("FI-1 execution lease was lost")
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self._stop.set()
-        if self._heartbeat is not None:
-            self._heartbeat.join(timeout=self._renew_seconds + 1)
-        try:
-            self._transition(release=True)
-        except Exception:
-            if exc is None:
-                raise
-
-
 @dataclass(frozen=True)
 class JobOutcome:
     discovered_symbols: int
@@ -491,7 +394,6 @@ class RuntimeAdapters:
     read_existing: Callable[[], Mapping[tuple[str, int], str | None]]
     write_rows: Callable[[list[dict[str, Any]], str], str]
     completion: Callable[[Sequence[str]], Mapping[str, Any]]
-    execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
     monotonic: Callable[[], float] = time.monotonic
     utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
@@ -693,23 +595,6 @@ def _default_adapters(
             run_id=run_id,
         )
 
-    def execution_lease() -> FirestoreExecutionLease:
-        from google.cloud import firestore
-
-        client = firestore.Client(project=project_id)
-        document = client.document("pipeline_control/fi1_financial_ingestion")
-
-        def transact(callback: Callable[[Any], T]) -> T:
-            transaction = client.transaction()
-
-            @firestore.transactional
-            def run(active_transaction: Any) -> T:
-                return callback(active_transaction)
-
-            return run(transaction)
-
-        return FirestoreExecutionLease(transact, document)
-
     return RuntimeAdapters(
         fetch_text=_fetch_text,
         download_pdf=_download_pdf,
@@ -718,7 +603,6 @@ def _default_adapters(
         read_existing=read_existing,
         write_rows=write_rows,
         completion=lambda fingerprints: managed_import_completion("financials", fingerprints),
-        execution_lease=execution_lease,
     )
 
 
@@ -753,34 +637,6 @@ def run_batch(
     if not model_order or len(set(model_order)) != len(model_order):
         raise ValueError("FI-1 model order must contain unique models")
 
-    try:
-        lease = adapters.execution_lease() if adapters.execution_lease is not None else None
-    except Exception as error:
-        _log_stage_failure("lease", error)
-        raise
-    if lease is not None:
-        try:
-            lease.__enter__()
-        except Exception as error:
-            _log_stage_failure("lease", error)
-            raise
-        try:
-            result = _run_batch(
-                adapters,
-                api_key=api_key,
-                max_duration_seconds=max_duration_seconds,
-                model_order=model_order,
-                max_page_concurrency=max_page_concurrency,
-                max_annual_candidates=max_annual_candidates,
-                selection_mode=selection_mode,
-                lease=lease,
-            )
-        except BaseException as error:
-            lease.__exit__(type(error), error, error.__traceback__)
-            raise
-        else:
-            lease.__exit__(None, None, None)
-            return result
     return _run_batch(
         adapters,
         api_key=api_key,
@@ -789,7 +645,6 @@ def run_batch(
         max_page_concurrency=max_page_concurrency,
         max_annual_candidates=max_annual_candidates,
         selection_mode=selection_mode,
-        lease=None,
     )
 
 
@@ -802,7 +657,6 @@ def _run_batch(
     max_page_concurrency: int,
     max_annual_candidates: int,
     selection_mode: str,
-    lease: FirestoreExecutionLease | None,
 ) -> JobOutcome:
     current_year = adapters.utcnow().astimezone(timezone.utc).year
     started = adapters.monotonic()
@@ -859,17 +713,12 @@ def _run_batch(
         if not rows:
             return
         try:
-            if lease is not None:
-                lease.assert_owned()
             _remaining(deadline, adapters.monotonic)
             run_id = "fi1_" + uuid4().hex
             fingerprint = adapters.write_rows(rows, run_id)
             _remaining(deadline, adapters.monotonic)
             if not isinstance(fingerprint, str) or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None:
                 raise RuntimeError("FI-1 writer returned no managed commit receipt")
-        except ActiveExecutionError as error:
-            _log_stage_failure("lease", error)
-            raise
         except JobDeadlineExceeded:
             raise
         except Exception as error:
@@ -890,12 +739,6 @@ def _run_batch(
         pending_counts["updated"] = 0
 
     for symbol in symbols:
-        if lease is not None:
-            try:
-                lease.assert_owned()
-            except Exception as error:
-                _log_stage_failure("lease", error)
-                raise
         _remaining(deadline, adapters.monotonic)
         symbol_rows: list[dict[str, Any]] = []
         symbol_counts = {"inserted": 0, "updated": 0}
@@ -915,12 +758,6 @@ def _run_batch(
             symbol_error = error
 
         for candidate in candidates:
-            if lease is not None:
-                try:
-                    lease.assert_owned()
-                except Exception as error:
-                    _log_stage_failure("lease", error)
-                    raise
             _remaining(deadline, adapters.monotonic)
             symbol = candidate["symbol"]
             fiscal_year = candidate["fiscal_year"]
@@ -978,12 +815,7 @@ def _run_batch(
     completion: Mapping[str, Any] | None = None
     if receipts and counters["failed"] == 0:
         try:
-            if lease is not None:
-                lease.assert_owned()
             completion = adapters.completion(tuple(receipts))
-        except ActiveExecutionError as error:
-            _log_stage_failure("lease", error)
-            raise
         except Exception as error:
             _log_stage_failure("completion", error)
             raise

@@ -59,6 +59,16 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "TF_VAR_fi1_financial_job_image" in workflow
 
 
+def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
+    environment = step.split("        env:\n", 1)[1].split("        run:\n", 1)[0]
+    assert (
+        "TF_VAR_publication_control_service_url: "
+        "${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}"
+    ) in environment
+
+
 def test_terraform_pr_plan_stages_development_dispatcher_prepare_phase() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Stage development dispatcher prepare phase", 1)[1].split("      -", 1)[0]

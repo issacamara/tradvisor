@@ -101,6 +101,9 @@ def test_archive_requirements_are_complete_hashed_locks() -> None:
     assert requirements == "-r requirements.lock"
     assert "--hash=sha256:" in lock
     assert "duckdb" not in lock.lower()
+    assert re.search(r"^google-cloud-firestore==2\.19\.0$", declared, re.MULTILINE)
+    assert "google-cloud-firestore==2.19.0 \\\n" in lock
+    assert "# via -r archive/legacy-ingestion/scripts/requirements.in" in lock
     packages = (
         "functions-framework",
         "google-cloud-storage",

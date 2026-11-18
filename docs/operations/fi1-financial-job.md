@@ -1,5 +1,10 @@
 # FI-1 financial ingestion Job
 
+The archive scripts dependency input and lock remain shared by existing archive
+function packages and retain their Firestore dependency. FI-1 no longer uses
+that client, but dependency cleanup would change unrelated package sources and
+is deferred to a separately scoped change.
+
 Terraform provisions the FI-1 Cloud Run Job and its direct monthly Cloud
 Scheduler target only when `manage_fi1_financial_job` is true. The image input,
 `fi1_financial_job_image`, must be an immutable `@sha256:` digest supplied by
@@ -25,12 +30,9 @@ historical archive and annual-financial revision assets are preserved.
 The FI-1 Job uses its own runtime identity. It can read the Terraform-managed
 `stocks.brvm_companies` selector table, edit only
 `stocks.financials` and `stocks.financials_staging`, submit BigQuery jobs, and
-access the existing Terraform-managed OpenRouter secret. It also receives the
-same project-level `roles/datastore.user` grant as the existing V1 runtime so
-#362 can use the approved Firestore transactional control path for its lease.
-No new Firestore lock resource or table is created. It receives no bucket
-grants. The Scheduler caller has only `roles/run.invoker` on this Job. Terraform
-continues to own and protect both financial tables.
+access the existing Terraform-managed OpenRouter secret. It receives no
+Firestore or bucket grants. The Scheduler caller has only `roles/run.invoker`
+on this Job. Terraform continues to own and protect both financial tables.
 
 The Job runs one task at a time (`task_count = 1`, `parallelism = 1`), has no
 automatic task retries, and is limited to 3600 seconds. Runtime configuration
@@ -40,13 +42,15 @@ Secret Manager at runtime; no secret payload or version is managed here.
 
 ## Execution overlap contract
 
-Cloud Run Jobs exposes task parallelism within an execution, but no Terraform
-setting that guarantees only one execution exists at a time. A manual run or a
-duplicate delivery could overlap another execution even with one task and
-`parallelism = 1`. This infrastructure does not add a lock or other state. The
-one-active-execution guarantee is completed by #362's lease implementation
-through the existing Firestore control path; Terraform supplies only the
-identity grant needed to reach that path.
+Owner amendment v2.0 allows scheduled, manual historical, duplicate-delivery,
+and retry executions to overlap. `task_count = 1` and `parallelism = 1` limit
+tasks within each execution only. Cross-run serialization is not provided.
+Concurrent runs can both read the same stale BigQuery state, repeat provider
+calls, and write the same `(symbol, fiscal_year)` key. The table does not enforce
+that key as unique, so insert races may create duplicate rows; update races may
+conflict or the last successful write can win. There is no automatic repair or
+deletion. Operators must inspect run-specific receipts and current table state
+when resolving a conflict; receipts do not identify a global winner.
 
 This configuration does not authorize Terraform plan/apply, job execution,
 schedule activation, secret provisioning, provider calls, or production
@@ -63,10 +67,10 @@ that symbol. The existing staging/`MERGE` writer runs after each ten terminal
 symbols and once for a final partial batch when that batch is non-empty. Every
 flush has a distinct run identifier, and inserted/updated counters and lookup
 state advance only after the managed receipt validates. Earlier committed
-batches remain durable if a later symbol, writer, lease, or deadline failure
+batches remain durable if a later symbol, writer, or deadline failure
 stops the run. Stdout shows one short outcome for each processed symbol and
 insert/update counts after a non-empty batch's managed receipt validates. Fatal
-state, selector, lease, writer, completion, configuration, or deadline failures
+state, selector, writer, completion, configuration, or deadline failures
 produce a brief message without exception text. A single sanitized completion
 is sent only after all current run batches commit successfully and no failure
 remains. PDFs, extracted text, prompts, provider responses, credentials, titles,
@@ -97,13 +101,14 @@ changed rows have committed and the whole run has no failures; the existing
 completion-control path then requests Long-Term publication. A run with no
 committed changed rows (for example, no candidates or only unchanged links)
 does not emit completion, and any failed run suppresses completion even if an
-earlier batch committed. A bounded `lease` failure means another FI-1
-execution currently owns the shared lease. Let that execution finish and
-release its lease before retrying; do not start an overlapping run or clear the
-lease manually. After the earlier execution has ended, a new invocation reads
-current committed BigQuery state: committed batches remain durable and are
-skipped by matching link, while incomplete work can be retried from persisted
-state. Do not attempt to resume in-memory work from the failed process.
+earlier batch committed. A retry is a new independent invocation that reads
+current committed BigQuery state once; it may repeat provider calls or race an
+active run. Matching links present in its initial snapshot are skipped, but
+later concurrent writes are not visible to that snapshot. Per-run receipts and
+completion describe only that invocation; another run may still be active or
+later change the same row. Do not attempt to resume in-memory work from the
+failed process. Investigate duplicate rows or write conflicts manually; do not
+delete or repair financial rows automatically.
 
 When the selection-mode variable is omitted, the runtime preserves the
 backward-compatible `historical` mode: it considers the existing Y−5 through
