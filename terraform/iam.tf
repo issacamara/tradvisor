@@ -61,16 +61,6 @@ resource "google_bigquery_dataset_iam_member" "fi1_stocks_editor" {
   member     = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
 }
 
-# Reuse the existing V1 Firestore transactional control path for the FI-1
-# runtime lease. This grants no new datastore resource; #362 owns the lease
-# protocol and uses the existing Firestore control document.
-resource "google_project_iam_member" "fi1_financial_firestore" {
-  count   = var.manage_fi1_financial_job ? 1 : 0
-  project = var.project_id
-  role    = "roles/datastore.user"
-  member  = "serviceAccount:${google_service_account.fi1_financial_runtime[0].email}"
-}
-
 resource "google_bigquery_table_iam_member" "fi1_companies_reader" {
   count      = var.manage_fi1_financial_job ? 1 : 0
   project    = var.project_id

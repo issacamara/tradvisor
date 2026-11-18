@@ -20,8 +20,6 @@ from functions.financials.fi1_job import (
     MAX_RUNTIME_SECONDS,
     MODEL_ORDER,
     SELECTOR_URL,
-    ActiveExecutionError,
-    FirestoreExecutionLease,
     JobDeadlineExceeded,
     ProviderHTTPError,
     RuntimeConfiguration,
@@ -335,21 +333,13 @@ def test_previous_year_target_stays_fixed_when_clock_crosses_utc_new_year() -> N
     assert [row["fiscal_year"] for rows, _ in fake.writes for row in rows] == [2025, 2025]
 
 
-def test_invalid_run_batch_mode_fails_before_lease_or_adapter_access() -> None:
+def test_invalid_run_batch_mode_fails_before_adapter_access() -> None:
     fake = Harness()
     adapters = fake.adapters()
-    lease_calls: list[bool] = []
-    adapters = RuntimeAdapters(
-        **{
-            **adapters.__dict__,
-            "execution_lease": lambda: lease_calls.append(True),
-        }
-    )
 
     with pytest.raises(ValueError, match="selection mode"):
         run_batch(adapters, api_key="runtime-secret", selection_mode="")
 
-    assert lease_calls == []
     assert fake.fetches == []
     assert fake.downloads == []
     assert fake.state_reads == 0
@@ -602,52 +592,20 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     inspect.signature(helper_module.upsert_financials_and_archive).bind(*args, **kwargs)
 
 
-class _LeaseDocument:
-    def __init__(self, state: dict[str, object]) -> None:
-        self.state = state
-
-    def get(self, *, transaction: object):
-        del transaction
-        data = dict(self.state) if self.state else None
-        return SimpleNamespace(exists=data is not None, to_dict=lambda: data)
-
-
-class _LeaseTransaction:
-    def __init__(self, document: _LeaseDocument) -> None:
-        self.document = document
-
-    def set(self, document: _LeaseDocument, value: dict[str, object]) -> None:
-        assert document is self.document
-        self.document.state = dict(value)
-
-    def delete(self, document: _LeaseDocument) -> None:
-        assert document is self.document
-        self.document.state.clear()
-
-
-def _lease_store(document: _LeaseDocument):
-    lock = threading.Lock()
-
-    def transact(callback):
-        with lock:
-            return callback(_LeaseTransaction(document))
-
-    return transact
-
-
 @pytest.mark.parametrize(
-    ("first_mode", "competing_mode"),
+    ("first_mode", "second_mode"),
     [("historical", "previous_year"), ("previous_year", "historical")],
 )
-def test_concurrent_fi1_modes_use_the_same_transactional_lease(
-    first_mode: str, competing_mode: str
+def test_overlapping_fi1_modes_can_commit_the_same_key_from_stale_state(
+    first_mode: str, second_mode: str
 ) -> None:
-    fake = Harness()
-    document = _LeaseDocument({})
-    transact = _lease_store(document)
+    # Both invocations read absence before either write; the fake writer records
+    # each run separately to expose the documented cross-run race.
+    fake = Harness(years=(2025,))
     started = threading.Event()
     release = threading.Event()
-    original_fetch = fake.adapters().fetch_text
+    first_adapters = fake.adapters()
+    original_fetch = first_adapters.fetch_text
 
     def blocking_fetch(url: str, timeout: float) -> str:
         if url == SELECTOR_URL:
@@ -655,82 +613,39 @@ def test_concurrent_fi1_modes_use_the_same_transactional_lease(
             assert release.wait(timeout=2)
         return original_fetch(url, timeout)
 
-    adapters = fake.adapters()
-    adapters = RuntimeAdapters(
-        **{
-            **adapters.__dict__,
-            "fetch_text": blocking_fetch,
-            "execution_lease": lambda: FirestoreExecutionLease(
-                transact, document, token="first-owner"
-            ),
-        }
+    first_adapters = RuntimeAdapters(
+        **{**first_adapters.__dict__, "fetch_text": blocking_fetch}
     )
-    results: list[object] = []
+    first_results: list[object] = []
     worker = threading.Thread(
-        target=lambda: results.append(
-            run_batch(adapters, api_key="runtime-secret", selection_mode=first_mode)
+        target=lambda: first_results.append(
+            run_batch(
+                first_adapters, api_key="runtime-secret", selection_mode=first_mode
+            )
         )
     )
     worker.start()
     assert started.wait(timeout=2)
 
-    competing = RuntimeAdapters(
-        **{
-            **adapters.__dict__,
-            "execution_lease": lambda: FirestoreExecutionLease(
-                transact, document, token="second-owner"
-            ),
-        }
+    second = run_batch(
+        fake.adapters(), api_key="runtime-secret", selection_mode=second_mode
     )
-    with pytest.raises(ActiveExecutionError, match="another FI-1 execution is active"):
-        run_batch(competing, api_key="runtime-secret", selection_mode=competing_mode)
+    assert len(fake.writes) == 1
 
     release.set()
     worker.join(timeout=3)
     assert not worker.is_alive()
-    assert len(results) == 1
-    assert document.state == {}
-
-
-def test_expired_firestore_lease_allows_only_a_new_transactional_owner() -> None:
-    document = _LeaseDocument({})
-    now = [datetime(2026, 11, 1, tzinfo=timezone.utc)]
-    transact = _lease_store(document)
-    previous = FirestoreExecutionLease(
-        transact,
-        document,
-        lease_seconds=2,
-        renew_seconds=1,
-        utcnow=lambda: now[0],
-        token="expired-owner",
-    )
-    assert previous._transition(acquire=True)
-    now[0] += timedelta(seconds=3)
-
-    current = FirestoreExecutionLease(
-        transact,
-        document,
-        lease_seconds=2,
-        renew_seconds=1,
-        utcnow=lambda: now[0],
-        token="current-owner",
-    )
-    with current:
-        assert document.state["owner"] == "current-owner"
-    assert document.state == {}
-
-
-def test_firestore_lease_releases_its_owner_after_batch_failure() -> None:
-    document = _LeaseDocument({})
-    lease = FirestoreExecutionLease(
-        _lease_store(document), document, token="failing-owner"
-    )
-
-    with pytest.raises(RuntimeError, match="batch failed"):
-        with lease:
-            raise RuntimeError("batch failed")
-
-    assert document.state == {}
+    assert len(first_results) == 1
+    assert second.completion is not None
+    assert first_results[0].completion is not None
+    same_key_writes = [
+        (rows, run_id)
+        for rows, run_id in fake.writes
+        if any(row["symbol"] == "ABC" and row["fiscal_year"] == 2025 for row in rows)
+    ]
+    assert len(same_key_writes) == 2
+    assert len({run_id for _, run_id in same_key_writes}) == 2
+    assert len(fake.completion_batches) == 2
 
 
 def test_symbol_pages_are_requested_serially_in_selector_order() -> None:
