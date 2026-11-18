@@ -596,56 +596,201 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     ("first_mode", "second_mode"),
     [("historical", "previous_year"), ("previous_year", "historical")],
 )
-def test_overlapping_fi1_modes_can_commit_the_same_key_from_stale_state(
+def test_overlapping_fi1_modes_can_insert_duplicate_logical_keys(
     first_mode: str, second_mode: str
 ) -> None:
-    # Both invocations read absence before either write; the fake writer records
-    # each run separately to expose the documented cross-run race.
+    # Both invocations snapshot absence before either write. The fake storage
+    # appends rows, showing that a logical key is not a global uniqueness rule.
     fake = Harness(years=(2025,))
-    started = threading.Event()
-    release = threading.Event()
-    first_adapters = fake.adapters()
-    original_fetch = first_adapters.fetch_text
+    read_barrier = threading.Barrier(2)
+    stored_rows: list[dict[str, Any]] = []
+    adapters = []
+    for mode in (first_mode, second_mode):
+        run_adapters = fake.adapters()
+        read_existing = run_adapters.read_existing
+        write_rows = run_adapters.write_rows
 
-    def blocking_fetch(url: str, timeout: float) -> str:
-        if url == SELECTOR_URL:
-            started.set()
-            assert release.wait(timeout=2)
-        return original_fetch(url, timeout)
+        def synchronized_read(read=read_existing):
+            snapshot = read()
+            read_barrier.wait(timeout=2)
+            return snapshot
 
-    first_adapters = RuntimeAdapters(
-        **{**first_adapters.__dict__, "fetch_text": blocking_fetch}
-    )
-    first_results: list[object] = []
-    worker = threading.Thread(
-        target=lambda: first_results.append(
-            run_batch(
-                first_adapters, api_key="runtime-secret", selection_mode=first_mode
+        def append_rows(rows: list[dict[str, Any]], run_id: str, write=write_rows):
+            receipt = write(rows, run_id)
+            stored_rows.extend(dict(row) for row in rows)
+            return receipt
+
+        adapters.append(
+            RuntimeAdapters(
+                **{
+                    **run_adapters.__dict__,
+                    "read_existing": synchronized_read,
+                    "write_rows": append_rows,
+                }
             )
         )
-    )
-    worker.start()
-    assert started.wait(timeout=2)
 
-    second = run_batch(
-        fake.adapters(), api_key="runtime-secret", selection_mode=second_mode
+    results: list[object] = []
+    threads = [
+        threading.Thread(
+            target=lambda a=a, m=m: results.append(
+                run_batch(a, api_key="runtime-secret", selection_mode=m)
+            )
+        )
+        for a, m in zip(adapters, (first_mode, second_mode))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3)
+        assert not thread.is_alive()
+
+    assert len(results) == 2
+    assert len(fake.writes) == 2
+    assert len({run_id for _, run_id in fake.writes}) == 2
+    assert [(row["symbol"], row["fiscal_year"]) for row in stored_rows] == [
+        ("ABC", 2025),
+        ("ABC", 2025),
+    ]
+    assert len(fake.completion_batches) == 2
+
+
+def test_overlapping_changed_links_can_overwrite_each_other() -> None:
+    old_link = "https://www.richbourse.com/ABC-old-2025.pdf"
+    fake = Harness(
+        years=(2025,), existing={("ABC", 2025): old_link}
     )
+    read_barrier = threading.Barrier(2)
+    commits: list[dict[str, Any]] = []
+    final_state: dict[tuple[str, int], dict[str, Any]] = {}
+    adapters = []
+    for revenue in (11, 22):
+        run_adapters = fake.adapters()
+        read_existing = run_adapters.read_existing
+
+        def synchronized_read(read=read_existing):
+            snapshot = read()
+            read_barrier.wait(timeout=2)
+            return snapshot
+
+        def last_write_wins(rows: list[dict[str, Any]], run_id: str):
+            fake.writes.append((rows, run_id))
+            for row in rows:
+                committed = dict(row)
+                commits.append(committed)
+                final_state[(row["symbol"], row["fiscal_year"])] = committed
+            return "a" * 64
+
+        def extract(pdf: bytes, model: str, key: str, timeout: float, value=revenue):
+            del model, key, timeout
+            return {**VALID, "fiscal_year": int(pdf[-4:]), "revenue": value}
+
+        adapters.append(
+            RuntimeAdapters(
+                **{
+                    **run_adapters.__dict__,
+                    "read_existing": synchronized_read,
+                    "write_rows": last_write_wins,
+                    "provider_attempt": extract,
+                }
+            )
+        )
+
+    threads = [
+        threading.Thread(
+            target=lambda a=a: run_batch(
+                a, api_key="runtime-secret", selection_mode="previous_year"
+            )
+        )
+        for a in adapters
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3)
+        assert not thread.is_alive()
+
+    assert len(commits) == 2
+    assert {row["revenue"] for row in commits} == {11, 22}
+    # A same-key replacement can be overwritten by either run; no winner is
+    # inferred from the run-scoped receipts.
+    assert final_state[("ABC", 2025)]["revenue"] in {11, 22}
+    assert len(fake.completion_batches) == 2
+
+
+def test_overlapping_writer_failure_has_run_scoped_completion() -> None:
+    fake = Harness(years=(2025,))
+    read_barrier = threading.Barrier(2)
+    adapters = []
+    for should_fail in (True, False):
+        run_adapters = fake.adapters()
+        read_existing = run_adapters.read_existing
+
+        def synchronized_read(read=read_existing):
+            snapshot = read()
+            read_barrier.wait(timeout=2)
+            return snapshot
+
+        def write(rows: list[dict[str, Any]], run_id: str, fail=should_fail):
+            if fail:
+                raise RuntimeError("simulated run-local write failure")
+            fake.writes.append((rows, run_id))
+            return "a" * 64
+
+        adapters.append(
+            RuntimeAdapters(
+                **{
+                    **run_adapters.__dict__,
+                    "read_existing": synchronized_read,
+                    "write_rows": write,
+                }
+            )
+        )
+
+    outcomes: list[object] = []
+
+    def execute(run_adapters: RuntimeAdapters) -> None:
+        try:
+            outcomes.append(run_batch(run_adapters, api_key="runtime-secret"))
+        except RuntimeError as error:
+            outcomes.append(error)
+
+    threads = [threading.Thread(target=execute, args=(a,)) for a in adapters]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3)
+        assert not thread.is_alive()
+
+    assert sum(isinstance(outcome, RuntimeError) for outcome in outcomes) == 1
+    assert sum(getattr(outcome, "completion", None) is not None for outcome in outcomes) == 1
+    assert len(fake.completion_batches) == 1
     assert len(fake.writes) == 1
 
-    release.set()
-    worker.join(timeout=3)
-    assert not worker.is_alive()
-    assert len(first_results) == 1
-    assert second.completion is not None
-    assert first_results[0].completion is not None
-    same_key_writes = [
-        (rows, run_id)
-        for rows, run_id in fake.writes
-        if any(row["symbol"] == "ABC" and row["fiscal_year"] == 2025 for row in rows)
-    ]
-    assert len(same_key_writes) == 2
-    assert len({run_id for _, run_id in same_key_writes}) == 2
-    assert len(fake.completion_batches) == 2
+
+def test_new_retry_reads_committed_link_and_skips_completed_row() -> None:
+    fake = Harness(years=(2025,))
+    adapters = fake.adapters()
+    write_rows = adapters.write_rows
+
+    def commit_and_update_state(rows: list[dict[str, Any]], run_id: str) -> str:
+        receipt = write_rows(rows, run_id)
+        for row in rows:
+            fake.existing[(row["symbol"], row["fiscal_year"])] = row["document_link"]
+        return receipt
+
+    adapters = RuntimeAdapters(**{**adapters.__dict__, "write_rows": commit_and_update_state})
+    first = run_batch(adapters, api_key="runtime-secret")
+    attempts_after_commit = len(fake.attempts)
+    writes_after_commit = len(fake.writes)
+
+    retry = run(fake)
+
+    assert first.completion is not None
+    assert retry.completion is None
+    assert len(fake.attempts) == attempts_after_commit
+    assert len(fake.writes) == writes_after_commit
+    assert fake.state_reads == 2
 
 
 def test_symbol_pages_are_requested_serially_in_selector_order() -> None:
