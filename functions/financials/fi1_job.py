@@ -112,6 +112,11 @@ _FINANCIAL_VALUE_KEYS = (
     "cash_and_cash_equivalents",
     "total_equity",
 )
+_LOG_TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
+_SENSITIVE_LOG_TOKEN = re.compile(
+    r"authorization|bearer|token|password|secret|api[_-]?key|email|uid|identifier|body",
+    re.IGNORECASE,
+)
 
 
 def _plain_text(value: str) -> str:
@@ -486,10 +491,6 @@ class RuntimeAdapters:
     read_existing: Callable[[], Mapping[tuple[str, int], str | None]]
     write_rows: Callable[[list[dict[str, Any]], str], str]
     completion: Callable[[Sequence[str]], Mapping[str, Any]]
-    emit_event: Callable[..., None]
-    emit_symbol_outcome: Callable[..., None]
-    emit_commit_counts: Callable[..., None]
-    emit_stage_failure: Callable[..., None]
     execution_lease: Callable[[], AbstractContextManager[Any]] | None = None
     monotonic: Callable[[], float] = time.monotonic
     utcnow: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
@@ -498,8 +499,23 @@ class RuntimeAdapters:
 def _remaining(deadline: float, monotonic: Callable[[], float]) -> float:
     value = deadline - monotonic()
     if value <= 0:
+        print("FI-1 execution deadline exceeded", flush=True)
         raise JobDeadlineExceeded("FI-1 runtime deadline exceeded")
     return value
+
+
+def _safe_log_token(value: str) -> str:
+    if (
+        not value
+        or _LOG_TOKEN.fullmatch(value) is None
+        or _SENSITIVE_LOG_TOKEN.search(value)
+    ):
+        return "redacted"
+    return value
+
+
+def _log_stage_failure(stage: str, error: Exception) -> None:
+    print(f"FI-1 {stage} failed ({_safe_log_token(_error_class(error))})", flush=True)
 
 
 def _get_response(url: str, *, accept: str, timeout: float) -> Any:
@@ -628,13 +644,7 @@ def _default_adapters(
     project_id: str, dataset: str, environment: str
 ) -> RuntimeAdapters:
     from google.cloud import bigquery
-    from ingestion_observability import (
-        emit_event,
-        emit_fi1_commit_counts,
-        emit_fi1_stage_failure,
-        emit_fi1_symbol_outcome,
-        managed_import_completion,
-    )
+    from ingestion_observability import managed_import_completion
 
     if re.fullmatch(r"[A-Za-z0-9_-]+", project_id) is None:
         raise ValueError("invalid Google Cloud project configuration")
@@ -708,10 +718,6 @@ def _default_adapters(
         read_existing=read_existing,
         write_rows=write_rows,
         completion=lambda fingerprints: managed_import_completion("financials", fingerprints),
-        emit_event=emit_event,
-        emit_symbol_outcome=emit_fi1_symbol_outcome,
-        emit_commit_counts=emit_fi1_commit_counts,
-        emit_stage_failure=emit_fi1_stage_failure,
         execution_lease=execution_lease,
     )
 
@@ -750,13 +756,13 @@ def run_batch(
     try:
         lease = adapters.execution_lease() if adapters.execution_lease is not None else None
     except Exception as error:
-        adapters.emit_stage_failure("lease", error_class=_error_class(error))
+        _log_stage_failure("lease", error)
         raise
     if lease is not None:
         try:
             lease.__enter__()
         except Exception as error:
-            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            _log_stage_failure("lease", error)
             raise
         try:
             result = _run_batch(
@@ -813,7 +819,7 @@ def _run_batch(
     try:
         existing = dict(adapters.read_existing())
     except Exception as error:
-        adapters.emit_stage_failure("state", error_class=_error_class(error))
+        _log_stage_failure("state", error)
         raise RuntimeError("FI-1 state read failed") from None
     _remaining(deadline, adapters.monotonic)
     try:
@@ -825,7 +831,7 @@ def _run_batch(
     except JobDeadlineExceeded:
         raise
     except Exception as error:
-        adapters.emit_stage_failure("selector", error_class=_error_class(error))
+        _log_stage_failure("selector", error)
         raise RuntimeError("FI-1 selector discovery failed") from None
     _remaining(deadline, adapters.monotonic)
     counters["symbols"] = len(symbols)
@@ -862,16 +868,18 @@ def _run_batch(
             if not isinstance(fingerprint, str) or re.fullmatch(r"[a-f0-9]{64}", fingerprint) is None:
                 raise RuntimeError("FI-1 writer returned no managed commit receipt")
         except ActiveExecutionError as error:
-            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            _log_stage_failure("lease", error)
             raise
         except JobDeadlineExceeded:
             raise
         except Exception as error:
-            adapters.emit_stage_failure("writer", error_class=_error_class(error))
+            _log_stage_failure("writer", error)
             raise
         receipts.append(fingerprint)
-        adapters.emit_commit_counts(
-            inserted=pending_counts["inserted"], updated=pending_counts["updated"]
+        print(
+            "FI-1 batch committed: "
+            f"inserted={pending_counts['inserted']} updated={pending_counts['updated']}",
+            flush=True,
         )
         counters["inserted"] += pending_counts["inserted"]
         counters["updated"] += pending_counts["updated"]
@@ -886,7 +894,7 @@ def _run_batch(
             try:
                 lease.assert_owned()
             except Exception as error:
-                adapters.emit_stage_failure("lease", error_class=_error_class(error))
+                _log_stage_failure("lease", error)
                 raise
         _remaining(deadline, adapters.monotonic)
         symbol_rows: list[dict[str, Any]] = []
@@ -911,7 +919,7 @@ def _run_batch(
                 try:
                     lease.assert_owned()
                 except Exception as error:
-                    adapters.emit_stage_failure("lease", error_class=_error_class(error))
+                    _log_stage_failure("lease", error)
                     raise
             _remaining(deadline, adapters.monotonic)
             symbol = candidate["symbol"]
@@ -956,11 +964,12 @@ def _run_batch(
             rows.extend(symbol_rows)
             pending_counts["inserted"] += symbol_counts["inserted"]
             pending_counts["updated"] += symbol_counts["updated"]
-        adapters.emit_symbol_outcome(
-            symbol,
-            "failed" if symbol_failed else "succeeded",
-            **({"error_class": symbol_error_class or _error_class(symbol_error)} if symbol_failed and (symbol_error_class or symbol_error) else {}),
+        outcome = "failed" if symbol_failed else "succeeded"
+        error_class = symbol_error_class or (
+            _error_class(symbol_error) if symbol_error is not None else None
         )
+        suffix = f" ({_safe_log_token(error_class)})" if error_class else ""
+        print(f"FI-1 symbol {_safe_log_token(symbol)}: {outcome}{suffix}", flush=True)
         terminal_symbols += 1
         if terminal_symbols % 10 == 0:
             flush()
@@ -973,10 +982,10 @@ def _run_batch(
                 lease.assert_owned()
             completion = adapters.completion(tuple(receipts))
         except ActiveExecutionError as error:
-            adapters.emit_stage_failure("lease", error_class=_error_class(error))
+            _log_stage_failure("lease", error)
             raise
         except Exception as error:
-            adapters.emit_stage_failure("completion", error_class=_error_class(error))
+            _log_stage_failure("completion", error)
             raise
     return JobOutcome(
         discovered_symbols=counters["symbols"],
@@ -1038,24 +1047,43 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="validate injected non-secret runtime settings without starting the job",
     )
     args = parser.parse_args(argv)
-    configuration = RuntimeConfiguration.from_environment()
+    try:
+        configuration = RuntimeConfiguration.from_environment()
+    except ValueError as error:
+        # Configuration validation errors use fixed, non-secret messages that
+        # identify the rejected setting. Keep the detail bounded for job logs.
+        detail = str(error).replace("\n", " ").replace("\r", " ")[:160]
+        print(f"FI-1 configuration failed: {detail}")
+        raise SystemExit(1) from None
+    except Exception:
+        print("FI-1 configuration failed")
+        raise SystemExit(1) from None
     if args.check_config:
         print(json.dumps(configuration.public_summary(), separators=(",", ":"), sort_keys=True))
         return
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
-        raise ValueError("OPENROUTER_API_KEY is required")
-    adapters = _default_adapters(
-        configuration.project_id, configuration.dataset, configuration.environment
-    )
-    run_batch(
-        adapters,
-        api_key=api_key,
-        model_order=configuration.model_order,
-        max_page_concurrency=configuration.max_concurrent_requests,
-        max_annual_candidates=configuration.max_reports_per_symbol,
-        selection_mode=configuration.selection_mode,
-    )
+        print("FI-1 configuration failed")
+        raise SystemExit(1)
+    try:
+        adapters = _default_adapters(
+            configuration.project_id, configuration.dataset, configuration.environment
+        )
+    except Exception:
+        print("FI-1 runtime initialization failed")
+        raise SystemExit(1) from None
+    try:
+        run_batch(
+            adapters,
+            api_key=api_key,
+            model_order=configuration.model_order,
+            max_page_concurrency=configuration.max_concurrent_requests,
+            max_annual_candidates=configuration.max_reports_per_symbol,
+            selection_mode=configuration.selection_mode,
+        )
+    except Exception:
+        # Stage-specific, sanitized messages are emitted inside run_batch.
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

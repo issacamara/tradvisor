@@ -151,16 +151,12 @@ def test_command_passes_injected_bounds_models_and_mode_to_batch(
     assert "test-only-secret" not in capsys.readouterr().out
 
 
-def test_default_adapters_use_finite_fi1_event_contract(
+def test_default_adapters_use_the_generic_completion_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import sys
 
     observability = ModuleType("ingestion_observability")
-    observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_symbol_outcome = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_commit_counts = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_stage_failure = lambda *args, **kwargs: None  # type: ignore[attr-defined]
     observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
@@ -174,9 +170,9 @@ def test_default_adapters_use_finite_fi1_event_contract(
     monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
 
     adapters = _default_adapters("dev-project", "stocks", "development")
-    assert adapters.emit_symbol_outcome is not None
-    assert adapters.emit_commit_counts is not None
-    assert adapters.emit_stage_failure is not None
+    assert adapters.completion(()) == {}
+    assert not hasattr(adapters, "emit_event")
+    assert not hasattr(adapters, "emit_symbol_outcome")
 
 
 def selector_html(*symbols: str) -> str:
@@ -217,10 +213,6 @@ class Harness:
         self.writes: list[tuple[list[dict[str, Any]], str]] = []
         self.completions: list[str] = []
         self.completion_batches: list[tuple[str, ...]] = []
-        self.events: list[tuple[str, str, dict[str, object]]] = []
-        self.symbol_outcomes: list[tuple[str, str, dict[str, object]]] = []
-        self.commit_counts: list[dict[str, int]] = []
-        self.stage_failures: list[tuple[str, str]] = []
         self.state_reads = 0
         self.actions: list[str] = []
 
@@ -266,18 +258,6 @@ class Harness:
             "managed_write": {"revision_fingerprint": fingerprints[-1]},
             }
 
-        def emit(name: str, outcome: str, **fields: object) -> None:
-            self.events.append((name, outcome, fields))
-
-        def symbol_outcome(symbol: str, outcome: str, **fields: object) -> None:
-            self.symbol_outcomes.append((symbol, outcome, fields))
-
-        def commit_counts(**counts: int) -> None:
-            self.commit_counts.append(counts)
-
-        def stage_failure(stage: str, *, error_class: str) -> None:
-            self.stage_failures.append((stage, error_class))
-
         return RuntimeAdapters(
             fetch_text=fetch_text,
             download_pdf=download_pdf,
@@ -286,10 +266,6 @@ class Harness:
             read_existing=read_existing,
             write_rows=write_rows,
             completion=completion,
-            emit_event=emit,
-            emit_symbol_outcome=symbol_outcome,
-            emit_commit_counts=commit_counts,
-            emit_stage_failure=stage_failure,
             utcnow=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
 
@@ -381,7 +357,9 @@ def test_invalid_run_batch_mode_fails_before_lease_or_adapter_access() -> None:
 
 @pytest.mark.parametrize("selection_mode", ["", "unknown"])
 def test_main_rejects_invalid_mode_before_constructing_backing_adapters(
-    monkeypatch: pytest.MonkeyPatch, selection_mode: str
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    selection_mode: str,
 ) -> None:
     for name, value in runtime_environment().items():
         monkeypatch.setenv(name, value)
@@ -393,10 +371,34 @@ def test_main_rejects_invalid_mode_before_constructing_backing_adapters(
         lambda *args: adapter_calls.append(True),
     )
 
-    with pytest.raises(ValueError, match="TRADVISOR_FINANCIALS_SELECTION_MODE"):
+    with pytest.raises(SystemExit) as error:
         main([])
 
+    assert error.value.code == 1
+    output = capsys.readouterr().out
+    assert output.startswith("FI-1 configuration failed: ")
+    assert "TRADVISOR_FINANCIALS_SELECTION_MODE" in output
     assert adapter_calls == []
+
+
+def test_main_suppresses_raw_runtime_exception_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name, value in runtime_environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "runtime-test-secret")
+    monkeypatch.setattr(fi1_job, "_default_adapters", lambda *args: object())
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Bearer private-provider-body")
+
+    monkeypatch.setattr(fi1_job, "run_batch", fail)
+    with pytest.raises(SystemExit) as error:
+        main([])
+
+    assert error.value.code == 1
+    assert capsys.readouterr().out == ""
 
 
 def test_full_batch_uses_only_injected_offline_adapters() -> None:
@@ -418,34 +420,56 @@ def test_full_batch_uses_only_injected_offline_adapters() -> None:
     assert outcome.completion is not None
 
 
-def test_each_processed_symbol_emits_one_terminal_outcome() -> None:
+def test_each_processed_symbol_prints_one_terminal_outcome(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fake = Harness()
 
     run(fake)
 
-    assert fake.symbol_outcomes == [("ABC", "succeeded", {})]
-    assert fake.commit_counts == [{"inserted": 1, "updated": 0}]
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: succeeded",
+        "FI-1 batch committed: inserted=1 updated=0",
+    ]
 
 
-def test_unchanged_candidate_emits_one_success_without_pdf_or_provider() -> None:
+def test_unchanged_candidate_prints_success_without_pdf_or_provider(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     link = "https://www.richbourse.com/ABC-2024.pdf"
     fake = Harness(existing={("ABC", 2024): link})
 
     run(fake)
 
-    assert fake.symbol_outcomes == [("ABC", "succeeded", {})]
+    assert capsys.readouterr().out.splitlines() == ["FI-1 symbol ABC: succeeded"]
     assert fake.downloads == []
     assert fake.attempts == []
 
 
-def test_provider_http_status_is_sanitized_in_fi1_telemetry() -> None:
+def test_multiple_candidates_print_one_terminal_symbol_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = Harness(years=(2025, 2024))
+
+    run(fake)
+
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: succeeded",
+        "FI-1 batch committed: inserted=2 updated=0",
+    ]
+
+
+def test_provider_http_status_is_sanitized_in_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     def fail(*_args: object) -> object:
         raise ProviderHTTPError(503)
 
     fake = Harness(extract=fail)
     outcome = run(fake, model_order=(MODEL_ORDER[0],))
-    assert fake.events == []
-    assert fake.symbol_outcomes == [("ABC", "failed", {"error_class": "ProviderHTTP503"})]
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: failed (ProviderHTTP503)"
+    ]
     assert outcome.failed == 1
     assert fake.completions == []
 
@@ -544,9 +568,6 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     helper.upsert_financials_and_archive = managed_writer  # type: ignore[attr-defined]
     observability = ModuleType("ingestion_observability")
     observability.emit_event = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_symbol_outcome = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_commit_counts = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    observability.emit_fi1_stage_failure = lambda *args, **kwargs: None  # type: ignore[attr-defined]
     observability.managed_import_completion = lambda *args, **kwargs: {}  # type: ignore[attr-defined]
     bigquery = ModuleType("google.cloud.bigquery")
     bigquery.Client = lambda **kwargs: object()  # type: ignore[attr-defined]
@@ -858,7 +879,9 @@ def test_successful_completion_follows_committed_changed_write() -> None:
     assert fake.completions == ["a" * 64]
 
 
-def test_writer_failure_cannot_emit_completion() -> None:
+def test_writer_failure_prints_only_failure_class_and_cannot_emit_completion(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fake = Harness()
     adapters = fake.adapters()
 
@@ -872,11 +895,44 @@ def test_writer_failure_cannot_emit_completion() -> None:
         run_batch(adapters, api_key="runtime-secret")
     assert fake.actions == ["state_read", "write"]
     assert fake.completions == []
-    assert fake.commit_counts == []
-    assert fake.stage_failures == [("writer", "RuntimeError")]
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: succeeded",
+        "FI-1 writer failed (RuntimeError)",
+    ]
 
 
-def test_completion_failure_is_a_bounded_stage_failure() -> None:
+def test_commit_counts_wait_for_a_validated_receipt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = Harness()
+    adapters = RuntimeAdapters(
+        **{**fake.adapters().__dict__, "write_rows": lambda _rows, _run_id: "invalid"}
+    )
+
+    with pytest.raises(RuntimeError, match="managed commit receipt"):
+        run_batch(adapters, api_key="runtime-secret")
+
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: succeeded",
+        "FI-1 writer failed (RuntimeError)",
+    ]
+
+
+def test_untrusted_symbol_is_redacted_from_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = Harness(symbols=("customer@example.com",))
+
+    run(fake)
+
+    output = capsys.readouterr().out
+    assert "customer@example.com" not in output
+    assert "FI-1 symbol redacted: succeeded" in output
+
+
+def test_completion_failure_is_a_bounded_stage_failure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fake = Harness()
     adapters = fake.adapters()
 
@@ -888,7 +944,11 @@ def test_completion_failure_is_a_bounded_stage_failure() -> None:
     with pytest.raises(RuntimeError, match="completion failed"):
         run_batch(adapters, api_key="runtime-secret")
     assert fake.completions == []
-    assert fake.stage_failures == [("completion", "RuntimeError")]
+    assert capsys.readouterr().out.splitlines() == [
+        "FI-1 symbol ABC: succeeded",
+        "FI-1 batch committed: inserted=1 updated=0",
+        "FI-1 completion failed (RuntimeError)",
+    ]
 
 
 def test_failed_report_suppresses_batch_completion_even_after_other_write() -> None:
@@ -907,7 +967,7 @@ def test_failed_report_suppresses_batch_completion_even_after_other_write() -> N
     assert fake.completions == []
 
 
-def test_sentinels_never_enter_rows_or_telemetry() -> None:
+def test_sentinels_never_enter_rows_or_stdout(capsys: pytest.CaptureFixture[str]) -> None:
     sentinel = "PRIVATE_PDF_TEXT_PROMPT_PROVIDER_RESPONSE"
 
     def extract(*args):
@@ -915,21 +975,25 @@ def test_sentinels_never_enter_rows_or_telemetry() -> None:
 
     fake = Harness(extract=extract)
     outcome = run(fake)
-    serialized = repr((fake.writes, fake.events, outcome.as_dict()))
+    output = capsys.readouterr().out
+    serialized = repr((fake.writes, output, outcome.as_dict()))
 
     assert sentinel not in serialized
-    assert "https://www.richbourse.com/ABC-2024.pdf" not in repr(fake.events)
+    assert "https://www.richbourse.com/ABC-2024.pdf" not in output
     assert fake.writes == []
 
 
-def test_successful_batch_does_not_retain_source_pdf_or_extracted_text() -> None:
+def test_successful_batch_does_not_print_source_pdf_or_extracted_text(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     fake = Harness()
 
     outcome = run(fake)
-    retained = repr((fake.writes, fake.events, outcome.as_dict()))
+    output = capsys.readouterr().out
+    retained = repr((fake.writes, output, outcome.as_dict()))
 
     assert "PRIVATE_PDF_SENTINEL" not in retained
-    assert "https://www.richbourse.com/ABC-2024.pdf" not in repr(fake.events)
+    assert "https://www.richbourse.com/ABC-2024.pdf" not in output
     assert fake.writes
 
 
@@ -940,7 +1004,7 @@ def test_runtime_budget_cannot_exceed_sixty_minutes() -> None:
         run(fake, max_duration_seconds=MAX_RUNTIME_SECONDS + 1)
 
 
-def test_deadline_prevents_writes_and_completion() -> None:
+def test_deadline_prevents_writes_and_completion(capsys: pytest.CaptureFixture[str]) -> None:
     fake = Harness()
     now = [0.0]
     adapters = fake.adapters()
@@ -956,6 +1020,7 @@ def test_deadline_prevents_writes_and_completion() -> None:
 
     with pytest.raises(JobDeadlineExceeded):
         run_batch(adapters, api_key="runtime-secret", max_duration_seconds=1)
+    assert "FI-1 execution deadline exceeded" in capsys.readouterr().out
     assert fake.writes == []
     assert fake.completions == []
 
