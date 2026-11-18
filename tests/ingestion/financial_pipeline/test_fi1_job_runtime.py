@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from functions.financials import fi1_job
-from functions.financials.fi1_contracts import EXTRACTION_KEYS
+from functions.financials.fi1_job import EXTRACTION_KEYS
 from functions.financials.fi1_job import (
     MAX_RUNTIME_SECONDS,
     MODEL_ORDER,
