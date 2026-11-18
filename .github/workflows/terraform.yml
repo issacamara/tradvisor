@@ -147,6 +147,7 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
+          TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
           terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
           terraform plan -out=tfplan -input=false -no-color >/dev/null
