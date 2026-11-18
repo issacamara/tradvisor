@@ -69,7 +69,7 @@ flowchart LR
 
 ### 5.4 Financials state and staged writer
 
-- **Purpose:** Read current row/link state once and commit all changed valid rows atomically enough for retry-safe processing.
+- **Purpose:** Read current row/link state once per run and apply each run-scoped staging batch with one BigQuery `MERGE`. The statement is atomic for its batch, but concurrent runs are not serialized and may conflict, duplicate rows, or overwrite one another; a later retry is a new run that reads committed state.
 - **Reused:** Keep the Terraform-managed BigQuery table and run-scoped staging/`MERGE` pattern; runtime code does not create or replace tables.
 - **Interfaces/data:** Storage identity is `symbol, fiscal_year`. `document_link` is a mutable source-reference attribute: a different link for the same identity permits replacement; a matching link is skipped.
 - **Technology:** BigQuery parameterized state query, staging table and `MERGE` after each ten terminal symbols and after the final partial batch.
@@ -152,7 +152,7 @@ The validated payload persists the six requested nullable numeric fields. Null d
 ## 11. Assumptions
 
 1. RichBourse continues to expose the selector and `?symbole=<symbol>` filtering for the current 48-company scope; implementation validates this with offline fixtures and a separately approved development run. **Owner:** implementation wave.
-2. The existing `stocks.financials` schema can retain `document_link` while using `(symbol, fiscal_year)` as its logical uniqueness key; any Terraform schema adjustment is backward-compatible. **Owner:** BigQuery/Terraform wave.
+2. The existing `stocks.financials` schema can retain `document_link` while using `(symbol, fiscal_year)` as its logical row identity and matching key; it does not enforce cross-run uniqueness. Any Terraform schema adjustment is backward-compatible. **Owner:** BigQuery/Terraform wave.
 3. Existing completion control accepts a changed-financial import outcome from the new job without a source-specific workflow invocation; the event adapter is verified against the merged control contract. **Owner:** integration wave.
 4. The configured `gemma-4-31b-it` identifier is the approved OpenRouter primary model; availability/rate-limit errors fall through to the next configured model. **Owner:** operations configuration wave.
 
