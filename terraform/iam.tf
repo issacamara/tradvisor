@@ -116,6 +116,15 @@ resource "google_cloud_run_v2_job_iam_member" "fi1_financial_scheduler_invoker" 
   member   = "serviceAccount:${google_service_account.fi1_financial_scheduler[0].email}"
 }
 
+resource "google_cloud_run_v2_job_iam_member" "fi1_financial_replacement_invoker" {
+  count    = var.manage_fi1_financial_job ? 1 : 0
+  project  = var.project_id
+  location = google_cloud_run_v2_job.fi1_financials_replacement[0].location
+  name     = google_cloud_run_v2_job.fi1_financials_replacement[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.fi1_financial_scheduler[0].email}"
+}
+
 # Preserve the existing key. Key rotation requires a separate approved change.
 resource "google_service_account_key" "tradvisor_sa_key" {
   count              = var.manage_legacy_service_account_credentials ? 1 : 0

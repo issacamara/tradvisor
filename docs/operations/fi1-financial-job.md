@@ -5,17 +5,17 @@ function packages and retain their Firestore dependency. FI-1 no longer uses
 that client, but dependency cleanup would change unrelated package sources and
 is deferred to a separately scoped change.
 
-Terraform provisions the FI-1 Cloud Run Job and its direct monthly Cloud
-Scheduler target only when `manage_fi1_financial_job` is true. The image input,
+Terraform provisions the FI-1 Cloud Run Jobs and their single direct monthly
+Cloud Scheduler target only when `manage_fi1_financial_job` is true. The image input,
 `fi1_financial_job_image`, must be an immutable `@sha256:` digest supplied by
 the FI-1 release integration from `fi1_job.digest` in the commit-bound release
 manifest. Delivery resolves it to the environment-local Artifact Registry
 image. The image is built from the locked FI-1 dependencies and contains no
-environment values or secrets. Both switches default off: the job is absent by
-default, and a provisioned Scheduler target remains paused until
+environment values or secrets. Both switches default off: the jobs are absent
+by default, and a provisioned Scheduler target remains paused until
 `activate_fi1_financial_schedule` is explicitly enabled.
-After provisioning, keep `manage_fi1_financial_job` enabled; the Job and
-Scheduler resources are destroy-protected. The financial-specific legacy
+After provisioning, keep `manage_fi1_financial_job` enabled; both Jobs and the
+Scheduler resource are destroy-protected. The financial-specific legacy
 Functions, Workflows, Scheduler target, source packaging, runtime identity and
 IAM grants have been retired from Terraform configuration. Terraform state
 migration removes the old trigger and execution resources while leaving
@@ -27,18 +27,53 @@ financial scheduler and both financial Workflows are removed by the explicit
 retirement state blocks. All non-financial schedules remain configured, and
 historical archive and annual-financial revision assets are preserved.
 
-The FI-1 Job uses its own runtime identity. It can read the Terraform-managed
+Both FI-1 Jobs use the dedicated runtime identity. It can read the Terraform-managed
 `stocks.brvm_companies` selector table, edit only
 `stocks.financials` and `stocks.financials_staging`, submit BigQuery jobs, and
 access the existing Terraform-managed OpenRouter secret. It receives no
-Firestore or bucket grants. The Scheduler caller has only `roles/run.invoker`
-on this Job. Terraform continues to own and protect both financial tables.
+Firestore or bucket grants. The Scheduler caller has only job-scoped
+`roles/run.invoker` grants on the protected legacy and replacement Jobs.
+Terraform continues to own and protect both financial tables.
 
-The Job runs one task at a time (`task_count = 1`, `parallelism = 1`), has no
+Each Job runs one task at a time (`task_count = 1`, `parallelism = 1`), has no
 automatic task retries, and is limited to 3600 seconds. Runtime configuration
 caps work at serial RichBourse requests, five reports per symbol,
 and one attempt per configured model. The OpenRouter key is injected from
 Secret Manager at runtime; no secret payload or version is managed here.
+
+## Staged Cloud Run job rename
+
+The protected rollback Job retains the name `tradvisor-fi1-financials`; the
+replacement Job is `scrape-financials`. Both use the same Terraform-managed
+runtime identity, Secret Manager reference, table contracts, and execution
+limits. Terraform keeps the old Job's existing image digest from state while it
+creates the replacement from the current immutable release digest.
+
+The single Scheduler resource remains
+`tradvisor-fi1-financials-monthly`, with its existing caller identity, cadence,
+time zone, and pause control. Its target is independently selected by
+`fi1_financial_scheduler_target`, which defaults to `legacy`. The replacement
+Job and its job-scoped `roles/run.invoker` grant are provisioned before a
+separately approved cutover changes the variable to `replacement`; the same
+Scheduler resource then changes target after Terraform has both Job bindings
+ready. No second schedule is created. Rollback changes the target to `legacy`
+through a separately approved delivery. Do not remove the rollback Job or its
+invoker grant until a separate retirement decision is approved.
+
+Repository inventory: Terraform and this runbook are the only hard-coded
+Cloud Run job-name references found. The development and release workflows
+resolve the FI-1 image from the commit-bound `fi1_job.digest` and do not name
+the Cloud Run Job. The documented manual execution command uses a caller
+supplied `FI1_JOB` name; the repository contains no FI-1 name-based alert or
+monitor definition. Before cutover, the operator must check external scripts,
+operator notes, dashboards, and alerts for the old name and update those
+references as needed. Confirm the effective target and both job-scoped grants
+in the reviewed plan before any approved cutover. The monthly trigger remains
+paused unless schedule activation is separately approved.
+
+For manual execution, set `FI1_JOB` to the approved current target from
+`fi1_financial_scheduler_target` and confirm the project and region. Manual
+execution and any historical override still require their separate approvals.
 
 ## Execution overlap contract
 
