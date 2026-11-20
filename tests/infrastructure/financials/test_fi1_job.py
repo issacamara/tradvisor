@@ -52,6 +52,69 @@ def test_fi1_job_is_disabled_by_default_and_requires_a_digest_image() -> None:
     assert "prevent_destroy = true" in job
 
 
+def test_financial_job_rename_stages_a_protected_replacement() -> None:
+    legacy = _resource(FINANCIAL, "google_cloud_run_v2_job", "fi1_financials")
+    replacement = _resource(FINANCIAL, "google_cloud_run_v2_job", "fi1_financials_replacement")
+    legacy_name = _variable("fi1_financial_job_name")
+    replacement_name = _variable("fi1_financial_replacement_job_name")
+
+    assert 'default     = "tradvisor-fi1-financials"' in legacy_name
+    assert "valid Cloud Run Job name" in legacy_name
+    assert 'default     = "scrape-financials"' in replacement_name
+    assert "valid Cloud Run Job name" in replacement_name
+    legacy_pattern = re.search(
+        r'condition\s*=\s*can\(regex\("([^"]+)"\s*,\s*var\.fi1_financial_job_name\)\)',
+        legacy_name,
+    )
+    pattern = re.search(
+        r'condition\s*=\s*can\(regex\("([^"]+)"\s*,\s*var\.fi1_financial_replacement_job_name\)\)',
+        replacement_name,
+    )
+    assert legacy_pattern and pattern
+    assert re.fullmatch(legacy_pattern.group(1), "a")
+    assert re.fullmatch(pattern.group(1), "scrape-financials")
+    assert re.fullmatch(pattern.group(1), "a")
+    assert not re.fullmatch(pattern.group(1), "Scrape-Financials")
+    assert not re.fullmatch(pattern.group(1), "scrape-financials-")
+    assert not re.fullmatch(pattern.group(1), "s" * 50)
+    assert "ignore_changes = [template[0].template[0].containers[0].image]" in legacy
+    assert "prevent_destroy = true" in legacy and "deletion_protection = true" in legacy
+    assert "count               = var.manage_fi1_financial_job ? 1 : 0" in replacement
+    assert "name                = var.fi1_financial_replacement_job_name" in replacement
+    assert "image = var.fi1_financial_job_image" in replacement
+    assert "deletion_protection = true" in replacement
+    assert "prevent_destroy = true" in replacement
+
+    for contract in (
+        "service_account = google_service_account.fi1_financial_runtime[0].email",
+        'timeout         = "${var.fi1_financial_job_timeout_seconds}s"',
+        "task_count  = 1",
+        "parallelism = 1",
+        "max_retries     = 0",
+        'cpu    = "1"',
+        'memory = "2Gi"',
+        '"TRADVISOR_RUNTIME_TARGET"',
+        '"TRADVISOR_INGESTION_FINANCIALS_TABLE"',
+        '"TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE"',
+        '"TRADVISOR_FINANCIALS_SELECTION_MODE"',
+        "var.fi1_financial_job_max_concurrent_requests",
+        "var.fi1_financial_job_max_reports_per_symbol",
+        'secret  = google_secret_manager_secret.openrouter.secret_id',
+    ):
+        assert contract in replacement
+
+    for gate in (
+        "**Plan stop gate:**",
+        "Stop before apply if the reviewed plan proposes destroying,",
+        "- Successful target evidence:",
+        "- Monitoring evidence:",
+        "- Single-trigger evidence:",
+        "- Rollback evidence:",
+        "- Inventory evidence:",
+    ):
+        assert gate in OPERATIONS
+
+
 def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
     job = _resource(FINANCIAL, "google_cloud_run_v2_job", "fi1_financials")
 
@@ -144,12 +207,21 @@ def test_fi1_job_waits_for_environment_specific_stocks_grant() -> None:
     )
 
 
-def test_monthly_scheduler_invokes_only_the_fi1_job_with_resource_level_iam() -> None:
+def test_monthly_scheduler_invokes_one_selected_fi1_job_with_resource_level_iam() -> None:
     scheduler = _resource(FINANCIAL, "google_cloud_scheduler_job", "fi1_financials")
     caller = _resource(IAM, "google_service_account", "fi1_financial_scheduler")
     invoker = _resource(IAM, "google_cloud_run_v2_job_iam_member", "fi1_financial_scheduler_invoker")
+    replacement_invoker = _resource(IAM, "google_cloud_run_v2_job_iam_member", "fi1_financial_replacement_invoker")
     activation = _variable("activate_fi1_financial_schedule")
+    target = _variable("fi1_financial_scheduler_target")
+    scheduler_name = _variable("fi1_financial_scheduler_name")
 
+    assert 'default     = "tradvisor-fi1-financials-monthly"' in scheduler_name
+    assert 'default     = "legacy"' in target
+    assert 'contains(["legacy", "replacement"], var.fi1_financial_scheduler_target)' in target
+    assert "name        = var.fi1_financial_scheduler_name" in scheduler
+    assert "resource \"google_cloud_scheduler_job\"" in FINANCIAL
+    assert FINANCIAL.count('resource "google_cloud_scheduler_job"') == 1
     assert 'default     = "0 20 1 * *"' in _variable("fi1_financial_job_schedule")
     assert 'time_zone   = "Africa/Bamako"' in scheduler
     assert "run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/" in scheduler
@@ -167,6 +239,12 @@ def test_monthly_scheduler_invokes_only_the_fi1_job_with_resource_level_iam() ->
     assert "google_cloud_run_v2_job.fi1_financials[0].name" in invoker
     assert "serviceAccount:${google_service_account.fi1_financial_scheduler[0].email}" in invoker
     assert "google_project_iam_member" not in invoker
+    assert 'role     = "roles/run.invoker"' in replacement_invoker
+    assert "google_cloud_run_v2_job.fi1_financials_replacement[0].name" in replacement_invoker
+    assert "serviceAccount:${google_service_account.fi1_financial_scheduler[0].email}" in replacement_invoker
+    assert IAM.count('role     = "roles/run.invoker"') == 2
+    assert "google_cloud_run_v2_job_iam_member.fi1_financial_replacement_invoker" in scheduler
+    assert 'var.fi1_financial_scheduler_target == "replacement" ? google_cloud_run_v2_job.fi1_financials_replacement[0].name : google_cloud_run_v2_job.fi1_financials[0].name' in scheduler
 
 
 def test_financial_scheduler_and_workflows_are_retired_from_configuration() -> None:

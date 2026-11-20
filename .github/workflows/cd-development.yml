@@ -235,6 +235,9 @@ jobs:
               '  project             = var.project_id' \
               '  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"' \
               '  deletion_protection = false' \
+              '  scaling {' \
+              '    min_instance_count = 0' \
+              '  }' \
               '  template {' \
               '    containers {' \
               '      image = var.v1_api_image' \
@@ -397,8 +400,33 @@ jobs:
             --state-bucket "$TF_STATE_BUCKET" \
             --state-prefix "$TF_STATE_PREFIX" \
             --api-image "$API_IMAGE"
-      - name: Clear protection on retired workflow dispatcher
+      - name: Verify initial FI-1 staging actions before apply
+        id: verify-initial-fi1-staging
         if: steps.delivery-gate.outputs.proceed == 'true' && env.DELIVERY_ACTION == 'apply'
+        working-directory: terraform
+        env:
+          API_IMAGE: ${{ steps.release-image.outputs.api_image }}
+          FI1_IMAGE: ${{ steps.release-image.outputs.fi1_job_image }}
+        run: |
+          if [ "$AUTOMATIC_DELIVERY" = true ]; then
+            plan_path=tfplan
+          else
+            plan_path=../reviewed-plan/tfplan
+          fi
+          set -o pipefail
+          if ! result="$(terraform show -json "$plan_path" 2>/dev/null \
+            | python3 ../scripts/deployment/verify_fi1_staging_plan.py \
+              --delivery-api-image "$API_IMAGE" \
+              --delivery-fi1-image "$FI1_IMAGE")"; then
+            echo "Initial FI-1 staging action verification failed." >&2
+            exit 1
+          fi
+          printf '%s\n' "$result" >> "$GITHUB_OUTPUT"
+      - name: Clear protection on retired workflow dispatcher
+        if: >-
+          steps.delivery-gate.outputs.proceed == 'true' &&
+          env.DELIVERY_ACTION == 'apply' &&
+          steps.verify-initial-fi1-staging.outputs.initial_staging != 'true'
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'dev-tradvisor' }}
           GCP_REGION: ${{ vars.GCP_REGION || 'europe-central2' }}

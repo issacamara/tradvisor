@@ -45,9 +45,42 @@ variable "activate_fi1_financial_schedule" {
 }
 
 variable "fi1_financial_job_name" {
-  description = "Cloud Run Job name for FI-1 financial ingestion"
+  description = "Existing Cloud Run Job name retained for FI-1 rollback"
   type        = string
   default     = "tradvisor-fi1-financials"
+
+  validation {
+    condition     = can(regex("^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$", var.fi1_financial_job_name))
+    error_message = "fi1_financial_job_name must be a valid Cloud Run Job name (1-49 lowercase letters, digits, or hyphens)."
+  }
+}
+
+variable "fi1_financial_replacement_job_name" {
+  description = "Staged replacement Cloud Run Job name for FI-1"
+  type        = string
+  default     = "scrape-financials"
+
+  validation {
+    condition     = can(regex("^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$", var.fi1_financial_replacement_job_name))
+    error_message = "fi1_financial_replacement_job_name must be a valid Cloud Run Job name (1-49 lowercase letters, digits, or hyphens)."
+  }
+}
+
+variable "fi1_financial_scheduler_name" {
+  description = "Stable existing monthly Scheduler resource name for FI-1"
+  type        = string
+  default     = "tradvisor-fi1-financials-monthly"
+}
+
+variable "fi1_financial_scheduler_target" {
+  description = "FI-1 Job selected by the single existing Scheduler resource; switch only for an approved cutover"
+  type        = string
+  default     = "legacy"
+
+  validation {
+    condition     = contains(["legacy", "replacement"], var.fi1_financial_scheduler_target)
+    error_message = "fi1_financial_scheduler_target must be legacy or replacement."
+  }
 }
 
 variable "fi1_financial_job_image" {

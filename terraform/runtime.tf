@@ -82,6 +82,13 @@ resource "google_cloud_run_v2_service" "v1_api" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = true
 
+  dynamic "scaling" {
+    for_each = var.environment == "development" ? [1] : []
+    content {
+      min_instance_count = 0
+    }
+  }
+
   template {
     service_account = google_service_account.v1_runtime[0].email
     timeout         = "${var.v1_api_timeout_seconds}s"
@@ -216,6 +223,13 @@ resource "google_cloud_run_v2_service" "publication_control" {
   project             = var.project_id
   ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
   deletion_protection = true
+
+  dynamic "scaling" {
+    for_each = var.environment == "development" ? [1] : []
+    content {
+      min_instance_count = 0
+    }
+  }
 
   template {
     service_account = google_service_account.publication_control[0].email

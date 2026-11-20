@@ -43,8 +43,49 @@ jobs:
       TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
-      - name: Stage development dispatcher prepare phase
+      - name: Detect FI-1 staging transition
+        id: fi1-staging-transition
         if: env.TF_VAR_environment == 'development'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PROPOSED_CONFIG: terraform/fi1_financial.tf
+        run: |
+          set -euo pipefail
+          transition=false
+          declaration='^[[:space:]]*resource[[:space:]]+"google_cloud_run_v2_job"[[:space:]]+"fi1_financials_replacement"[[:space:]]*\{'
+          if ! grep -Eq "$declaration" "$PROPOSED_CONFIG"; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "${BASE_SHA//0/}" = "" ]; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if ! git fetch --no-tags origin "$BASE_SHA" >/dev/null 2>&1 || \
+            ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if ! base_tree_entry="$(git ls-tree "$BASE_SHA" -- terraform/fi1_financial.tf)"; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if [ -n "$base_tree_entry" ]; then
+            if ! base_config="$(git show "$BASE_SHA:terraform/fi1_financial.tf")"; then
+              echo "FI-1 staging transition base is unavailable." >&2
+              exit 1
+            fi
+            if grep -Eq "$declaration" <<< "$base_config"; then
+              transition=false
+            else
+              transition=true
+            fi
+          else
+            transition=true
+          fi
+          echo "enabled=$transition" >> "$GITHUB_OUTPUT"
+      - name: Stage development dispatcher prepare phase
+        if: env.TF_VAR_environment == 'development' && steps.fi1-staging-transition.outputs.enabled == 'true'
         working-directory: terraform
         run: |
           printf '%s\n' \
@@ -55,6 +96,9 @@ jobs:
             '  project             = var.project_id' \
             '  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"' \
             '  deletion_protection = false' \
+            '  scaling {' \
+            '    min_instance_count = 0' \
+            '  }' \
             '  template {' \
             '    containers {' \
             '      image = var.v1_api_image' \
@@ -94,8 +138,8 @@ jobs:
           run-id: ${{ steps.deployment.outputs.run_id }}
           github-token: ${{ github.token }}
           path: development-deployment
-      - name: Resolve deployed FI-1 image digest
-        id: fi1-image
+      - name: Resolve deployed API and FI-1 images
+        id: deployed-images
         if: env.TF_VAR_environment == 'development'
         env:
           DEPLOYMENT_ARTIFACT: ${{ steps.deployment.outputs.artifact_name }}
@@ -110,15 +154,24 @@ jobs:
           assert re.fullmatch(r"[0-9a-f]{40}", evidence["release_id"])
           assert os.environ["DEPLOYMENT_ARTIFACT"] == f"tradvisor-development-deployed-{evidence['release_id']}"
           assert evidence["commit"] == evidence["release_id"]
-          digest = evidence["fi1_job_digest"]
-          assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
-          image = f"{os.environ['GCP_REGION']}-docker.pkg.dev/{os.environ['GCP_PROJECT_ID']}/{os.environ['ARTIFACT_REPOSITORY']}/financial-ingestion@{digest}"
+          backend_digest = evidence["backend_digest"]
+          fi1_digest = evidence["fi1_job_digest"]
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", backend_digest)
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", fi1_digest)
+          registry = f"{os.environ['GCP_REGION']}-docker.pkg.dev/{os.environ['GCP_PROJECT_ID']}/{os.environ['ARTIFACT_REPOSITORY']}"
+          api_image = f"{registry}/api:{evidence['release_id']}@{backend_digest}"
+          fi1_image = f"{registry}/financial-ingestion:{evidence['release_id']}@{fi1_digest}"
+          print(f"::add-mask::{api_image}")
+          print(f"::add-mask::{fi1_image}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"image={image}", file=output)
+              print(f"api_image={api_image}", file=output)
+              print(f"fi1_image={fi1_image}", file=output)
           PY
       - name: Validate isolated target and approved image
         env:
-          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
+          TF_VAR_v1_api_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_v1_batch_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.deployed-images.outputs.fi1_image }}
         shell: bash
         run: |
           if [ "$TF_VAR_environment" = production ]; then
@@ -132,6 +185,7 @@ jobs:
           fi
           test -n "$GCP_REGION"
           [[ "$TF_VAR_v1_api_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
+          [[ "$TF_VAR_v1_batch_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
           if [ "$TF_VAR_environment" = development ]; then
             [[ "$TF_VAR_fi1_financial_job_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
           fi
@@ -146,9 +200,26 @@ jobs:
       - name: Plan without publishing state or plan contents
         working-directory: terraform
         env:
-          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
+          FI1_STAGING_TRANSITION: ${{ steps.fi1-staging-transition.outputs.enabled }}
+          TF_VAR_v1_api_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_v1_batch_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.deployed-images.outputs.fi1_image }}
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
-          terraform plan -out=tfplan -input=false -no-color >/dev/null
+          trap 'rm -f tfplan' EXIT
+          if ! terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="prefix=$TF_STATE_PREFIX" \
+            -input=false -no-color >/dev/null 2>&1; then
+            echo "Terraform plan preparation failed." >&2
+            exit 1
+          fi
+          if ! terraform plan -out=tfplan -input=false -no-color >/dev/null 2>&1; then
+            echo "Terraform plan generation failed." >&2
+            exit 1
+          fi
+          if [ "$FI1_STAGING_TRANSITION" = true ]; then
+            set -o pipefail
+            terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py
+          fi
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'

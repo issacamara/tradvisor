@@ -62,6 +62,56 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "TF_VAR_fi1_financial_job_image" in workflow
 
 
+def test_terraform_plan_runs_scoped_fi1_staging_preservation_guard() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
+    assert 'if [ "$FI1_STAGING_TRANSITION" = true ]; then' in step
+    assert "Detect FI-1 staging transition" in workflow
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+    assert 'enabled=$transition' in workflow
+    assert 'FI1_STAGING_TRANSITION: ${{ steps.fi1-staging-transition.outputs.enabled }}' in workflow
+    assert "classify_fi1_baseline_plan.py" not in workflow
+    assert "Prepare development baseline checkout" not in workflow
+    assert "google-github-actions/setup-gcloud@v2" not in workflow
+    assert "terraform init" in step
+    assert "terraform plan -out=tfplan" in step
+    assert "terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py" in step
+    assert "FI-1 staging transition base is unavailable." in workflow
+    assert "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository" in workflow
+
+
+def test_development_plan_uses_deployed_images_and_scoped_staging_guard() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    deployed_images = workflow.split("      - name: Resolve deployed API and FI-1 images", 1)[1].split("\n      - name:", 1)[0]
+    plan = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+    assert 'evidence["backend_digest"]' in deployed_images
+    assert 'evidence["fi1_job_digest"]' in deployed_images
+    assert "/api:" in deployed_images and "backend_digest" in deployed_images
+    assert "api:{evidence['release_id']}@{backend_digest}" in deployed_images
+    assert "financial-ingestion:{evidence['release_id']}@{fi1_digest}" in deployed_images
+    assert "::add-mask::{api_image}" in deployed_images
+    assert "::add-mask::{fi1_image}" in deployed_images
+    assert deployed_images.index("::add-mask::{api_image}") < deployed_images.index(
+        "api_image={api_image}"
+    )
+    assert deployed_images.index("::add-mask::{fi1_image}") < deployed_images.index(
+        "fi1_image={fi1_image}"
+    )
+    assert "api_image={api_image}" in deployed_images
+    assert "fi1_image={fi1_image}" in deployed_images
+    assert "steps.deployed-images.outputs.api_image" in workflow
+    assert "steps.deployed-images.outputs.fi1_image" in workflow
+    assert "vars.APPROVED_API_IMAGE" in workflow
+    assert workflow.count(
+        "env.TF_VAR_environment == 'development' && "
+        "steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE"
+    ) == 4
+    assert '[[ "$TF_VAR_v1_batch_image" =~' in workflow
+    assert 'trap \'rm -f tfplan\' EXIT' in plan
+    assert "actions/upload-artifact@v4" not in plan
+
+
 def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
@@ -75,10 +125,38 @@ def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:
 def test_terraform_pr_plan_stages_development_dispatcher_prepare_phase() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Stage development dispatcher prepare phase", 1)[1].split("      -", 1)[0]
-    assert "if: env.TF_VAR_environment == 'development'" in step
+    assert "steps.fi1-staging-transition.outputs.enabled == 'true'" in step
     assert 'resource "google_cloud_run_v2_service" "workflow_dispatcher"' in step
     assert 'deletion_protection = false' in step
+    assert "'  scaling {'" in step
+    assert "'    min_instance_count = 0'" in step
     assert 'prevent_destroy = false' in step
+
+
+def test_development_cloud_run_services_and_dispatcher_shims_keep_zero_scaling() -> None:
+    root = Path(__file__).parents[2]
+    runtime = (root / "terraform/runtime.tf").read_text()
+    terraform_workflow = (root / ".github/workflows/terraform.yml").read_text()
+    development_workflow = (root / ".github/workflows/cd-development.yml").read_text()
+    production_workflow = (root / ".github/workflows/cd-production.yml").read_text()
+
+    api = runtime.split('resource "google_cloud_run_v2_service" "v1_api" {', 1)[1].split(
+        '\nresource "', 1
+    )[0]
+    publication = runtime.split(
+        'resource "google_cloud_run_v2_service" "publication_control" {', 1
+    )[1].split('\nresource "', 1)[0]
+    for service in (api, publication):
+        assert 'dynamic "scaling"' in service
+        assert 'for_each = var.environment == "development" ? [1] : []' in service
+        assert "min_instance_count = 0" in service
+        assert service.index('dynamic "scaling"') < service.index("template {")
+    assert "max_instance_count = var.v1_api_max_instance_count" in api
+    assert "max_instance_count = 1" in publication
+    for workflow in (terraform_workflow, development_workflow):
+        assert "'  scaling {'" in workflow
+        assert "'    min_instance_count = 0'" in workflow
+    assert "workflow_dispatcher" not in production_workflow
 
 
 def test_release_workflow_packages_and_uploads_manifest() -> None:
@@ -110,6 +188,35 @@ def test_delivery_workflows_keep_plan_attestation_checks() -> None:
     assert "terraform_plan_run_id" in production
     assert "terraform apply -auto-approve ../reviewed-plan/tfplan" in production
     assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in production
+
+
+def test_development_apply_checks_initial_staging_before_external_cleanup() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/cd-development.yml").read_text()
+    guard = workflow.split(
+        "      - name: Verify initial FI-1 staging actions before apply", 1
+    )[1].split("      - name:", 1)[0]
+    cleanup = workflow.split("      - name: Clear protection on retired workflow dispatcher", 1)[1].split(
+        "      - name:", 1
+    )[0]
+    assert '--delivery-api-image "$API_IMAGE"' in guard
+    assert '--delivery-fi1-image "$FI1_IMAGE"' in guard
+    assert 'FI1_IMAGE: ${{ steps.release-image.outputs.fi1_job_image }}' in guard
+    assert 'terraform show -json "$plan_path"' in guard
+    assert '2>/dev/null' in guard
+    assert 'printf \'%s\\n\' "$result" >> "$GITHUB_OUTPUT"' in guard
+    assert "outputs.initial_staging != 'true'" in cleanup
+    assert workflow.index("Verify automatically generated development Terraform plan") < workflow.index(
+        "Verify initial FI-1 staging actions before apply"
+    )
+    assert workflow.index("Verify manually supplied development Terraform plan") < workflow.index(
+        "Verify initial FI-1 staging actions before apply"
+    )
+    assert workflow.index("Verify initial FI-1 staging actions before apply") < workflow.index(
+        "Clear protection on retired workflow dispatcher"
+    )
+    assert workflow.index("Clear protection on retired workflow dispatcher") < workflow.index(
+        "Apply reviewed development plan"
+    )
 
 
 def test_development_delivery_consumes_successful_ci_release() -> None:
