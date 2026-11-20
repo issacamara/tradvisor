@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Optional, Tuple
 
 if __package__:
-    from scripts.deployment.verify_fi1_staging_plan import STAGED
+    from scripts.deployment.verify_fi1_staging_plan import PROTECTED, STAGED
 else:
-    from verify_fi1_staging_plan import STAGED
+    from verify_fi1_staging_plan import PROTECTED, STAGED
 
 
 class BaselineComparisonError(ValueError):
@@ -23,6 +23,9 @@ class BaselineComparisonError(ValueError):
     def __init__(self, category: str) -> None:
         self.category = category
         super().__init__(category)
+
+
+WORKFLOW_DISPATCHER = "google_cloud_run_v2_service.workflow_dispatcher[0]"
 
 
 def _run_terraform(
@@ -230,6 +233,55 @@ def _output_changes(plan: Mapping[str, Any]) -> str:
         raise BaselineComparisonError("malformed-output-changes") from error
 
 
+def _action_label(actions: list[str], change: Mapping[str, Any], item: Mapping[str, Any]) -> str:
+    if actions == ["create"]:
+        return "create"
+    if actions == ["delete"]:
+        return "delete"
+    if actions == ["read"]:
+        return "read"
+    if len(actions) == 2 and set(actions) == {"create", "delete"}:
+        return "replace"
+    if actions == ["update"]:
+        return "update-image-only" if _is_image_only_update(item, change) else "update-other"
+    return "other"
+
+
+def _non_noop_group_summary(plan: Mapping[str, Any], label: str) -> str:
+    groups: dict[str, set[str]] = {}
+    for item in plan["resource_changes"]:
+        address = item["address"]
+        change = item["change"]
+        actions = change["actions"]
+        if actions == ["no-op"]:
+            continue
+        if address in PROTECTED:
+            group = "protected-fi1"
+        elif address in STAGED:
+            group = "staged-fi1"
+        elif address == WORKFLOW_DISPATCHER:
+            group = "workflow-dispatcher"
+        elif item.get("mode") == "data":
+            group = "data-source-reads"
+        elif item.get("type") in {
+            "google_cloud_run_v2_service",
+            "google_cloud_run_v2_job",
+        }:
+            group = "runtime-image-consumers"
+        elif item.get("type") == "google_storage_bucket_object" and "src-code" in address:
+            group = "source-archives"
+        else:
+            group = "other-managed"
+        groups.setdefault(group, set()).add(_action_label(actions, change, item))
+
+    if not groups:
+        return f"{label}-non-noop-groups=none"
+    summary = "; ".join(
+        f"{group}:{'+'.join(sorted(groups[group]))}" for group in sorted(groups)
+    )
+    return f"{label}-non-noop-groups={summary}"
+
+
 def classify_with_details(
     baseline: Mapping[str, Any], proposed: Mapping[str, Any]
 ) -> Tuple[str, str]:
@@ -414,7 +466,15 @@ def compare_with_backend_state(
 
     baseline = _load_plan(baseline_plan, baseline_directory, "baseline-load-failed")
     proposed = _load_plan(proposed_plan, proposed_directory, "proposed-load-failed")
-    return classify_with_details(baseline, proposed)
+    classification, details = classify_with_details(baseline, proposed)
+    details = "; ".join(
+        (
+            details,
+            _non_noop_group_summary(baseline, "baseline"),
+            _non_noop_group_summary(proposed, "proposed"),
+        )
+    )
+    return classification, details
 
 
 def main() -> int:

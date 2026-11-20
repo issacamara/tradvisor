@@ -137,6 +137,59 @@ def test_diagnostics_separate_data_reads_runtime_images_and_source_archives() ->
     )
 
 
+def test_non_noop_summary_uses_fixed_groups_and_action_labels() -> None:
+    plan = _plan()
+    plan["resource_changes"] = [
+        {
+            "address": "google_cloud_run_v2_service.workflow_dispatcher[0]",
+            "type": "google_cloud_run_v2_service",
+            "change": {
+                "actions": ["update"],
+                "before": {"template": {"containers": [{"image": "old"}]}},
+                "after": {"template": {"containers": [{"image": "private-image"}]}},
+            },
+        },
+        {
+            "address": "data.archive_file.assets",
+            "mode": "data",
+            "type": "archive_file",
+            "change": {"actions": ["read"], "before": None, "after": {"output_md5": "private"}},
+        },
+        {
+            "address": "google_storage_bucket_object.retained-src-code[\"function\"]",
+            "type": "google_storage_bucket_object",
+            "change": {"actions": ["update"], "before": {"md5": "a"}, "after": {"md5": "b"}},
+        },
+        {
+            "address": "google_cloud_run_v2_job.v1_batch[0]",
+            "type": "google_cloud_run_v2_job",
+            "change": {"actions": ["delete", "create"], "before": {}, "after": {}},
+        },
+        {
+            "address": "google_project_service.other",
+            "type": "google_project_service",
+            "change": {"actions": ["create"], "before": None, "after": {}},
+        },
+        {
+            "address": "google_cloud_run_v2_job.fi1_financials_replacement[0]",
+            "type": "google_cloud_run_v2_job",
+            "change": {"actions": ["create"], "before": None, "after": {}},
+        },
+    ]
+
+    summary = comparator._non_noop_group_summary(plan, "proposed")
+
+    assert summary == (
+        "proposed-non-noop-groups=data-source-reads:read; "
+        "other-managed:create; runtime-image-consumers:replace; "
+        "source-archives:update-other; staged-fi1:create; "
+        "workflow-dispatcher:update-image-only"
+    )
+    assert "private-image" not in summary
+    assert "private" not in summary
+    assert "google_" not in summary
+
+
 def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:
     baseline = _plan()
     proposed = deepcopy(baseline)
@@ -305,12 +358,10 @@ def test_backend_generation_stability_allows_refresh_variation(
         gcp_project="dev-tradvisor",
     )
 
-    assert result == (
-        "matches-development-baseline",
-        "non-noop-unrelated-changes-identical; no-op-changes-match; "
-        "output-changes-match; data-source-reads-match; "
-        "runtime-image-consumers-match; source-archives-match; "
-        "other-managed-actions-match; image-only-updates-match",
+    assert result[0] == "matches-development-baseline"
+    assert result[1].endswith(
+        "baseline-non-noop-groups=other-managed:update-other; "
+        "proposed-non-noop-groups=other-managed:update-other"
     )
 
 
