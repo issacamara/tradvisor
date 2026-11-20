@@ -190,6 +190,35 @@ def test_delivery_workflows_keep_plan_attestation_checks() -> None:
     assert "gcloud storage cp --no-clobber reviewed-plan.tar.gz" in production
 
 
+def test_development_apply_checks_initial_staging_before_external_cleanup() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/cd-development.yml").read_text()
+    guard = workflow.split(
+        "      - name: Verify initial FI-1 staging actions before apply", 1
+    )[1].split("      - name:", 1)[0]
+    cleanup = workflow.split("      - name: Clear protection on retired workflow dispatcher", 1)[1].split(
+        "      - name:", 1
+    )[0]
+    assert '--delivery-api-image "$API_IMAGE"' in guard
+    assert '--delivery-fi1-image "$FI1_IMAGE"' in guard
+    assert 'FI1_IMAGE: ${{ steps.release-image.outputs.fi1_job_image }}' in guard
+    assert 'terraform show -json "$plan_path"' in guard
+    assert '2>/dev/null' in guard
+    assert 'printf \'%s\\n\' "$result" >> "$GITHUB_OUTPUT"' in guard
+    assert "outputs.initial_staging != 'true'" in cleanup
+    assert workflow.index("Verify automatically generated development Terraform plan") < workflow.index(
+        "Verify initial FI-1 staging actions before apply"
+    )
+    assert workflow.index("Verify manually supplied development Terraform plan") < workflow.index(
+        "Verify initial FI-1 staging actions before apply"
+    )
+    assert workflow.index("Verify initial FI-1 staging actions before apply") < workflow.index(
+        "Clear protection on retired workflow dispatcher"
+    )
+    assert workflow.index("Clear protection on retired workflow dispatcher") < workflow.index(
+        "Apply reviewed development plan"
+    )
+
+
 def test_development_delivery_consumes_successful_ci_release() -> None:
     root = Path(__file__).parents[2] / ".github/workflows"
     development = (root / "cd-development.yml").read_text()
