@@ -85,6 +85,10 @@ def verify(document: Mapping[str, Any]) -> None:
     for address in STAGED:
         if any(actions not in (["create"], ["no-op"]) for actions in changes.get(address, [])):
             raise PlanVerificationError("staged resource has an unexpected change")
+    for address, actions_list in changes.items():
+        if address not in PROTECTED and address not in STAGED:
+            if any(actions != ["no-op"] for actions in actions_list):
+                raise PlanVerificationError("unexpected resource change detected")
 
 
 def main() -> int:

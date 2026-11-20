@@ -55,6 +55,20 @@ def test_fi1_staging_plan_rejects_unexpected_staged_resource_changes(actions: li
         verify(plan)
 
 
+@pytest.mark.parametrize("actions", [["delete"], ["delete", "create"], ["update"]])
+def test_fi1_staging_plan_rejects_unrelated_resource_changes(actions: list[str]) -> None:
+    plan = _plan()
+    plan["resource_changes"].append(
+        {
+            "address": "google_cloud_run_v2_service.unrelated[0]",
+            "change": {"actions": actions},
+        }
+    )
+
+    with pytest.raises(PlanVerificationError):
+        verify(plan)
+
+
 def test_fi1_staging_plan_requires_protected_resources_in_prior_and_planned_state() -> None:
     plan = deepcopy(_plan())
     plan["prior_state"]["values"]["root_module"]["resources"].pop()
