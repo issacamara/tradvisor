@@ -338,14 +338,14 @@ def test_previous_year_target_stays_fixed_when_clock_crosses_utc_new_year() -> N
     assert [row["fiscal_year"] for rows, _ in fake.writes for row in rows] == [2025, 2025]
 
 
-def test_publication_year_falls_back_to_later_page_and_stops_after_first_valid_candidate(
+def test_publication_year_tries_sixth_candidate_after_five_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
     fake = Harness()
     adapters = fake.adapters()
-    first_page = (FIXTURES / "fi1_publication_page_failure.html").read_text()
-    second_page = (FIXTURES / "fi1_publication_page_2.html").read_text()
+    first_page = (FIXTURES / "fi1_publication_page_five_failures.html").read_text()
+    second_page = (FIXTURES / "fi1_publication_page_sixth_valid.html").read_text()
 
     def fetch_text(url: str, timeout: float) -> str:
         del timeout
@@ -362,7 +362,7 @@ def test_publication_year_falls_back_to_later_page_and_stops_after_first_valid_c
 
     def provider_attempt(document: str, model: str, key: str, timeout: float):
         fake.attempts.append(model)
-        if document == "2025":
+        if document != "2020":
             raise ValueError("invalid source document")
         return {**VALID, "fiscal_year": int(document)}
 
@@ -381,8 +381,10 @@ def test_publication_year_falls_back_to_later_page_and_stops_after_first_valid_c
     assert [urlparse(url).query for url in fake.fetches if url != SELECTOR_URL] == [
         "symbole=ABC&page=1", "symbole=ABC&page=2"
     ]
-    assert [url.rsplit("-", 1)[-1] for url in fake.downloads] == ["2025.pdf", "2023.pdf"]
-    assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2023]
+    assert [url.rsplit("-", 1)[-1] for url in fake.downloads] == [
+        "2025.pdf", "2024.pdf", "2023.pdf", "2022.pdf", "2021.pdf", "2020.pdf"
+    ]
+    assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2020]
     assert outcome.completion is not None
 
 

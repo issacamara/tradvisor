@@ -231,7 +231,9 @@ def parse_annual_candidates(
         by_year[year] = {"symbol": symbol, "fiscal_year": year, "document_link": document_link}
 
     if selection_mode == "publication_year":
-        return tuple(candidates[:limit])
+        # Unlike historical selection, publication-year mode must be able to
+        # try every eligible document in listing order until one validates.
+        return tuple(candidates)
     return tuple(by_year[year] for year in sorted(by_year, reverse=True)[:limit])
 
 
@@ -796,8 +798,6 @@ def _run_batch(
                 for candidate in page_candidates:
                     if all(candidate["document_link"] != item["document_link"] for item in found):
                         found.append(candidate)
-                        if len(found) == max_annual_candidates:
-                            return tuple(found)
                 years = _page_publication_years(html)
                 if years and min(years) < current_year:
                     break
