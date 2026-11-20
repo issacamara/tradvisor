@@ -68,6 +68,17 @@ def test_publication_year_accepts_only_current_publication_year() -> None:
     )
 
 
+def test_publication_year_excludes_annual_link_without_source_fiscal_year() -> None:
+    html = (
+        '<div class="ligne_paire"><div class="col-xs-4">10/02/2026</div>'
+        '<a href="/documents/abc-rapport-annuel.pdf">Rapport annuel</a></div>'
+    )
+
+    assert parse_annual_candidates(
+        html, "ABC", current_year=2026, selection_mode="publication_year"
+    ) == ()
+
+
 def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:
     html = (
         '<div class="ligne_paire"><a href="https://files.invalid/annual-2026.pdf">'

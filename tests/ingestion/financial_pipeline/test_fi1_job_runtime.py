@@ -338,7 +338,7 @@ def test_previous_year_target_stays_fixed_when_clock_crosses_utc_new_year() -> N
     assert [row["fiscal_year"] for rows, _ in fake.writes for row in rows] == [2025, 2025]
 
 
-def test_publication_year_tries_sixth_candidate_after_five_failures(
+def test_publication_year_tries_sixth_candidate_then_stops_after_first_valid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
@@ -386,6 +386,45 @@ def test_publication_year_tries_sixth_candidate_after_five_failures(
     ]
     assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2020]
     assert outcome.completion is not None
+
+
+def test_publication_year_with_no_current_year_candidate_does_not_download_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
+    fake = Harness()
+    adapters = fake.adapters()
+    old_publication_page = (
+        FIXTURES / "fi1_publication_page_no_current_candidate.html"
+    ).read_text()
+
+    def fetch_text(url: str, timeout: float) -> str:
+        del timeout
+        fake.fetches.append(url)
+        if url == SELECTOR_URL:
+            return selector_html("ABC")
+        return old_publication_page
+
+    def unexpected_download(url: str, timeout: float) -> bytes:
+        del timeout
+        pytest.fail(f"unexpected PDF download: {url}")
+
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "fetch_text": fetch_text,
+            "download_pdf": unexpected_download,
+        }
+    )
+
+    outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="publication_year")
+
+    assert outcome.annual_candidates == 0
+    assert [urlparse(url).query for url in fake.fetches if url != SELECTOR_URL] == [
+        "symbole=ABC&page=1"
+    ]
+    assert fake.downloads == []
+    assert fake.writes == []
 
 
 @pytest.mark.parametrize("ending_page", ["repeat", "empty"])
