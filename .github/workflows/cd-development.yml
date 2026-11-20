@@ -235,6 +235,9 @@ jobs:
               '  project             = var.project_id' \
               '  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"' \
               '  deletion_protection = false' \
+              '  scaling {' \
+              '    min_instance_count = 0' \
+              '  }' \
               '  template {' \
               '    containers {' \
               '      image = var.v1_api_image' \
