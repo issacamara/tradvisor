@@ -66,7 +66,29 @@ def test_terraform_plan_runs_private_fi1_staging_preservation_guard() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
     assert 'if [ "$TF_VAR_environment" = development ]; then' in step
+    assert "classify_fi1_baseline_plan.py" in step
+    assert step.index("classify_fi1_baseline_plan.py") < step.index("verify_fi1_staging_plan.py")
     assert "terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py" in step
+
+
+def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    baseline = workflow.split("      - name: Prepare development baseline checkout", 1)[1].split("\n      - name:", 1)[0]
+    plan = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
+    assert "github.event.pull_request.base.sha" in baseline
+    assert 'git worktree add --detach "$baseline_root" "$BASE_SHA"' in baseline
+    assert "retired-workflow-dispatcher.tf" in baseline
+    assert 'git show "$BASE_SHA:.github/workflows/terraform.yml"' in baseline
+    assert "extract_dispatcher_step" in baseline
+    assert "proposed-dispatcher-step.txt" in baseline
+    assert "baseline-dispatcher-step.txt" in baseline
+    assert 'cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"' in plan
+    assert 'bucket=$TF_STATE_BUCKET' in plan
+    assert 'prefix=$TF_STATE_PREFIX' in plan
+    assert '"$RUNNER_TEMP/development-baseline.tfplan"' in plan
+    assert 'trap cleanup_private_plans EXIT' in plan
+    assert 'rm -f tfplan "$RUNNER_TEMP/development-baseline.tfplan"' in plan
+    assert "actions/upload-artifact@v4" not in plan
 
 
 def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:

@@ -65,6 +65,32 @@ jobs:
             '    ignore_changes  = [template]' \
             '  }' \
             '}' > retired-workflow-dispatcher.tf
+      - name: Prepare development baseline checkout
+        if: github.event_name == 'pull_request' && github.base_ref == 'development'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          baseline_root="$RUNNER_TEMP/tradvisor-development-baseline"
+          git fetch --no-tags origin "$BASE_SHA"
+          git show "$BASE_SHA:.github/workflows/terraform.yml" > "$RUNNER_TEMP/development-baseline-terraform.yml"
+          extract_dispatcher_step() {
+            awk '
+              /^      - name: Stage development dispatcher prepare phase$/ { in_step=1; next }
+              in_step && /^      - name: / { exit }
+              in_step { print }
+            ' "$1"
+          }
+          extract_dispatcher_step "$GITHUB_WORKSPACE/.github/workflows/terraform.yml" \
+            > "$RUNNER_TEMP/proposed-dispatcher-step.txt"
+          extract_dispatcher_step "$RUNNER_TEMP/development-baseline-terraform.yml" \
+            > "$RUNNER_TEMP/baseline-dispatcher-step.txt"
+          if ! cmp -s "$RUNNER_TEMP/proposed-dispatcher-step.txt" \
+            "$RUNNER_TEMP/baseline-dispatcher-step.txt"; then
+            echo "Development baseline comparison: inputs differ." >&2
+            exit 1
+          fi
+          git worktree add --detach "$baseline_root" "$BASE_SHA" >/dev/null
+          cp terraform/retired-workflow-dispatcher.tf "$baseline_root/terraform/retired-workflow-dispatcher.tf"
       - name: Find latest successful development deployment
         id: deployment
         if: env.TF_VAR_environment == 'development'
@@ -149,8 +175,49 @@ jobs:
           TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
-          terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
-          terraform plan -out=tfplan -input=false -no-color >/dev/null
+          baseline_root="$RUNNER_TEMP/tradvisor-development-baseline"
+          cleanup_private_plans() {
+            rm -f tfplan "$RUNNER_TEMP/development-baseline.tfplan"
+            git worktree remove --force "$baseline_root" >/dev/null 2>&1 || true
+          }
+          trap cleanup_private_plans EXIT
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_BASE_REF" = development ]; then
+            if ! cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"; then
+              echo "Development baseline comparison: inputs differ." >&2
+              exit 1
+            fi
+            if ! terraform -chdir="$baseline_root/terraform" init \
+              -backend-config="bucket=$TF_STATE_BUCKET" \
+              -backend-config="prefix=$TF_STATE_PREFIX" \
+              -input=false -no-color >/dev/null 2>&1; then
+              echo "Development baseline comparison: inconclusive." >&2
+              exit 1
+            fi
+            if ! terraform -chdir="$baseline_root/terraform" plan \
+              -out="$RUNNER_TEMP/development-baseline.tfplan" \
+              -input=false -no-color >/dev/null 2>&1; then
+              echo "Development baseline comparison: inconclusive." >&2
+              exit 1
+            fi
+          fi
+          if ! terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="prefix=$TF_STATE_PREFIX" \
+            -input=false -no-color >/dev/null 2>&1; then
+            echo "Terraform plan preparation failed." >&2
+            exit 1
+          fi
+          if ! terraform plan -out=tfplan -input=false -no-color >/dev/null 2>&1; then
+            echo "Terraform plan generation failed." >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_BASE_REF" = development ]; then
+            python3 ../scripts/deployment/classify_fi1_baseline_plan.py \
+              --baseline-plan "$RUNNER_TEMP/development-baseline.tfplan" \
+              --baseline-working-directory "$RUNNER_TEMP/tradvisor-development-baseline/terraform" \
+              --proposed-plan "$GITHUB_WORKSPACE/terraform/tfplan" \
+              --proposed-working-directory "$GITHUB_WORKSPACE/terraform"
+          fi
           if [ "$TF_VAR_environment" = development ]; then
             set -o pipefail
             terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py
