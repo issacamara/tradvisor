@@ -10,9 +10,12 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /app/requirements.l
 
 RUN mkdir -p /app/functions/financials
 COPY functions/financials/fi1_job.py /app/functions/financials/
+COPY functions/financials/scrape_financials_job.py /app/functions/financials/
+COPY functions/financials/scrape_financials /usr/local/bin/scrape_financials
 COPY functions/financials/insert_financials.py /app/insert_financials.py
 COPY archive/legacy-ingestion/scripts/helper.py /app/helper.py
 COPY archive/legacy-ingestion/scripts/ingestion_observability.py /app/ingestion_observability.py
+RUN chmod 0555 /usr/local/bin/scrape_financials
 
 USER 10001:10001
-ENTRYPOINT ["python", "-m", "functions.financials.fi1_job"]
+ENTRYPOINT ["scrape_financials"]

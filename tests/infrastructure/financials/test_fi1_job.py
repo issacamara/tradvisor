@@ -71,7 +71,7 @@ def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
     assert 'value = "gemma-4-31b-it"' in job
     assert 'value = "nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini"' in job
     assert 'name  = "TRADVISOR_FINANCIALS_SELECTION_MODE"' in job
-    assert 'value = "previous_year"' in job
+    assert 'value = "publication_year"' in job
 
     for variable, maximum in (
         ("fi1_financial_job_timeout_seconds", "3600"),

@@ -8,4 +8,6 @@
 !functions/
 !functions/financials/
 !functions/financials/fi1_job.py
+!functions/financials/scrape_financials_job.py
+!functions/financials/scrape_financials
 !functions/financials/insert_financials.py

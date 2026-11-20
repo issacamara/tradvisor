@@ -28,6 +28,7 @@ def validate(root: Path) -> None:
     manifest = (root / "scripts/release/manifest.py").read_text()
     fi1_dockerfile = (root / "functions/financials/Dockerfile").read_text()
     fi1_dockerignore = (root / "functions/financials/Dockerfile.dockerignore").read_text()
+    fi1_entrypoint = (root / "functions/financials/scrape_financials_job.py").read_text()
 
     if ci.count(f'python-version: "{PYTHON_VERSION}"') != 2:
         raise ValueError("CI must pin both Python setup steps")
@@ -46,11 +47,17 @@ def validate(root: Path) -> None:
         raise ValueError("backend image must use the pinned Python digest")
     if f"FROM {PYTHON_BASE}" not in fi1_dockerfile or "--require-hashes" not in fi1_dockerfile:
         raise ValueError("FI-1 image must use the pinned Python digest and hashed dependency lock")
+    if 'ENTRYPOINT ["scrape_financials"]' not in fi1_dockerfile:
+        raise ValueError("FI-1 image must use the scrape_financials job entry point")
+    if "from .fi1_job import main" not in fi1_entrypoint:
+        raise ValueError("FI-1 job entry point must delegate to the shared runtime")
     for runtime_file in (
         "requirements.lock",
         "helper.py",
         "ingestion_observability.py",
         "fi1_job.py",
+        "scrape_financials_job.py",
+        "scrape_financials",
         "insert_financials.py",
     ):
         if runtime_file not in fi1_dockerignore:

@@ -25,9 +25,12 @@ def test_fi1_job_image_is_built_pinned_and_promoted_by_digest() -> None:
     development = (root / ".github/workflows/cd-development.yml").read_text()
     production = (root / ".github/workflows/cd-production.yml").read_text()
     dockerfile = (root / "functions/financials/Dockerfile").read_text()
+    entrypoint = (root / "functions/financials/scrape_financials_job.py").read_text()
 
     assert "requirements.lock" in dockerfile
     assert "--require-hashes" in dockerfile
+    assert 'ENTRYPOINT ["scrape_financials"]' in dockerfile
+    assert "from .fi1_job import main" in entrypoint
     assert "--fi1-job-digest" in release
     assert '["fi1_job"]["digest"]' in development
     assert "promoted_fi1_digest" in production
