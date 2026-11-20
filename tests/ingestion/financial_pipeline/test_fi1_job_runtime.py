@@ -42,6 +42,11 @@ VALID = {
 }
 
 
+@pytest.fixture(autouse=True)
+def disable_source_pacing_in_offline_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
+
+
 def runtime_environment() -> dict[str, str]:
     return {
         "TRADVISOR_RUNTIME_TARGET": "financial_ingestion_job",
@@ -96,7 +101,7 @@ def test_runtime_configuration_rejects_unapproved_values(name: str, value: str) 
         RuntimeConfiguration.from_environment(environment)
 
 
-@pytest.mark.parametrize("selection_mode", ["historical", "previous_year"])
+@pytest.mark.parametrize("selection_mode", ["historical", "previous_year", "publication_year"])
 def test_command_config_check_uses_injected_non_secret_environment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -115,7 +120,7 @@ def test_command_config_check_uses_injected_non_secret_environment(
     assert "OPENROUTER_API_KEY" not in output
 
 
-@pytest.mark.parametrize("selection_mode", ["historical", "previous_year"])
+@pytest.mark.parametrize("selection_mode", ["historical", "previous_year", "publication_year"])
 def test_command_passes_injected_bounds_models_and_mode_to_batch(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -331,6 +336,97 @@ def test_previous_year_target_stays_fixed_when_clock_crosses_utc_new_year() -> N
 
     assert outcome.annual_candidates == 2
     assert [row["fiscal_year"] for rows, _ in fake.writes for row in rows] == [2025, 2025]
+
+
+def test_publication_year_falls_back_to_later_page_and_stops_after_first_valid_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
+    fake = Harness()
+    adapters = fake.adapters()
+    first_page = (FIXTURES / "fi1_publication_page_failure.html").read_text()
+    second_page = (FIXTURES / "fi1_publication_page_2.html").read_text()
+
+    def fetch_text(url: str, timeout: float) -> str:
+        del timeout
+        fake.fetches.append(url)
+        if url == SELECTOR_URL:
+            return selector_html("ABC")
+        page = parse_qs(urlparse(url).query)["page"][0]
+        return first_page if page == "1" else second_page
+
+    def download_pdf(url: str, timeout: float) -> bytes:
+        del timeout
+        fake.downloads.append(url)
+        return url.rsplit("-", 1)[-1].split(".", 1)[0].encode()
+
+    def provider_attempt(document: str, model: str, key: str, timeout: float):
+        fake.attempts.append(model)
+        if document == "2025":
+            raise ValueError("invalid source document")
+        return {**VALID, "fiscal_year": int(document)}
+
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "fetch_text": fetch_text,
+            "download_pdf": download_pdf,
+            "provider_attempt": provider_attempt,
+        }
+    )
+
+    outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="publication_year")
+
+    assert outcome.failed == 0
+    assert [urlparse(url).query for url in fake.fetches if url != SELECTOR_URL] == [
+        "symbole=ABC&page=1", "symbole=ABC&page=2"
+    ]
+    assert [url.rsplit("-", 1)[-1] for url in fake.downloads] == ["2025.pdf", "2023.pdf"]
+    assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2023]
+    assert outcome.completion is not None
+
+
+@pytest.mark.parametrize("ending_page", ["repeat", "empty"])
+def test_publication_year_stops_on_repeated_or_empty_pages(
+    monkeypatch: pytest.MonkeyPatch,
+    ending_page: str,
+) -> None:
+    monkeypatch.setattr(fi1_job.time, "sleep", lambda _: None)
+    fake = Harness()
+    adapters = fake.adapters()
+    first_page = (FIXTURES / "fi1_publication_page_failure.html").read_text()
+
+    def fetch_text(url: str, timeout: float) -> str:
+        del timeout
+        fake.fetches.append(url)
+        if url == SELECTOR_URL:
+            return selector_html("ABC")
+        return first_page if ending_page == "repeat" or parse_qs(urlparse(url).query)["page"] == ["1"] else ""
+
+    def download_pdf(url: str, timeout: float) -> bytes:
+        del timeout
+        fake.downloads.append(url)
+        return b"2025"
+
+    def provider_attempt(document: str, model: str, key: str, timeout: float):
+        del document, model, key, timeout
+        return {**VALID, "fiscal_year": 2025}
+
+    adapters = RuntimeAdapters(
+        **{
+            **adapters.__dict__,
+            "fetch_text": fetch_text,
+            "download_pdf": download_pdf,
+            "provider_attempt": provider_attempt,
+        }
+    )
+
+    outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="publication_year")
+
+    page_urls = [url for url in fake.fetches if url != SELECTOR_URL]
+    assert len(page_urls) == 2
+    assert outcome.inserted == 1
+    assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2025]
 
 
 def test_invalid_run_batch_mode_fails_before_adapter_access() -> None:
@@ -800,7 +896,12 @@ def test_symbol_pages_are_requested_serially_in_selector_order() -> None:
     run(fake)
 
     assert fake.fetches.count(SELECTOR_URL) == 1
-    assert [url.split("symbole=", 1)[1] for url in fake.fetches[1:]] == list(symbols)
+    page_queries = [
+        parse_qs(urlparse(url).query)
+        for url in fake.fetches[1:]
+        if parse_qs(urlparse(url).query).get("page") == ["1"]
+    ]
+    assert [query["symbole"][0] for query in page_queries] == list(symbols)
 
 
 def test_ten_terminal_symbols_flush_once_and_use_unique_batch_ids() -> None:

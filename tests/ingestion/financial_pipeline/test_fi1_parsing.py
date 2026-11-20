@@ -12,6 +12,7 @@ from functions.financials.fi1_job import (
     parse_annual_candidates,
     parse_selector_symbols,
     richbourse_symbol_page_url,
+    richbourse_symbol_page_url_for_page,
     validate_extraction,
 )
 
@@ -42,6 +43,29 @@ def test_symbol_filter_url_and_page_fixture_select_newest_five_annual_years() ->
     assert all(candidate["symbol"] == "ABC" for candidate in candidates)
     assert len({candidate["fiscal_year"] for candidate in candidates}) == 5
     assert candidates[1]["document_link"].endswith("abc-2024.pdf")
+
+
+def test_publication_year_filters_by_paired_date_and_annual_slug_in_listing_order() -> None:
+    html = (FIXTURES / "fi1_publication_page_1.html").read_text()
+
+    candidates = parse_annual_candidates(
+        html, "ABC", current_year=2026, selection_mode="publication_year"
+    )
+
+    assert [candidate["fiscal_year"] for candidate in candidates] == [2025, 2024]
+    assert candidates[0]["document_link"].endswith("abc-rapport-annuel-2025.pdf")
+    assert richbourse_symbol_page_url_for_page(" ABC ", 2).endswith("?symbole=ABC&page=2")
+
+
+def test_publication_year_accepts_only_current_publication_year() -> None:
+    html = (FIXTURES / "fi1_publication_page_2.html").read_text()
+
+    assert parse_annual_candidates(
+        html, "ABC", current_year=2026, selection_mode="publication_year"
+    ) == (
+        {"symbol": "ABC", "fiscal_year": 2023,
+         "document_link": "https://www.richbourse.com/documents/abc-rapport-annuel-2023.pdf"},
+    )
 
 
 def test_off_origin_annual_links_and_redirect_targets_are_rejected() -> None:

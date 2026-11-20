@@ -78,7 +78,7 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
         }
         env {
           name  = "TRADVISOR_FINANCIALS_SELECTION_MODE"
-          value = "previous_year"
+          value = "publication_year"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL"

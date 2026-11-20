@@ -85,6 +85,9 @@ jobs:
           docker_check_config \
             -e TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year \
             | grep -q '"selection_mode":"previous_year"'
+          docker_check_config \
+            -e TRADVISOR_FINANCIALS_SELECTION_MODE=publication_year \
+            | grep -q '"selection_mode":"publication_year"'
           if docker_check_config \
             -e TRADVISOR_FINANCIALS_SELECTION_MODE=invalid \
             > /tmp/fi1-invalid-mode.log 2>&1; then

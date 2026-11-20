@@ -94,6 +94,7 @@ Output format:\x20
 MAX_RUNTIME_SECONDS = 60 * 60
 MAX_PAGE_CONCURRENCY = 4
 MAX_ANNUAL_CANDIDATES = 5
+SOURCE_PACING_SECONDS = 1
 RUNTIME_TARGET = "financial_ingestion_job"
 SOURCE_TIMEOUT_SECONDS = 30
 SOURCE_ATTEMPTS = 3
@@ -142,6 +143,12 @@ def richbourse_symbol_page_url(symbol: str) -> str:
     return f"{SELECTOR_URL}?symbole={quote(symbol, safe='')}"
 
 
+def richbourse_symbol_page_url_for_page(symbol: str, page: int) -> str:
+    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+        raise ValueError("page must be a positive integer")
+    return f"{richbourse_symbol_page_url(symbol)}&page={page}"
+
+
 def is_approved_document_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -173,41 +180,110 @@ def parse_annual_candidates(
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
     if not isinstance(selection_mode, str) or selection_mode not in {
-        "historical", "previous_year"
+        "historical", "previous_year", "publication_year"
     }:
-        raise ValueError("selection_mode must be 'historical' or 'previous_year'")
+        raise ValueError("selection_mode must be historical, previous_year, or publication_year")
 
     soup = BeautifulSoup(html, "html.parser")
     by_year: dict[int, dict[str, Any]] = {}
+    candidates: list[dict[str, Any]] = []
     for row in soup.select("div.ligne_paire, div.ligne_impaire"):
         link = row.find("a", href=True)
         if link is None:
             continue
         title = link.get_text(" ", strip=True)
-        normalized = _plain_text(title)
-        if any(term in normalized for term in _INTERIM_TERMS):
-            continue
-        if not any(term in normalized for term in _ANNUAL_TERMS):
-            continue
-        year_match = _YEAR.search(normalized)
-        if year_match is None:
-            continue
-
         document_link = urljoin(SELECTOR_URL, link["href"].strip())
         if not is_approved_document_url(document_link):
             continue
-        year = int(year_match.group(1))
+
+        slug = _plain_text(urlparse(document_link).path.replace("-", " ").replace("_", " "))
+        normalized = _plain_text(title)
+        identity = f"{normalized} {slug}"
+        if any(term in identity for term in _INTERIM_TERMS):
+            continue
+        if not any(term in identity for term in _ANNUAL_TERMS):
+            continue
+        fiscal_year_match = _YEAR.search(normalized)
+        if fiscal_year_match is None:
+            fiscal_year_match = _YEAR.search(slug)
+        if fiscal_year_match is None:
+            continue
+
+        fiscal_year = int(fiscal_year_match.group(1))
+        publication_year = _publication_year(row)
+        if selection_mode == "publication_year":
+            if publication_year is None or publication_year != current_year:
+                continue
+            candidates.append(
+                {"symbol": symbol, "fiscal_year": fiscal_year, "document_link": document_link}
+            )
+            continue
+
+        year = fiscal_year
         if selection_mode == "previous_year":
             if year != current_year - 1:
                 continue
         elif not current_year - 5 <= year < current_year:
             continue
-        by_year.setdefault(
-            year,
-            {"symbol": symbol, "fiscal_year": year, "document_link": document_link},
-        )
 
+        if year in by_year:
+            continue
+        by_year[year] = {"symbol": symbol, "fiscal_year": year, "document_link": document_link}
+
+    if selection_mode == "publication_year":
+        return tuple(candidates[:limit])
     return tuple(by_year[year] for year in sorted(by_year, reverse=True)[:limit])
+
+
+_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/((?:19|20)\d{2})\Z")
+
+
+def _publication_year(row: Any) -> int | None:
+    for value in row.stripped_strings:
+        match = _DATE.search(value)
+        if match is None:
+            continue
+        try:
+            return datetime.strptime(match.group(), "%d/%m/%Y").year
+        except ValueError:
+            continue
+    return None
+
+
+def _page_publication_years(html: str) -> tuple[int, ...]:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    years = []
+    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
+        year = _publication_year(row)
+        if year is not None:
+            years.append(year)
+    return tuple(years)
+
+
+def _page_fiscal_years(html: str) -> tuple[int, ...]:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    years = []
+    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
+        link = row.find("a", href=True)
+        if link is None:
+            continue
+        source_text = _plain_text(link.get_text(" ", strip=True))
+        year = _YEAR.search(source_text)
+        if year is None:
+            year = _YEAR.search(_plain_text(urlparse(link["href"]).path))
+        if year:
+            years.append(int(year.group(1)))
+    return tuple(years)
+
+
+def _page_signature(html: str) -> str:
+    from bs4 import BeautifulSoup
+
+    return " ".join(BeautifulSoup(html, "html.parser").stripped_strings)
 
 
 def validate_extraction(
@@ -273,11 +349,10 @@ class RuntimeConfiguration:
         values = os.environ if environ is None else environ
         selection_mode = values.get("TRADVISOR_FINANCIALS_SELECTION_MODE", "historical")
         if not isinstance(selection_mode, str) or selection_mode not in {
-            "historical",
-            "previous_year",
+            "historical", "previous_year", "publication_year"
         }:
             raise ValueError(
-                "TRADVISOR_FINANCIALS_SELECTION_MODE must be historical or previous_year"
+                "TRADVISOR_FINANCIALS_SELECTION_MODE must be historical, previous_year, or publication_year"
             )
         if values.get("TRADVISOR_RUNTIME_TARGET") != RUNTIME_TARGET:
             raise ValueError("TRADVISOR_RUNTIME_TARGET must select the FI-1 job")
@@ -620,10 +695,9 @@ def run_batch(
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY is required")
     if not isinstance(selection_mode, str) or selection_mode not in {
-        "historical",
-        "previous_year",
+        "historical", "previous_year", "publication_year"
     }:
-        raise ValueError("FI-1 selection mode must be historical or previous_year")
+        raise ValueError("FI-1 selection mode must be historical, previous_year, or publication_year")
     if (
         isinstance(max_duration_seconds, bool)
         or not isinstance(max_duration_seconds, int)
@@ -690,17 +764,62 @@ def _run_batch(
     _remaining(deadline, adapters.monotonic)
     counters["symbols"] = len(symbols)
 
-    def load_symbol_page(symbol: str) -> tuple[dict[str, Any], ...]:
-        timeout = _remaining(deadline, adapters.monotonic)
-        html = adapters.fetch_text(
-            richbourse_symbol_page_url(symbol), min(SOURCE_TIMEOUT_SECONDS, timeout)
-        )
-        return parse_annual_candidates(
-            html,
-            symbol,
-            current_year=current_year,
-            limit=max_annual_candidates,
-            selection_mode=selection_mode,
+    symbol_page_requests = 0
+
+    def load_symbol_pages(symbol: str) -> tuple[dict[str, Any], ...]:
+        nonlocal symbol_page_requests
+        found: list[dict[str, Any]] = []
+        seen_pages: set[str] = set()
+        seen_years: set[int] = set()
+        page = 1
+        while True:
+            if symbol_page_requests:
+                time.sleep(SOURCE_PACING_SECONDS)
+            timeout = _remaining(deadline, adapters.monotonic)
+            html = adapters.fetch_text(
+                richbourse_symbol_page_url_for_page(symbol, page),
+                min(SOURCE_TIMEOUT_SECONDS, timeout),
+            )
+            symbol_page_requests += 1
+            signature = _page_signature(html)
+            if not signature or signature in seen_pages:
+                break
+            seen_pages.add(signature)
+            page_candidates = parse_annual_candidates(
+                html,
+                symbol,
+                current_year=current_year,
+                limit=max_annual_candidates,
+                selection_mode=selection_mode,
+            )
+            if selection_mode == "publication_year":
+                for candidate in page_candidates:
+                    if all(candidate["document_link"] != item["document_link"] for item in found):
+                        found.append(candidate)
+                        if len(found) == max_annual_candidates:
+                            return tuple(found)
+                years = _page_publication_years(html)
+                if years and min(years) < current_year:
+                    break
+            else:
+                for candidate in page_candidates:
+                    year = int(candidate["fiscal_year"])
+                    if year not in seen_years:
+                        seen_years.add(year)
+                        found.append(candidate)
+                years = _page_fiscal_years(html)
+                cutoff = current_year - (1 if selection_mode == "previous_year" else 5)
+                if years and min(years) < cutoff:
+                    break
+                if len(found) >= max_annual_candidates:
+                    break
+            page += 1
+        if selection_mode == "publication_year":
+            return tuple(found)
+        return tuple(
+            sorted(found, key=lambda candidate: int(candidate["fiscal_year"]), reverse=True)[
+                :max_annual_candidates
+            ]
         )
 
     rows: list[dict[str, Any]] = []
@@ -743,11 +862,12 @@ def _run_batch(
         symbol_rows: list[dict[str, Any]] = []
         symbol_counts = {"inserted": 0, "updated": 0}
         symbol_failed = False
+        candidate_failed = False
         symbol_error: Exception | None = None
         symbol_error_class: str | None = None
         failure_classes: list[str] = []
         try:
-            candidates = load_symbol_page(symbol)
+            candidates = load_symbol_pages(symbol)
             counters["candidates"] += len(candidates)
         except JobDeadlineExceeded:
             raise
@@ -776,8 +896,10 @@ def _run_batch(
                     failure_class=failure_classes,
                 )
                 if extraction is None:
-                    counters["failed"] += 1
-                    symbol_failed = True
+                    candidate_failed = True
+                    if selection_mode != "publication_year":
+                        counters["failed"] += 1
+                        symbol_failed = True
                     symbol_error_class = failure_classes[-1] if failure_classes else None
                     continue
                 symbol_rows.append(
@@ -790,12 +912,22 @@ def _run_batch(
                     }
                 )
                 symbol_counts["inserted" if current_link is None else "updated"] += 1
+                if selection_mode == "publication_year":
+                    symbol_error = None
+                    symbol_error_class = None
+                    break
             except JobDeadlineExceeded:
                 raise
             except Exception as error:
-                counters["failed"] += 1
-                symbol_failed = True
+                candidate_failed = True
+                if selection_mode != "publication_year":
+                    counters["failed"] += 1
+                    symbol_failed = True
                 symbol_error = error
+
+        if selection_mode == "publication_year" and candidate_failed and not symbol_rows:
+            counters["failed"] += 1
+            symbol_failed = True
 
         if not symbol_failed:
             rows.extend(symbol_rows)

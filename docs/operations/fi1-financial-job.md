@@ -84,17 +84,24 @@ delivered through predecessor PRs [#416](https://github.com/issacamara/tradvisor
 [#417](https://github.com/issacamara/tradvisor/pull/417), and
 [#418](https://github.com/issacamara/tradvisor/pull/418) for issues #412–#414.
 
-The scheduled monthly run uses the Terraform-injected
-`TRADVISOR_FINANCIALS_SELECTION_MODE=previous_year`. At the start of each
-execution the Job captures the current UTC calendar year once; in 2026 this
-mode considers only 2025 annual reports, and in 2027 it considers only 2026
-annual reports. It selects at most one eligible annual report per symbol after
-the existing origin, redirect, annual-report, and unchanged-link checks. A
-symbol with no eligible report, or whose link is unchanged, does no extraction
-or write work. Selection uses the report's fiscal-year label, not its
-publication or announcement date: a 2025 fiscal-year report published during
-2026 remains eligible in `previous_year` mode. Extraction must return the same
-fiscal year as the source label.
+The scheduled monthly run uses Terraform-injected
+`TRADVISOR_FINANCIALS_SELECTION_MODE=publication_year`. At the start of each
+execution the Job captures the UTC calendar year once, then scans each
+RichBourse symbol listing sequentially from newest to oldest. It pairs the
+publication date with its document link and considers up to the configured
+limit of annual documents published in that year, in listing order. Interim
+reports, missing source fiscal-year labels, and off-origin links are skipped.
+Empty or repeated pages end pagination, as does a page older than the captured
+publication year. In 2026, a report published in 2026 with fiscal year 2025 is
+eligible; the fiscal year still controls extraction validation and BigQuery row
+identity. FI-1 tries later eligible links when an earlier document fails
+validation, then stops after the first valid new result for that symbol. The
+existing unchanged-link skip and write/receipt/completion boundary remain in
+force.
+
+The `historical` and `previous_year` modes remain supported for explicit
+historical use and rollback; `previous_year` continues to select by source
+fiscal-year label.
 
 The FI-1 Job sends the existing sanitized `financials` completion only after
 changed rows have committed and the whole run has no failures; the existing
@@ -151,7 +158,7 @@ history can leave Long-Term Growth coverage incomplete. A source correction
 that keeps the same document URL remains outside detection because unchanged
 links are skipped.
 
-If the monthly `previous_year` behavior needs to be rolled back, restore the
+If the monthly `publication_year` behavior needs to be rolled back, restore the
 last reviewed FI-1 release configuration and image through the approved
 development delivery workflow, retaining the monthly trigger's paused state
 unless schedule activation is separately approved. Validate the resolved
