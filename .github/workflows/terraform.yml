@@ -190,13 +190,13 @@ jobs:
               -backend-config="bucket=$TF_STATE_BUCKET" \
               -backend-config="prefix=$TF_STATE_PREFIX" \
               -input=false -no-color >/dev/null 2>&1; then
-              echo "Development baseline comparison: inconclusive." >&2
+              echo "Development baseline comparison: baseline-init-failed." >&2
               exit 1
             fi
             if ! terraform -chdir="$baseline_root/terraform" plan \
               -out="$RUNNER_TEMP/development-baseline.tfplan" \
               -input=false -no-color >/dev/null 2>&1; then
-              echo "Development baseline comparison: inconclusive." >&2
+              echo "Development baseline comparison: baseline-plan-failed." >&2
               exit 1
             fi
           fi

@@ -83,6 +83,8 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     assert "proposed-dispatcher-step.txt" in baseline
     assert "baseline-dispatcher-step.txt" in baseline
     assert 'cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"' in plan
+    assert 'echo "Development baseline comparison: baseline-init-failed." >&2' in plan
+    assert 'echo "Development baseline comparison: baseline-plan-failed." >&2' in plan
     assert 'bucket=$TF_STATE_BUCKET' in plan
     assert 'prefix=$TF_STATE_PREFIX' in plan
     assert '"$RUNNER_TEMP/development-baseline.tfplan"' in plan
