@@ -26,10 +26,37 @@ class BaselineComparisonError(ValueError):
 
 
 WORKFLOW_DISPATCHER = "google_cloud_run_v2_service.workflow_dispatcher[0]"
-COMPUTED_ENDPOINT_REVISION_FIELDS = {
-    "latest_created_revision",
-    "latest_ready_revision",
-    "uri",
+CHANGE_FIELD_CATEGORIES = {
+    "client": "declared-metadata",
+    "client_version": "client-version",
+    "conditions": "computed-provider-status",
+    "create_time": "computed-provider-metadata",
+    "creator": "computed-provider-metadata",
+    "delete_time": "computed-provider-metadata",
+    "deletion_protection": "deletion-protection",
+    "effective_annotations": "terraform-effective-metadata",
+    "effective_labels": "terraform-effective-metadata",
+    "etag": "computed-provider-metadata",
+    "expire_time": "computed-provider-metadata",
+    "generation": "computed-provider-metadata",
+    "ingress": "ingress",
+    "invoker_iam_disabled": "invoker-iam-check",
+    "labels": "declared-metadata",
+    "annotations": "declared-metadata",
+    "last_modifier": "computed-provider-metadata",
+    "launch_stage": "launch-stage",
+    "latest_created_execution": "computed-provider-status",
+    "latest_created_revision": "computed-endpoint-revision",
+    "latest_ready_revision": "computed-endpoint-revision",
+    "observed_generation": "computed-provider-metadata",
+    "reconciling": "computed-provider-status",
+    "template": "workload-config",
+    "terraform_labels": "terraform-effective-metadata",
+    "terminal_condition": "computed-provider-status",
+    "traffic": "traffic-config",
+    "traffic_statuses": "computed-provider-status",
+    "update_time": "computed-provider-metadata",
+    "uri": "computed-endpoint-revision",
 }
 _MISSING = object()
 
@@ -308,19 +335,12 @@ def _change_categories(item: Mapping[str, Any], change: Mapping[str, Any]) -> se
     unknown = _unknown_leaf_paths(change.get("after_unknown"))
     categories: set[str] = set()
     for path in _changed_leaf_paths(change.get("before"), change.get("after"), unknown):
-        keys = set(path)
-        if keys & {"image", "tag"}:
-            categories.add("image-tag")
-        elif keys & {"client", "labels", "annotations"}:
-            categories.add("metadata")
-        elif "deletion_protection" in keys:
-            categories.add("deletion-protection")
-        elif keys & COMPUTED_ENDPOINT_REVISION_FIELDS:
-            categories.add("endpoint-revision-computed-only")
-        elif "template" in keys:
-            categories.add("workload-config")
+        field = path[0] if path else ""
+        if field == "template" and set(path[1:]) & {"image", "tag"}:
+            category = "image-tag"
         else:
-            categories.add("other")
+            category = CHANGE_FIELD_CATEGORIES.get(field, "other-top-level-config")
+        categories.add(category)
     if unknown:
         categories.add("computed-unknown")
     return categories or {"none"}

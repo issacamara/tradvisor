@@ -190,7 +190,7 @@ def test_non_noop_summary_uses_fixed_groups_and_action_labels() -> None:
     assert "google_" not in summary
 
 
-def test_change_categories_use_fixed_labels_and_ignore_after_unknown_values() -> None:
+def test_change_categories_use_fixed_schema_fields_and_ignore_after_unknown_values() -> None:
     item = {"type": "google_cloud_run_v2_service"}
     change = {
         "before": {
@@ -217,16 +217,60 @@ def test_change_categories_use_fixed_labels_and_ignore_after_unknown_values() ->
 
     assert categories == {
         "image-tag",
-        "metadata",
+        "declared-metadata",
         "deletion-protection",
-        "other",
+        "other-top-level-config",
         "computed-unknown",
     }
     assert comparator._change_categories(
         item, {"before": {"uri": "old"}, "after": {"uri": "new"}}
-    ) == {"endpoint-revision-computed-only"}
+    ) == {"computed-endpoint-revision"}
     assert "secret" not in str(categories)
     assert "display_name" not in str(categories)
+
+
+def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
+    item = {"type": "google_cloud_run_v2_service"}
+    before = {
+        "ingress": "old",
+        "launch_stage": "old",
+        "client_version": "old",
+        "annotations": {"private-key": "old"},
+        "terraform_labels": {"private-key": "old"},
+        "effective_labels": {"private-key": "old"},
+        "effective_annotations": {"private-key": "old"},
+        "invoker_iam_disabled": False,
+        "traffic": [{"percent": 50}],
+        "generation": 1,
+    }
+    after = {
+        "ingress": "new",
+        "launch_stage": "new",
+        "client_version": "new",
+        "annotations": {"private-key": "new"},
+        "terraform_labels": {"private-key": "new"},
+        "effective_labels": {"private-key": "new"},
+        "effective_annotations": {"private-key": "new"},
+        "invoker_iam_disabled": True,
+        "traffic": [{"percent": 100}],
+        "generation": 2,
+    }
+
+    categories = comparator._change_categories(
+        item, {"before": before, "after": after}
+    )
+
+    assert categories == {
+        "ingress",
+        "launch-stage",
+        "client-version",
+        "declared-metadata",
+        "terraform-effective-metadata",
+        "invoker-iam-check",
+        "traffic-config",
+        "computed-provider-metadata",
+    }
+    assert "private-key" not in str(categories)
 
 
 def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:
