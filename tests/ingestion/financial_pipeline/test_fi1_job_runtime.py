@@ -387,7 +387,11 @@ def test_publication_year_tries_sixth_candidate_then_stops_after_first_valid(
     assert [url.rsplit("-", 1)[-1] for url in fake.downloads] == [
         "2025.pdf", "2024.pdf", "2023.pdf", "2022.pdf", "2021.pdf", "2020.pdf"
     ]
-    assert attempted_documents == ["2025", "2024", "2023", "2022", "2021", "2020"]
+    assert attempted_documents == [
+        document
+        for document in ("2025", "2024", "2023", "2022", "2021")
+        for _ in MODEL_ORDER
+    ] + ["2020"]
     assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2020]
     assert outcome.completion is not None
 
