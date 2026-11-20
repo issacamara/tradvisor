@@ -58,7 +58,6 @@ CHANGE_FIELD_CATEGORIES = {
     "observed_generation": "computed-provider-metadata",
     "project": "project",
     "reconciling": "computed-provider-status",
-    "scaling": "scaling",
     "template": "workload-config",
     "terraform_labels": "terraform-effective-metadata",
     "terminal_condition": "computed-provider-status",
@@ -308,6 +307,35 @@ def _unknown_leaf_paths(value: Any, path: Tuple[str, ...] = ()) -> set[Tuple[str
     return set()
 
 
+def _scaling_is_zero_or_unset(value: Any) -> bool:
+    if value is _MISSING or value is None or value == []:
+        return True
+    if isinstance(value, list):
+        if len(value) != 1 or not isinstance(value[0], Mapping):
+            return False
+        value = value[0]
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"min_instance_count"}
+        and type(value["min_instance_count"]) is int
+        and value["min_instance_count"] == 0
+    )
+
+
+def _scaling_change_category(before: Any, after: Any) -> str:
+    before_scaling = (
+        before.get("scaling", _MISSING) if isinstance(before, Mapping) else _MISSING
+    )
+    after_scaling = (
+        after.get("scaling", _MISSING) if isinstance(after, Mapping) else _MISSING
+    )
+    if _scaling_is_zero_or_unset(before_scaling) and _scaling_is_zero_or_unset(
+        after_scaling
+    ):
+        return "scaling-zero-vs-unset"
+    return "scaling-nonzero-or-other"
+
+
 def _changed_leaf_paths(
     before: Any,
     after: Any,
@@ -353,6 +381,8 @@ def _change_categories(item: Mapping[str, Any], change: Mapping[str, Any]) -> se
         field = path[0] if path else ""
         if field == "template" and set(path[1:]) & {"image", "tag"}:
             category = "image-tag"
+        elif field == "scaling":
+            category = _scaling_change_category(before, after)
         else:
             category = CHANGE_FIELD_CATEGORIES.get(field, "other-top-level-config")
         categories.add(category)

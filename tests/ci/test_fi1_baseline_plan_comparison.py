@@ -296,7 +296,7 @@ def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
         "location",
         "name",
         "project",
-        "scaling",
+        "scaling-nonzero-or-other",
         "terraform-id",
         "computed-provider-metadata",
         "ingress",
@@ -309,6 +309,36 @@ def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
         "computed-provider-metadata",
     }
     assert "private-key" not in str(categories)
+
+
+def test_scaling_diagnostics_normalize_only_zero_and_unset_forms() -> None:
+    item = {"type": "google_cloud_run_v2_service"}
+    zero_to_unset = comparator._change_categories(
+        item,
+        {
+            "before": {"scaling": [{"min_instance_count": 0}]},
+            "after": {"scaling": None},
+        },
+    )
+    unset_to_zero = comparator._change_categories(
+        item,
+        {
+            "before": {"scaling": []},
+            "after": {"scaling": {"min_instance_count": 0}},
+        },
+    )
+    capacity_change = comparator._change_categories(
+        item,
+        {
+            "before": {"scaling": {"min_instance_count": 0}},
+            "after": {"scaling": {"min_instance_count": 1}},
+        },
+    )
+
+    assert "scaling-zero-vs-unset" in zero_to_unset
+    assert "scaling-zero-vs-unset" in unset_to_zero
+    assert "scaling-nonzero-or-other" in capacity_change
+    assert "min_instance_count" not in str(zero_to_unset | unset_to_zero | capacity_change)
 
 
 def test_change_categories_report_non_mapping_before_or_after() -> None:
