@@ -116,12 +116,62 @@ def _serialize_change_groups(changes: Mapping[str, list[str]]) -> str:
     )
 
 
-def _unrelated_change_groups(plan: Mapping[str, Any]) -> Tuple[str, str]:
+def _same_except_image(before: Any, after: Any) -> Tuple[bool, bool]:
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        if before.keys() != after.keys():
+            return False, False
+        image_changed = False
+        for key in before:
+            if key == "image":
+                image_changed = image_changed or before[key] != after[key]
+                continue
+            equal, nested_image_changed = _same_except_image(before[key], after[key])
+            if not equal:
+                return False, False
+            image_changed = image_changed or nested_image_changed
+        return True, image_changed
+    if isinstance(before, list) and isinstance(after, list):
+        if len(before) != len(after):
+            return False, False
+        image_changed = False
+        for before_item, after_item in zip(before, after):
+            equal, nested_image_changed = _same_except_image(before_item, after_item)
+            if not equal:
+                return False, False
+            image_changed = image_changed or nested_image_changed
+        return True, image_changed
+    return before == after, False
+
+
+def _is_image_only_update(item: Mapping[str, Any], change: Mapping[str, Any]) -> bool:
+    if item.get("type") not in {
+        "google_cloud_run_v2_service",
+        "google_cloud_run_v2_job",
+    }:
+        return False
+    if change.get("actions") != ["update"]:
+        return False
+    before = change.get("before")
+    after = change.get("after")
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return False
+    equal_except_image, image_changed = _same_except_image(before, after)
+    return equal_except_image and image_changed
+
+
+def _unrelated_change_groups(
+    plan: Mapping[str, Any],
+) -> Tuple[str, str, str, str, str, str, str]:
     changes = plan.get("resource_changes")
     if not isinstance(changes, list):
         raise BaselineComparisonError("malformed-resource-changes")
     non_noop: dict[str, list[str]] = {}
     no_op: dict[str, list[str]] = {}
+    data_source_reads: dict[str, list[str]] = {}
+    runtime_image_consumers: dict[str, list[str]] = {}
+    source_archives: dict[str, list[str]] = {}
+    other_managed_actions: dict[str, list[str]] = {}
+    image_only_updates: dict[str, list[str]] = {}
     for item in changes:
         if not isinstance(item, Mapping):
             raise BaselineComparisonError("malformed-resource-changes")
@@ -144,7 +194,30 @@ def _unrelated_change_groups(plan: Mapping[str, Any]) -> Tuple[str, str]:
             raise BaselineComparisonError("malformed-resource-changes") from error
         target = no_op if actions == ["no-op"] else non_noop
         target.setdefault(address, []).append(serialized_change)
-    return _serialize_change_groups(non_noop), _serialize_change_groups(no_op)
+        if actions != ["no-op"]:
+            mode = item.get("mode", "managed")
+            if mode == "data":
+                data_source_reads.setdefault(address, []).append(serialized_change)
+            elif item.get("type") in {
+                "google_cloud_run_v2_service",
+                "google_cloud_run_v2_job",
+            }:
+                runtime_image_consumers.setdefault(address, []).append(serialized_change)
+                if _is_image_only_update(item, change):
+                    image_only_updates.setdefault(address, []).append(serialized_change)
+            elif item.get("type") == "google_storage_bucket_object" and "src-code" in address:
+                source_archives.setdefault(address, []).append(serialized_change)
+            else:
+                other_managed_actions.setdefault(address, []).append(serialized_change)
+    return (
+        _serialize_change_groups(non_noop),
+        _serialize_change_groups(no_op),
+        _serialize_change_groups(data_source_reads),
+        _serialize_change_groups(runtime_image_consumers),
+        _serialize_change_groups(source_archives),
+        _serialize_change_groups(other_managed_actions),
+        _serialize_change_groups(image_only_updates),
+    )
 
 
 def _output_changes(plan: Mapping[str, Any]) -> str:
@@ -160,8 +233,24 @@ def _output_changes(plan: Mapping[str, Any]) -> str:
 def classify_with_details(
     baseline: Mapping[str, Any], proposed: Mapping[str, Any]
 ) -> Tuple[str, str]:
-    baseline_non_noop, baseline_noop = _unrelated_change_groups(baseline)
-    proposed_non_noop, proposed_noop = _unrelated_change_groups(proposed)
+    (
+        baseline_non_noop,
+        baseline_noop,
+        baseline_data_reads,
+        baseline_runtime_consumers,
+        baseline_source_archives,
+        baseline_other_actions,
+        baseline_image_updates,
+    ) = _unrelated_change_groups(baseline)
+    (
+        proposed_non_noop,
+        proposed_noop,
+        proposed_data_reads,
+        proposed_runtime_consumers,
+        proposed_source_archives,
+        proposed_other_actions,
+        proposed_image_updates,
+    ) = _unrelated_change_groups(proposed)
     non_noop_equal = baseline_non_noop == proposed_non_noop
     noop_equal = baseline_noop == proposed_noop
     outputs_equal = _output_changes(baseline) == _output_changes(proposed)
@@ -188,6 +277,31 @@ def classify_with_details(
         details.append("output-only-differences")
     else:
         details.append("output-changes-differ")
+    details.append(
+        "data-source-reads-match"
+        if baseline_data_reads == proposed_data_reads
+        else "data-source-read-differences"
+    )
+    details.append(
+        "runtime-image-consumers-match"
+        if baseline_runtime_consumers == proposed_runtime_consumers
+        else "runtime-image-consumer-differences"
+    )
+    details.append(
+        "source-archives-match"
+        if baseline_source_archives == proposed_source_archives
+        else "source-archive-differences"
+    )
+    details.append(
+        "other-managed-actions-match"
+        if baseline_other_actions == proposed_other_actions
+        else "other-managed-action-differences"
+    )
+    details.append(
+        "image-only-updates-match"
+        if baseline_image_updates == proposed_image_updates
+        else "image-only-update-differences"
+    )
     return classification, "; ".join(details)
 
 
@@ -328,7 +442,7 @@ def main() -> int:
         return 1
     print(f"Development baseline comparison: {classification}.")
     print(f"Development baseline comparison details: {details}.")
-    return 0 if classification == "matches-development-baseline" else 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@ def test_terraform_plan_runs_private_fi1_staging_preservation_guard() -> None:
 
 def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    deployed_images = workflow.split("      - name: Resolve deployed API and FI-1 images", 1)[1].split("\n      - name:", 1)[0]
     baseline = workflow.split("      - name: Prepare development baseline checkout", 1)[1].split("\n      - name:", 1)[0]
     plan = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
     assert "github.event.pull_request.base.sha" in baseline
@@ -82,6 +83,29 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     assert "extract_dispatcher_step" in baseline
     assert "proposed-dispatcher-step.txt" in baseline
     assert "baseline-dispatcher-step.txt" in baseline
+    assert 'evidence["backend_digest"]' in deployed_images
+    assert 'evidence["fi1_job_digest"]' in deployed_images
+    assert "/api:" in deployed_images and "backend_digest" in deployed_images
+    assert "api:{evidence['release_id']}@{backend_digest}" in deployed_images
+    assert "financial-ingestion:{evidence['release_id']}@{fi1_digest}" in deployed_images
+    assert "::add-mask::{api_image}" in deployed_images
+    assert "::add-mask::{fi1_image}" in deployed_images
+    assert deployed_images.index("::add-mask::{api_image}") < deployed_images.index(
+        "api_image={api_image}"
+    )
+    assert deployed_images.index("::add-mask::{fi1_image}") < deployed_images.index(
+        "fi1_image={fi1_image}"
+    )
+    assert "api_image={api_image}" in deployed_images
+    assert "fi1_image={fi1_image}" in deployed_images
+    assert "steps.deployed-images.outputs.api_image" in workflow
+    assert "steps.deployed-images.outputs.fi1_image" in workflow
+    assert "vars.APPROVED_API_IMAGE" in workflow
+    assert workflow.count(
+        "env.TF_VAR_environment == 'development' && "
+        "steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE"
+    ) == 4
+    assert '[[ "$TF_VAR_v1_batch_image" =~' in workflow
     assert 'cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"' in plan
     assert '--state-bucket "$TF_STATE_BUCKET"' in plan
     assert '--state-prefix "$TF_STATE_PREFIX"' in plan

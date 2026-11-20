@@ -120,8 +120,8 @@ jobs:
           run-id: ${{ steps.deployment.outputs.run_id }}
           github-token: ${{ github.token }}
           path: development-deployment
-      - name: Resolve deployed FI-1 image digest
-        id: fi1-image
+      - name: Resolve deployed API and FI-1 images
+        id: deployed-images
         if: env.TF_VAR_environment == 'development'
         env:
           DEPLOYMENT_ARTIFACT: ${{ steps.deployment.outputs.artifact_name }}
@@ -136,15 +136,24 @@ jobs:
           assert re.fullmatch(r"[0-9a-f]{40}", evidence["release_id"])
           assert os.environ["DEPLOYMENT_ARTIFACT"] == f"tradvisor-development-deployed-{evidence['release_id']}"
           assert evidence["commit"] == evidence["release_id"]
-          digest = evidence["fi1_job_digest"]
-          assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
-          image = f"{os.environ['GCP_REGION']}-docker.pkg.dev/{os.environ['GCP_PROJECT_ID']}/{os.environ['ARTIFACT_REPOSITORY']}/financial-ingestion@{digest}"
+          backend_digest = evidence["backend_digest"]
+          fi1_digest = evidence["fi1_job_digest"]
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", backend_digest)
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", fi1_digest)
+          registry = f"{os.environ['GCP_REGION']}-docker.pkg.dev/{os.environ['GCP_PROJECT_ID']}/{os.environ['ARTIFACT_REPOSITORY']}"
+          api_image = f"{registry}/api:{evidence['release_id']}@{backend_digest}"
+          fi1_image = f"{registry}/financial-ingestion:{evidence['release_id']}@{fi1_digest}"
+          print(f"::add-mask::{api_image}")
+          print(f"::add-mask::{fi1_image}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"image={image}", file=output)
+              print(f"api_image={api_image}", file=output)
+              print(f"fi1_image={fi1_image}", file=output)
           PY
       - name: Validate isolated target and approved image
         env:
-          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
+          TF_VAR_v1_api_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_v1_batch_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.deployed-images.outputs.fi1_image }}
         shell: bash
         run: |
           if [ "$TF_VAR_environment" = production ]; then
@@ -158,6 +167,7 @@ jobs:
           fi
           test -n "$GCP_REGION"
           [[ "$TF_VAR_v1_api_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
+          [[ "$TF_VAR_v1_batch_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
           if [ "$TF_VAR_environment" = development ]; then
             [[ "$TF_VAR_fi1_financial_job_image" =~ ^$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/.+@sha256:[0-9a-f]{64}$ ]]
           fi
@@ -173,7 +183,9 @@ jobs:
       - name: Plan without publishing state or plan contents
         working-directory: terraform
         env:
-          TF_VAR_fi1_financial_job_image: ${{ steps.fi1-image.outputs.image }}
+          TF_VAR_v1_api_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_v1_batch_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
+          TF_VAR_fi1_financial_job_image: ${{ steps.deployed-images.outputs.fi1_image }}
           TF_VAR_publication_control_service_url: ${{ vars.TRADVISOR_PUBLICATION_CONTROL_SERVICE_URL }}
         run: |
           baseline_root="$RUNNER_TEMP/tradvisor-development-baseline"

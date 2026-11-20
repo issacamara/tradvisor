@@ -64,7 +64,9 @@ def test_baseline_comparison_detects_same_actions_with_different_values() -> Non
     _, details = classify_with_details(baseline, proposed)
     assert details == (
         "non-noop-unrelated-changes-differ; no-op-changes-match; "
-        "output-changes-match"
+        "output-changes-match; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-action-differences; image-only-updates-match"
     )
 
 
@@ -79,7 +81,59 @@ def test_baseline_comparison_compares_noop_change_values() -> None:
     _, details = classify_with_details(baseline, proposed)
     assert details == (
         "non-noop-unrelated-changes-identical; no-op-only-differences; "
-        "output-changes-match"
+        "output-changes-match; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-actions-match; image-only-updates-match"
+    )
+
+
+def test_diagnostics_separate_data_reads_runtime_images_and_source_archives() -> None:
+    baseline = _plan()
+    proposed = deepcopy(baseline)
+    proposed["resource_changes"][0]["change"]["after"]["labels"]["source"] = "changed"
+    data_read = {
+        "address": "data.google_project.current",
+        "mode": "data",
+        "type": "google_project",
+        "change": {"actions": ["read"], "before": None, "after": {"id": "old"}},
+    }
+    proposed_data_read = deepcopy(data_read)
+    proposed_data_read["change"]["after"]["id"] = "new"
+    baseline["resource_changes"].append(data_read)
+    proposed["resource_changes"].append(proposed_data_read)
+
+    def runtime_change(image: str) -> dict[str, Any]:
+        return {
+            "address": "google_cloud_run_v2_service.api",
+            "mode": "managed",
+            "type": "google_cloud_run_v2_service",
+            "change": {
+                "actions": ["update"],
+                "before": {"template": {"containers": [{"image": "old"}]}},
+                "after": {"template": {"containers": [{"image": image}]}},
+            },
+        }
+
+    baseline["resource_changes"].append(runtime_change("old"))
+    proposed["resource_changes"].append(runtime_change("new"))
+    archive = {
+        "address": "google_storage_bucket_object.retained-src-code",
+        "mode": "managed",
+        "type": "google_storage_bucket_object",
+        "change": {"actions": ["update"], "before": {"md5hash": "old"}, "after": {"md5hash": "old"}},
+    }
+    proposed_archive = deepcopy(archive)
+    proposed_archive["change"]["after"]["md5hash"] = "new"
+    baseline["resource_changes"].append(archive)
+    proposed["resource_changes"].append(proposed_archive)
+
+    _, details = classify_with_details(baseline, proposed)
+
+    assert details == (
+        "non-noop-unrelated-changes-differ; no-op-changes-match; "
+        "output-changes-match; data-source-read-differences; "
+        "runtime-image-consumer-differences; source-archive-differences; "
+        "other-managed-action-differences; image-only-update-differences"
     )
 
 
@@ -254,7 +308,9 @@ def test_backend_generation_stability_allows_refresh_variation(
     assert result == (
         "matches-development-baseline",
         "non-noop-unrelated-changes-identical; no-op-changes-match; "
-        "output-changes-match",
+        "output-changes-match; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-actions-match; image-only-updates-match",
     )
 
 
@@ -358,7 +414,9 @@ def test_baseline_comparison_checks_output_values_too() -> None:
     _, details = classify_with_details(baseline, proposed)
     assert details == (
         "non-noop-unrelated-changes-identical; no-op-changes-match; "
-        "output-only-differences"
+        "output-only-differences; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-actions-match; image-only-updates-match"
     )
 
 
@@ -392,17 +450,21 @@ def test_cli_outputs_only_fixed_classification_and_details(
         lambda **_kwargs: (
             "new-or-different-from-development-baseline",
             "non-noop-unrelated-changes-identical; no-op-changes-match; "
-            "output-only-differences",
+            "output-only-differences; data-source-reads-match; "
+            "runtime-image-consumers-match; source-archives-match; "
+            "other-managed-actions-match; image-only-updates-match",
         ),
     )
 
-    assert comparator.main() == 1
+    assert comparator.main() == 0
     output = capsys.readouterr().out
     assert output == (
         "Development baseline comparison: new-or-different-from-development-baseline.\n"
         "Development baseline comparison details: "
         "non-noop-unrelated-changes-identical; no-op-changes-match; "
-        "output-only-differences.\n"
+        "output-only-differences; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-actions-match; image-only-updates-match.\n"
     )
     assert "private-bucket" not in output
     assert "private-prefix" not in output
@@ -440,7 +502,9 @@ def test_cli_reports_identical_non_noop_changes_on_match(
         lambda **_kwargs: (
             "matches-development-baseline",
             "non-noop-unrelated-changes-identical; no-op-changes-match; "
-            "output-changes-match",
+            "output-changes-match; data-source-reads-match; "
+            "runtime-image-consumers-match; source-archives-match; "
+            "other-managed-actions-match; image-only-updates-match",
         ),
     )
 
@@ -450,7 +514,9 @@ def test_cli_reports_identical_non_noop_changes_on_match(
         "Development baseline comparison: matches-development-baseline.\n"
         "Development baseline comparison details: "
         "non-noop-unrelated-changes-identical; no-op-changes-match; "
-        "output-changes-match.\n"
+        "output-changes-match; data-source-reads-match; "
+        "runtime-image-consumers-match; source-archives-match; "
+        "other-managed-actions-match; image-only-updates-match.\n"
     )
 
 
