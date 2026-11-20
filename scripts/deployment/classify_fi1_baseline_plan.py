@@ -9,7 +9,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 if __package__:
     from scripts.deployment.verify_fi1_staging_plan import STAGED
@@ -44,26 +44,38 @@ def _run_terraform(
     return completed.stdout
 
 
-def _state_fingerprint(working_directory: Path) -> StateFingerprint:
+def _state_fingerprint(
+    working_directory: Path, failure_category: str = "backend-state-read-failed"
+) -> StateFingerprint:
     try:
         state_text = _run_terraform(
-            ["state", "pull"], working_directory, "backend-state-read-failed"
+            ["state", "pull"], working_directory, failure_category
         )
         state = json.loads(state_text)
     except (BaselineComparisonError, UnicodeError, json.JSONDecodeError) as error:
-        raise BaselineComparisonError("backend-state-read-failed") from error
+        raise BaselineComparisonError(failure_category) from error
     if (
         not isinstance(state, Mapping)
         or not isinstance(state.get("lineage"), str)
         or type(state.get("serial")) is not int
     ):
-        raise BaselineComparisonError("backend-state-read-failed")
+        raise BaselineComparisonError(failure_category)
     try:
         canonical_state = json.dumps(state, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError) as error:
-        raise BaselineComparisonError("backend-state-read-failed") from error
+        raise BaselineComparisonError(failure_category) from error
     digest = hashlib.sha256(canonical_state.encode("utf-8")).digest()
     return state["lineage"], state["serial"], digest
+
+
+def _state_change_category(
+    before: StateFingerprint, after: StateFingerprint, phase: str
+) -> Optional[str]:
+    if before[:2] != after[:2]:
+        return f"{phase}-state-lineage-or-serial-changed"
+    if before[2] != after[2]:
+        return f"{phase}-state-payload-only-changed"
+    return None
 
 
 def _unrelated_changes(plan: Mapping[str, Any]) -> str:
@@ -164,24 +176,32 @@ def compare_with_backend_state(
         ["init", *backend_args], proposed_directory, "proposed-init-failed"
     )
 
-    state_before = _state_fingerprint(baseline_directory)
+    state_before = _state_fingerprint(
+        baseline_directory, "baseline-state-read-failed"
+    )
     _run_terraform(
         ["plan", f"-out={baseline_plan}", "-input=false", "-no-color"],
         baseline_directory,
         "baseline-plan-failed",
     )
-    state_between = _state_fingerprint(baseline_directory)
-    if state_before != state_between:
-        raise BaselineComparisonError("backend-state-changed")
+    state_between = _state_fingerprint(
+        baseline_directory, "baseline-state-read-failed"
+    )
+    change_category = _state_change_category(state_before, state_between, "baseline")
+    if change_category:
+        raise BaselineComparisonError(change_category)
 
     _run_terraform(
         ["plan", f"-out={proposed_plan}", "-input=false", "-no-color"],
         proposed_directory,
         "proposed-plan-failed",
     )
-    state_after = _state_fingerprint(proposed_directory)
-    if state_before != state_after:
-        raise BaselineComparisonError("backend-state-changed")
+    state_after = _state_fingerprint(
+        proposed_directory, "proposed-state-read-failed"
+    )
+    change_category = _state_change_category(state_between, state_after, "proposed")
+    if change_category:
+        raise BaselineComparisonError(change_category)
 
     baseline = _load_plan(baseline_plan, baseline_directory, "baseline-load-failed")
     proposed = _load_plan(proposed_plan, proposed_directory, "proposed-load-failed")

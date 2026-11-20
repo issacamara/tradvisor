@@ -96,8 +96,10 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     comparator = (Path(__file__).parents[2] / "scripts/deployment/classify_fi1_baseline_plan.py").read_text()
     assert '["state", "pull"]' in comparator
     assert "state_before" in comparator and "state_between" in comparator and "state_after" in comparator
-    assert '"backend-state-changed"' in comparator
-    assert '"backend-state-read-failed"' in comparator
+    assert 'f"{phase}-state-lineage-or-serial-changed"' in comparator
+    assert 'f"{phase}-state-payload-only-changed"' in comparator
+    assert '"baseline-state-read-failed"' in comparator
+    assert '"proposed-state-read-failed"' in comparator
     assert "capture_output=True" in comparator
 
 

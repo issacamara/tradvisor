@@ -158,7 +158,7 @@ def test_backend_state_change_fails_closed(
             state_bucket="private-bucket",
             state_prefix="private-prefix",
         )
-    assert error.value.category == "backend-state-changed"
+    assert error.value.category == "baseline-state-lineage-or-serial-changed"
 
 
 def test_backend_state_fingerprint_detects_payload_change_with_same_serial(
@@ -187,7 +187,54 @@ def test_backend_state_fingerprint_detects_payload_change_with_same_serial(
             state_bucket="private-bucket",
             state_prefix="private-prefix",
         )
-    assert error.value.category == "backend-state-changed"
+    assert error.value.category == "baseline-state-payload-only-changed"
+
+
+@pytest.mark.parametrize(
+    ("change_kind", "expected_category"),
+    [
+        ("lineage-or-serial", "proposed-state-lineage-or-serial-changed"),
+        ("payload", "proposed-state-payload-only-changed"),
+    ],
+)
+def test_proposed_state_diagnostics_identify_difference(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    change_kind: str,
+    expected_category: str,
+) -> None:
+    state_reads = 0
+
+    def run_terraform(arguments, _working_directory, _failure_category):
+        nonlocal state_reads
+        if arguments[:2] != ["state", "pull"]:
+            return ""
+        state_reads += 1
+        state = _state()
+        if state_reads == 3:
+            if change_kind == "lineage-or-serial":
+                state["serial"] += 1
+            else:
+                state["resources"][0]["instances"][0]["attributes"][
+                    "secret"
+                ] = "private-changed"
+        return json.dumps(state)
+
+    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+    monkeypatch.setattr(comparator, "_load_plan", lambda *_args: _plan())
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator.compare_with_backend_state(
+            baseline_plan=tmp_path / "baseline.tfplan",
+            baseline_directory=tmp_path / "baseline",
+            proposed_plan=tmp_path / "proposed.tfplan",
+            proposed_directory=tmp_path / "proposed",
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+        )
+
+    assert error.value.category == expected_category
+    assert "private-changed" not in str(error.value)
 
 
 def test_backend_state_read_failure_fails_closed(
@@ -209,7 +256,7 @@ def test_backend_state_read_failure_fails_closed(
             state_bucket="private-bucket",
             state_prefix="private-prefix",
         )
-    assert error.value.category == "backend-state-read-failed"
+    assert error.value.category == "baseline-state-read-failed"
 
 
 def test_baseline_comparison_distinguishes_malformed_resource_changes() -> None:
@@ -288,8 +335,9 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
 @pytest.mark.parametrize(
     ("failure_category",),
     [
-        ("backend-state-read-failed",),
-        ("backend-state-changed",),
+        ("baseline-state-read-failed",),
+        ("baseline-state-lineage-or-serial-changed",),
+        ("proposed-state-payload-only-changed",),
         ("baseline-plan-failed",),
     ],
 )
