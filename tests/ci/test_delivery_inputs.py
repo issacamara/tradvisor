@@ -65,10 +65,16 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
 def test_terraform_plan_runs_private_fi1_staging_preservation_guard() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
-    assert 'if [ "$TF_VAR_environment" = development ]; then' in step
+    assert 'if [ "$FI1_STAGING_TRANSITION" = true ]; then' in step
+    assert "Detect FI-1 staging transition" in workflow
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+    assert 'enabled=$transition' in workflow
+    assert 'FI1_STAGING_TRANSITION: ${{ steps.fi1-staging-transition.outputs.enabled }}' in workflow
     assert "classify_fi1_baseline_plan.py" in step
     assert step.index("classify_fi1_baseline_plan.py") < step.index("verify_fi1_staging_plan.py")
     assert "terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py" in step
+    assert "FI-1 staging transition base is unavailable." in workflow
+    assert "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository" in workflow
 
 
 def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() -> None:
@@ -76,7 +82,8 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     deployed_images = workflow.split("      - name: Resolve deployed API and FI-1 images", 1)[1].split("\n      - name:", 1)[0]
     baseline = workflow.split("      - name: Prepare development baseline checkout", 1)[1].split("\n      - name:", 1)[0]
     plan = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
-    assert "github.event.pull_request.base.sha" in baseline
+    assert "github.event.pull_request.base.sha || github.event.before" in workflow
+    assert "steps.fi1-staging-transition.outputs.base_sha" in baseline
     assert 'git worktree add --detach "$baseline_root" "$BASE_SHA"' in baseline
     assert "retired-workflow-dispatcher.tf" in baseline
     assert 'git show "$BASE_SHA:.github/workflows/terraform.yml"' in baseline

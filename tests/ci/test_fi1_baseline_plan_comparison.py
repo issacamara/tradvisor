@@ -183,11 +183,50 @@ def test_non_noop_summary_uses_fixed_groups_and_action_labels() -> None:
         "proposed-non-noop-groups=data-source-reads:read; "
         "other-managed:create; runtime-image-consumers:replace; "
         "source-archives:update-other; staged-fi1:create; "
-        "workflow-dispatcher:update-image-only"
+        "workflow-dispatcher:update-image-only[image-tag]"
     )
     assert "private-image" not in summary
     assert "private" not in summary
     assert "google_" not in summary
+
+
+def test_change_categories_use_fixed_labels_and_ignore_after_unknown_values() -> None:
+    item = {"type": "google_cloud_run_v2_service"}
+    change = {
+        "before": {
+            "template": {"containers": [{"image": "old", "env": [{"value": "secret"}]}]},
+            "labels": {"managed-by": "old"},
+            "deletion_protection": False,
+            "uri": "old-endpoint",
+            "display_name": "old-name",
+        },
+        "after": {
+            "template": {"containers": [{"image": "new", "env": [{"value": None}]}]},
+            "labels": {"managed-by": "new"},
+            "deletion_protection": True,
+            "uri": None,
+            "display_name": "new-name",
+        },
+        "after_unknown": {
+            "uri": True,
+            "template": {"containers": [{"env": [{"value": True}]}]},
+        },
+    }
+
+    categories = comparator._change_categories(item, change)
+
+    assert categories == {
+        "image-tag",
+        "metadata",
+        "deletion-protection",
+        "other",
+        "computed-unknown",
+    }
+    assert comparator._change_categories(
+        item, {"before": {"uri": "old"}, "after": {"uri": "new"}}
+    ) == {"endpoint-revision-computed-only"}
+    assert "secret" not in str(categories)
+    assert "display_name" not in str(categories)
 
 
 def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:

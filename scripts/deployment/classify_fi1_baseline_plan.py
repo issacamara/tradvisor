@@ -26,6 +26,12 @@ class BaselineComparisonError(ValueError):
 
 
 WORKFLOW_DISPATCHER = "google_cloud_run_v2_service.workflow_dispatcher[0]"
+COMPUTED_ENDPOINT_REVISION_FIELDS = {
+    "latest_created_revision",
+    "latest_ready_revision",
+    "uri",
+}
+_MISSING = object()
 
 
 def _run_terraform(
@@ -247,8 +253,82 @@ def _action_label(actions: list[str], change: Mapping[str, Any], item: Mapping[s
     return "other"
 
 
+def _unknown_leaf_paths(value: Any, path: Tuple[str, ...] = ()) -> set[Tuple[str, ...]]:
+    if value is True:
+        return {path}
+    if isinstance(value, Mapping):
+        return {
+            leaf
+            for key, child in value.items()
+            for leaf in _unknown_leaf_paths(child, (*path, str(key)))
+        }
+    if isinstance(value, list):
+        return {
+            leaf
+            for index, child in enumerate(value)
+            for leaf in _unknown_leaf_paths(child, (*path, str(index)))
+        }
+    return set()
+
+
+def _changed_leaf_paths(
+    before: Any,
+    after: Any,
+    unknown_paths: set[Tuple[str, ...]],
+    path: Tuple[str, ...] = (),
+) -> set[Tuple[str, ...]]:
+    if any(path[: len(unknown)] == unknown for unknown in unknown_paths):
+        return set()
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        return {
+            leaf
+            for key in before.keys() | after.keys()
+            for leaf in _changed_leaf_paths(
+                before.get(key, _MISSING),
+                after.get(key, _MISSING),
+                unknown_paths,
+                (*path, str(key)),
+            )
+        }
+    if isinstance(before, list) and isinstance(after, list):
+        changed: set[Tuple[str, ...]] = set()
+        for index in range(max(len(before), len(after))):
+            old = before[index] if index < len(before) else _MISSING
+            new = after[index] if index < len(after) else _MISSING
+            changed.update(
+                _changed_leaf_paths(old, new, unknown_paths, (*path, str(index)))
+            )
+        return changed
+    if before != after:
+        return {path}
+    return set()
+
+
+def _change_categories(item: Mapping[str, Any], change: Mapping[str, Any]) -> set[str]:
+    unknown = _unknown_leaf_paths(change.get("after_unknown"))
+    categories: set[str] = set()
+    for path in _changed_leaf_paths(change.get("before"), change.get("after"), unknown):
+        keys = set(path)
+        if keys & {"image", "tag"}:
+            categories.add("image-tag")
+        elif keys & {"client", "labels", "annotations"}:
+            categories.add("metadata")
+        elif "deletion_protection" in keys:
+            categories.add("deletion-protection")
+        elif keys & COMPUTED_ENDPOINT_REVISION_FIELDS:
+            categories.add("endpoint-revision-computed-only")
+        elif "template" in keys:
+            categories.add("workload-config")
+        else:
+            categories.add("other")
+    if unknown:
+        categories.add("computed-unknown")
+    return categories or {"none"}
+
+
 def _non_noop_group_summary(plan: Mapping[str, Any], label: str) -> str:
     groups: dict[str, set[str]] = {}
+    change_categories: dict[str, set[str]] = {}
     for item in plan["resource_changes"]:
         address = item["address"]
         change = item["change"]
@@ -273,11 +353,24 @@ def _non_noop_group_summary(plan: Mapping[str, Any], label: str) -> str:
         else:
             group = "other-managed"
         groups.setdefault(group, set()).add(_action_label(actions, change, item))
+        if actions == ["update"] and group in {
+            "workflow-dispatcher",
+            "runtime-image-consumers",
+        }:
+            change_categories.setdefault(group, set()).update(
+                _change_categories(item, change)
+            )
 
     if not groups:
         return f"{label}-non-noop-groups=none"
     summary = "; ".join(
-        f"{group}:{'+'.join(sorted(groups[group]))}" for group in sorted(groups)
+        f"{group}:{'+'.join(sorted(groups[group]))}"
+        + (
+            f"[{'+'.join(sorted(change_categories[group]))}]"
+            if group in change_categories
+            else ""
+        )
+        for group in sorted(groups)
     )
     return f"{label}-non-noop-groups={summary}"
 

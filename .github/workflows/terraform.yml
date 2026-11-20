@@ -43,6 +43,48 @@ jobs:
       TF_VAR_v1_cors_origins: ${{ vars.TRADVISOR_CORS_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
+      - name: Detect FI-1 staging transition
+        id: fi1-staging-transition
+        if: env.TF_VAR_environment == 'development'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PROPOSED_CONFIG: terraform/fi1_financial.tf
+        run: |
+          set -euo pipefail
+          transition=false
+          declaration='^[[:space:]]*resource[[:space:]]+"google_cloud_run_v2_job"[[:space:]]+"fi1_financials_replacement"[[:space:]]*\{'
+          if ! grep -Eq "$declaration" "$PROPOSED_CONFIG"; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "${BASE_SHA//0/}" = "" ]; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if ! git fetch --no-tags origin "$BASE_SHA" >/dev/null 2>&1 || \
+            ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if ! base_tree_entry="$(git ls-tree "$BASE_SHA" -- terraform/fi1_financial.tf)"; then
+            echo "FI-1 staging transition base is unavailable." >&2
+            exit 1
+          fi
+          if [ -n "$base_tree_entry" ]; then
+            if ! base_config="$(git show "$BASE_SHA:terraform/fi1_financial.tf")"; then
+              echo "FI-1 staging transition base is unavailable." >&2
+              exit 1
+            fi
+            if grep -Eq "$declaration" <<< "$base_config"; then
+              transition=false
+            else
+              transition=true
+            fi
+          else
+            transition=true
+          fi
+          echo "enabled=$transition" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
       - name: Stage development dispatcher prepare phase
         if: env.TF_VAR_environment == 'development'
         working-directory: terraform
@@ -66,9 +108,9 @@ jobs:
             '  }' \
             '}' > retired-workflow-dispatcher.tf
       - name: Prepare development baseline checkout
-        if: github.event_name == 'pull_request' && github.base_ref == 'development'
+        if: steps.fi1-staging-transition.outputs.enabled == 'true'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.fi1-staging-transition.outputs.base_sha }}
         run: |
           baseline_root="$RUNNER_TEMP/tradvisor-development-baseline"
           git fetch --no-tags origin "$BASE_SHA"
@@ -183,6 +225,7 @@ jobs:
       - name: Plan without publishing state or plan contents
         working-directory: terraform
         env:
+          FI1_STAGING_TRANSITION: ${{ steps.fi1-staging-transition.outputs.enabled }}
           TF_VAR_v1_api_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
           TF_VAR_v1_batch_image: ${{ env.TF_VAR_environment == 'development' && steps.deployed-images.outputs.api_image || vars.APPROVED_API_IMAGE }}
           TF_VAR_fi1_financial_job_image: ${{ steps.deployed-images.outputs.fi1_image }}
@@ -194,7 +237,7 @@ jobs:
             git worktree remove --force "$baseline_root" >/dev/null 2>&1 || true
           }
           trap cleanup_private_plans EXIT
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_BASE_REF" = development ]; then
+          if [ "$FI1_STAGING_TRANSITION" = true ]; then
             if ! cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"; then
               echo "Development baseline comparison: inputs differ." >&2
               exit 1
@@ -220,7 +263,7 @@ jobs:
               exit 1
             fi
           fi
-          if [ "$TF_VAR_environment" = development ]; then
+          if [ "$FI1_STAGING_TRANSITION" = true ]; then
             set -o pipefail
             terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py
           fi
