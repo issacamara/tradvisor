@@ -183,7 +183,7 @@ def test_non_noop_summary_uses_fixed_groups_and_action_labels() -> None:
         "proposed-non-noop-groups=data-source-reads:read; "
         "other-managed:create; runtime-image-consumers:replace; "
         "source-archives:update-other; staged-fi1:create; "
-        "workflow-dispatcher:update-image-only[image-tag]"
+        "workflow-dispatcher:update-image-only[after-map-present+before-map-present+image-tag]"
     )
     assert "private-image" not in summary
     assert "private" not in summary
@@ -216,6 +216,8 @@ def test_change_categories_use_fixed_schema_fields_and_ignore_after_unknown_valu
     categories = comparator._change_categories(item, change)
 
     assert categories == {
+        "before-map-present",
+        "after-map-present",
         "image-tag",
         "declared-metadata",
         "deletion-protection",
@@ -224,7 +226,11 @@ def test_change_categories_use_fixed_schema_fields_and_ignore_after_unknown_valu
     }
     assert comparator._change_categories(
         item, {"before": {"uri": "old"}, "after": {"uri": "new"}}
-    ) == {"computed-endpoint-revision"}
+    ) == {
+        "before-map-present",
+        "after-map-present",
+        "computed-endpoint-revision",
+    }
     assert "secret" not in str(categories)
     assert "display_name" not in str(categories)
 
@@ -232,28 +238,48 @@ def test_change_categories_use_fixed_schema_fields_and_ignore_after_unknown_valu
 def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
     item = {"type": "google_cloud_run_v2_service"}
     before = {
+        "binary_authorization": {"use_default": True},
         "ingress": "old",
         "launch_stage": "old",
         "client_version": "old",
         "annotations": {"private-key": "old"},
+        "custom_audiences": ["old"],
+        "description": "old",
+        "execution_count": 1,
+        "location": "old",
+        "name": "old",
+        "project": "old",
+        "scaling": {"min_instance_count": 0},
         "terraform_labels": {"private-key": "old"},
         "effective_labels": {"private-key": "old"},
         "effective_annotations": {"private-key": "old"},
         "invoker_iam_disabled": False,
         "traffic": [{"percent": 50}],
         "generation": 1,
+        "uid": "old",
+        "id": "old",
     }
     after = {
+        "binary_authorization": {"use_default": False},
         "ingress": "new",
         "launch_stage": "new",
         "client_version": "new",
         "annotations": {"private-key": "new"},
+        "custom_audiences": ["new"],
+        "description": "new",
+        "execution_count": 2,
+        "location": "new",
+        "name": "new",
+        "project": "new",
+        "scaling": {"min_instance_count": 1},
         "terraform_labels": {"private-key": "new"},
         "effective_labels": {"private-key": "new"},
         "effective_annotations": {"private-key": "new"},
         "invoker_iam_disabled": True,
         "traffic": [{"percent": 100}],
         "generation": 2,
+        "uid": "new",
+        "id": "new",
     }
 
     categories = comparator._change_categories(
@@ -261,6 +287,18 @@ def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
     )
 
     assert categories == {
+        "before-map-present",
+        "after-map-present",
+        "binary-authorization",
+        "custom-audiences",
+        "description",
+        "execution-count",
+        "location",
+        "name",
+        "project",
+        "scaling",
+        "terraform-id",
+        "computed-provider-metadata",
         "ingress",
         "launch-stage",
         "client-version",
@@ -271,6 +309,19 @@ def test_change_categories_label_public_top_level_cloud_run_fields() -> None:
         "computed-provider-metadata",
     }
     assert "private-key" not in str(categories)
+
+
+def test_change_categories_report_non_mapping_before_or_after() -> None:
+    categories = comparator._change_categories(
+        {"type": "google_cloud_run_v2_service"},
+        {"before": None, "after": {}},
+    )
+
+    assert categories == {
+        "before-map-absent",
+        "after-map-present",
+        "other-top-level-config",
+    }
 
 
 def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:

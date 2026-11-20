@@ -27,13 +27,17 @@ class BaselineComparisonError(ValueError):
 
 WORKFLOW_DISPATCHER = "google_cloud_run_v2_service.workflow_dispatcher[0]"
 CHANGE_FIELD_CATEGORIES = {
+    "binary_authorization": "binary-authorization",
     "client": "declared-metadata",
     "client_version": "client-version",
     "conditions": "computed-provider-status",
+    "custom_audiences": "custom-audiences",
     "create_time": "computed-provider-metadata",
     "creator": "computed-provider-metadata",
     "delete_time": "computed-provider-metadata",
     "deletion_protection": "deletion-protection",
+    "description": "description",
+    "execution_count": "execution-count",
     "effective_annotations": "terraform-effective-metadata",
     "effective_labels": "terraform-effective-metadata",
     "etag": "computed-provider-metadata",
@@ -41,6 +45,7 @@ CHANGE_FIELD_CATEGORIES = {
     "generation": "computed-provider-metadata",
     "ingress": "ingress",
     "invoker_iam_disabled": "invoker-iam-check",
+    "id": "terraform-id",
     "labels": "declared-metadata",
     "annotations": "declared-metadata",
     "last_modifier": "computed-provider-metadata",
@@ -48,13 +53,18 @@ CHANGE_FIELD_CATEGORIES = {
     "latest_created_execution": "computed-provider-status",
     "latest_created_revision": "computed-endpoint-revision",
     "latest_ready_revision": "computed-endpoint-revision",
+    "location": "location",
+    "name": "name",
     "observed_generation": "computed-provider-metadata",
+    "project": "project",
     "reconciling": "computed-provider-status",
+    "scaling": "scaling",
     "template": "workload-config",
     "terraform_labels": "terraform-effective-metadata",
     "terminal_condition": "computed-provider-status",
     "traffic": "traffic-config",
     "traffic_statuses": "computed-provider-status",
+    "uid": "computed-provider-metadata",
     "update_time": "computed-provider-metadata",
     "uri": "computed-endpoint-revision",
 }
@@ -332,9 +342,14 @@ def _changed_leaf_paths(
 
 
 def _change_categories(item: Mapping[str, Any], change: Mapping[str, Any]) -> set[str]:
+    before = change.get("before")
+    after = change.get("after")
     unknown = _unknown_leaf_paths(change.get("after_unknown"))
-    categories: set[str] = set()
-    for path in _changed_leaf_paths(change.get("before"), change.get("after"), unknown):
+    categories = {
+        "before-map-present" if isinstance(before, Mapping) else "before-map-absent",
+        "after-map-present" if isinstance(after, Mapping) else "after-map-absent",
+    }
+    for path in _changed_leaf_paths(before, after, unknown):
         field = path[0] if path else ""
         if field == "template" and set(path[1:]) & {"image", "tag"}:
             category = "image-tag"
