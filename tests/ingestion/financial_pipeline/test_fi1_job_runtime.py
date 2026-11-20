@@ -346,6 +346,7 @@ def test_publication_year_tries_sixth_candidate_then_stops_after_first_valid(
     adapters = fake.adapters()
     first_page = (FIXTURES / "fi1_publication_page_five_failures.html").read_text()
     second_page = (FIXTURES / "fi1_publication_page_sixth_valid.html").read_text()
+    attempted_documents: list[str] = []
 
     def fetch_text(url: str, timeout: float) -> str:
         del timeout
@@ -362,6 +363,7 @@ def test_publication_year_tries_sixth_candidate_then_stops_after_first_valid(
 
     def provider_attempt(document: str, model: str, key: str, timeout: float):
         fake.attempts.append(model)
+        attempted_documents.append(document)
         if document != "2020":
             raise ValueError("invalid source document")
         return {**VALID, "fiscal_year": int(document)}
@@ -378,12 +380,14 @@ def test_publication_year_tries_sixth_candidate_then_stops_after_first_valid(
     outcome = run_batch(adapters, api_key="runtime-secret", selection_mode="publication_year")
 
     assert outcome.failed == 0
+    assert outcome.annual_candidates == 7
     assert [urlparse(url).query for url in fake.fetches if url != SELECTOR_URL] == [
         "symbole=ABC&page=1", "symbole=ABC&page=2"
     ]
     assert [url.rsplit("-", 1)[-1] for url in fake.downloads] == [
         "2025.pdf", "2024.pdf", "2023.pdf", "2022.pdf", "2021.pdf", "2020.pdf"
     ]
+    assert attempted_documents == ["2025", "2024", "2023", "2022", "2021", "2020"]
     assert [row["fiscal_year"] for row in fake.writes[0][0]] == [2020]
     assert outcome.completion is not None
 
