@@ -89,8 +89,39 @@ def test_baseline_comparison_fails_closed_on_different_prior_state() -> None:
         {"address": "private.resource"}
     )
 
-    with pytest.raises(BaselineComparisonError):
+    with pytest.raises(BaselineComparisonError) as error:
         classify(baseline, proposed)
+    assert error.value.category == "prior-state-mismatch"
+
+
+def test_baseline_comparison_distinguishes_malformed_resource_changes() -> None:
+    baseline = _plan()
+    proposed = deepcopy(baseline)
+    proposed["resource_changes"] = [{"address": "private", "change": None}]
+
+    with pytest.raises(BaselineComparisonError) as error:
+        classify(baseline, proposed)
+    assert error.value.category == "malformed-resource-changes"
+
+
+def test_baseline_comparison_rejects_empty_resource_actions() -> None:
+    baseline = _plan()
+    proposed = deepcopy(baseline)
+    proposed["resource_changes"][0]["change"]["actions"] = []
+
+    with pytest.raises(BaselineComparisonError) as error:
+        classify(baseline, proposed)
+    assert error.value.category == "malformed-resource-changes"
+
+
+def test_baseline_comparison_distinguishes_malformed_output_changes() -> None:
+    baseline = _plan()
+    proposed = deepcopy(baseline)
+    proposed["output_changes"] = ["private"]
+
+    with pytest.raises(BaselineComparisonError) as error:
+        classify(baseline, proposed)
+    assert error.value.category == "malformed-output-changes"
 
 
 def test_baseline_comparison_checks_output_values_too() -> None:
@@ -130,7 +161,9 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(
         comparator,
         "_load_plan",
-        lambda plan_path, _working_directory: baseline if plan_path.name.startswith("baseline") else proposed,
+        lambda plan_path, _working_directory, _category: baseline
+        if plan_path.name.startswith("baseline")
+        else proposed,
     )
 
     assert comparator.main() == 1
@@ -138,3 +171,47 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
     assert output == "Development baseline comparison: new-or-different-from-development-baseline.\n"
     assert "private_resource_identifier" not in output
     assert "private-value" not in output
+
+
+@pytest.mark.parametrize(
+    ("failure_phase", "expected_category"),
+    [
+        ("baseline", "baseline-load-failed"),
+        ("proposed", "proposed-load-failed"),
+    ],
+)
+def test_cli_distinguishes_load_phase_without_echoing_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure_phase: str,
+    expected_category: str,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "classify_fi1_baseline_plan.py",
+            "--baseline-plan",
+            "baseline-private-path.tfplan",
+            "--baseline-working-directory",
+            "private-baseline-directory",
+            "--proposed-plan",
+            "proposed-private-path.tfplan",
+            "--proposed-working-directory",
+            "private-proposed-directory",
+        ],
+    )
+
+    def load_plan(plan_path, _working_directory, category):
+        is_baseline = plan_path.name.startswith("baseline")
+        if is_baseline == (failure_phase == "baseline"):
+            raise BaselineComparisonError(category)
+        return _plan()
+
+    monkeypatch.setattr(comparator, "_load_plan", load_plan)
+
+    assert comparator.main() == 1
+    diagnostic = capsys.readouterr().err
+    assert diagnostic == f"Development baseline comparison: {expected_category}.\n"
+    assert "private-path" not in diagnostic
+    assert "private-directory" not in diagnostic
