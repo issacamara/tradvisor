@@ -9,7 +9,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 if __package__:
     from scripts.deployment.verify_fi1_staging_plan import STAGED
@@ -108,11 +108,20 @@ def _state_generation_change_category(
     return None
 
 
-def _unrelated_changes(plan: Mapping[str, Any]) -> str:
+def _serialize_change_groups(changes: Mapping[str, list[str]]) -> str:
+    return json.dumps(
+        {address: sorted(items) for address, items in changes.items()},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _unrelated_change_groups(plan: Mapping[str, Any]) -> Tuple[str, str]:
     changes = plan.get("resource_changes")
     if not isinstance(changes, list):
         raise BaselineComparisonError("malformed-resource-changes")
-    result: dict[str, list[str]] = {}
+    non_noop: dict[str, list[str]] = {}
+    no_op: dict[str, list[str]] = {}
     for item in changes:
         if not isinstance(item, Mapping):
             raise BaselineComparisonError("malformed-resource-changes")
@@ -133,12 +142,9 @@ def _unrelated_changes(plan: Mapping[str, Any]) -> str:
             serialized_change = json.dumps(change, sort_keys=True, separators=(",", ":"))
         except (TypeError, ValueError) as error:
             raise BaselineComparisonError("malformed-resource-changes") from error
-        result.setdefault(address, []).append(serialized_change)
-    return json.dumps(
-        {address: sorted(items) for address, items in result.items()},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+        target = no_op if actions == ["no-op"] else non_noop
+        target.setdefault(address, []).append(serialized_change)
+    return _serialize_change_groups(non_noop), _serialize_change_groups(no_op)
 
 
 def _output_changes(plan: Mapping[str, Any]) -> str:
@@ -151,13 +157,42 @@ def _output_changes(plan: Mapping[str, Any]) -> str:
         raise BaselineComparisonError("malformed-output-changes") from error
 
 
+def classify_with_details(
+    baseline: Mapping[str, Any], proposed: Mapping[str, Any]
+) -> Tuple[str, str]:
+    baseline_non_noop, baseline_noop = _unrelated_change_groups(baseline)
+    proposed_non_noop, proposed_noop = _unrelated_change_groups(proposed)
+    non_noop_equal = baseline_non_noop == proposed_non_noop
+    noop_equal = baseline_noop == proposed_noop
+    outputs_equal = _output_changes(baseline) == _output_changes(proposed)
+    classification = (
+        "matches-development-baseline"
+        if non_noop_equal and noop_equal and outputs_equal
+        else "new-or-different-from-development-baseline"
+    )
+
+    details = [
+        "non-noop-unrelated-changes-identical"
+        if non_noop_equal
+        else "non-noop-unrelated-changes-differ",
+    ]
+    if noop_equal:
+        details.append("no-op-changes-match")
+    elif non_noop_equal and outputs_equal:
+        details.append("no-op-only-differences")
+    else:
+        details.append("no-op-changes-differ")
+    if outputs_equal:
+        details.append("output-changes-match")
+    elif non_noop_equal and noop_equal:
+        details.append("output-only-differences")
+    else:
+        details.append("output-changes-differ")
+    return classification, "; ".join(details)
+
+
 def classify(baseline: Mapping[str, Any], proposed: Mapping[str, Any]) -> str:
-    if (
-        _unrelated_changes(baseline) == _unrelated_changes(proposed)
-        and _output_changes(baseline) == _output_changes(proposed)
-    ):
-        return "matches-development-baseline"
-    return "new-or-different-from-development-baseline"
+    return classify_with_details(baseline, proposed)[0]
 
 
 def _load_plan(
@@ -193,7 +228,7 @@ def compare_with_backend_state(
     state_bucket: str,
     state_prefix: str,
     gcp_project: str,
-) -> str:
+) -> Tuple[str, str]:
     backend_args = [
         f"-backend-config=bucket={state_bucket}",
         f"-backend-config=prefix={state_prefix}",
@@ -265,7 +300,7 @@ def compare_with_backend_state(
 
     baseline = _load_plan(baseline_plan, baseline_directory, "baseline-load-failed")
     proposed = _load_plan(proposed_plan, proposed_directory, "proposed-load-failed")
-    return classify(baseline, proposed)
+    return classify_with_details(baseline, proposed)
 
 
 def main() -> int:
@@ -279,7 +314,7 @@ def main() -> int:
     parser.add_argument("--gcp-project", required=True)
     args = parser.parse_args()
     try:
-        classification = compare_with_backend_state(
+        classification, details = compare_with_backend_state(
             baseline_plan=args.baseline_plan,
             baseline_directory=args.baseline_working_directory,
             proposed_plan=args.proposed_plan,
@@ -292,6 +327,7 @@ def main() -> int:
         print(f"Development baseline comparison: {error.category}.", file=sys.stderr)
         return 1
     print(f"Development baseline comparison: {classification}.")
+    print(f"Development baseline comparison details: {details}.")
     return 0 if classification == "matches-development-baseline" else 1
 
 

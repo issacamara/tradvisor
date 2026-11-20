@@ -12,6 +12,7 @@ import scripts.deployment.classify_fi1_baseline_plan as comparator
 from scripts.deployment.classify_fi1_baseline_plan import (
     BaselineComparisonError,
     classify,
+    classify_with_details,
 )
 from scripts.deployment.verify_fi1_staging_plan import STAGED
 
@@ -56,9 +57,15 @@ def test_baseline_comparison_detects_new_unrelated_resource_action() -> None:
 def test_baseline_comparison_detects_same_actions_with_different_values() -> None:
     baseline = _plan()
     proposed = deepcopy(baseline)
+    proposed["resource_changes"][0]["change"]["before"]["labels"]["source"] = "changed-before"
     proposed["resource_changes"][0]["change"]["after"]["labels"]["source"] = "changed"
 
     assert classify(baseline, proposed) == "new-or-different-from-development-baseline"
+    _, details = classify_with_details(baseline, proposed)
+    assert details == (
+        "non-noop-unrelated-changes-differ; no-op-changes-match; "
+        "output-changes-match"
+    )
 
 
 def test_baseline_comparison_compares_noop_change_values() -> None:
@@ -69,6 +76,11 @@ def test_baseline_comparison_compares_noop_change_values() -> None:
     proposed["resource_changes"][0]["change"]["after"]["labels"]["source"] = "changed"
 
     assert classify(baseline, proposed) == "new-or-different-from-development-baseline"
+    _, details = classify_with_details(baseline, proposed)
+    assert details == (
+        "non-noop-unrelated-changes-identical; no-op-only-differences; "
+        "output-changes-match"
+    )
 
 
 def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:
@@ -239,7 +251,11 @@ def test_backend_generation_stability_allows_refresh_variation(
         gcp_project="dev-tradvisor",
     )
 
-    assert result == "matches-development-baseline"
+    assert result == (
+        "matches-development-baseline",
+        "non-noop-unrelated-changes-identical; no-op-changes-match; "
+        "output-changes-match",
+    )
 
 
 @pytest.mark.parametrize(
@@ -339,9 +355,16 @@ def test_baseline_comparison_checks_output_values_too() -> None:
     }
 
     assert classify(baseline, proposed) == "new-or-different-from-development-baseline"
+    _, details = classify_with_details(baseline, proposed)
+    assert details == (
+        "non-noop-unrelated-changes-identical; no-op-changes-match; "
+        "output-only-differences"
+    )
 
 
-def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_outputs_only_fixed_classification_and_details(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
@@ -366,14 +389,69 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(
         comparator,
         "compare_with_backend_state",
-        lambda **_kwargs: "new-or-different-from-development-baseline",
+        lambda **_kwargs: (
+            "new-or-different-from-development-baseline",
+            "non-noop-unrelated-changes-identical; no-op-changes-match; "
+            "output-only-differences",
+        ),
     )
 
     assert comparator.main() == 1
     output = capsys.readouterr().out
-    assert output == "Development baseline comparison: new-or-different-from-development-baseline.\n"
+    assert output == (
+        "Development baseline comparison: new-or-different-from-development-baseline.\n"
+        "Development baseline comparison details: "
+        "non-noop-unrelated-changes-identical; no-op-changes-match; "
+        "output-only-differences.\n"
+    )
     assert "private-bucket" not in output
     assert "private-prefix" not in output
+    assert "private_output" not in output
+    assert "private plan value" not in output
+
+
+def test_cli_reports_identical_non_noop_changes_on_match(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "classify_fi1_baseline_plan.py",
+            "--baseline-plan",
+            "baseline.tfplan",
+            "--baseline-working-directory",
+            "baseline",
+            "--proposed-plan",
+            "proposed.tfplan",
+            "--proposed-working-directory",
+            "proposed",
+            "--state-bucket",
+            "private-bucket",
+            "--state-prefix",
+            "private-prefix",
+            "--gcp-project",
+            "dev-tradvisor",
+        ],
+    )
+    monkeypatch.setattr(
+        comparator,
+        "compare_with_backend_state",
+        lambda **_kwargs: (
+            "matches-development-baseline",
+            "non-noop-unrelated-changes-identical; no-op-changes-match; "
+            "output-changes-match",
+        ),
+    )
+
+    assert comparator.main() == 0
+    output = capsys.readouterr().out
+    assert output == (
+        "Development baseline comparison: matches-development-baseline.\n"
+        "Development baseline comparison details: "
+        "non-noop-unrelated-changes-identical; no-op-changes-match; "
+        "output-changes-match.\n"
+    )
 
 
 @pytest.mark.parametrize(
