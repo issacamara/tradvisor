@@ -169,6 +169,7 @@ jobs:
         with:
           workload_identity_provider: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_WORKLOAD_IDENTITY_PROVIDER || secrets.DEV_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ (github.base_ref == 'main' || github.ref_name == 'main') && secrets.PROD_SERVICE_ACCOUNT || secrets.DEV_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
       - name: Plan without publishing state or plan contents
         working-directory: terraform
         env:
@@ -192,7 +193,8 @@ jobs:
               --proposed-plan "$GITHUB_WORKSPACE/terraform/tfplan" \
               --proposed-working-directory "$GITHUB_WORKSPACE/terraform" \
               --state-bucket "$TF_STATE_BUCKET" \
-              --state-prefix "$TF_STATE_PREFIX"
+              --state-prefix "$TF_STATE_PREFIX" \
+              --gcp-project "$GCP_PROJECT_ID"
           else
             if ! terraform init \
               -backend-config="bucket=$TF_STATE_BUCKET" \

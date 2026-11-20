@@ -85,6 +85,8 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     assert 'cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"' in plan
     assert '--state-bucket "$TF_STATE_BUCKET"' in plan
     assert '--state-prefix "$TF_STATE_PREFIX"' in plan
+    assert '--gcp-project "$GCP_PROJECT_ID"' in plan
+    assert "google-github-actions/setup-gcloud@v2" in workflow
     assert 'bucket=$TF_STATE_BUCKET' in plan
     assert 'prefix=$TF_STATE_PREFIX' in plan
     assert '"$RUNNER_TEMP/development-baseline.tfplan"' in plan
@@ -94,12 +96,18 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     assert 'rm -f tfplan "$RUNNER_TEMP/development-baseline.tfplan"' in plan
     assert "actions/upload-artifact@v4" not in plan
     comparator = (Path(__file__).parents[2] / "scripts/deployment/classify_fi1_baseline_plan.py").read_text()
-    assert '["state", "pull"]' in comparator
-    assert "state_before" in comparator and "state_between" in comparator and "state_after" in comparator
-    assert 'f"{phase}-state-lineage-or-serial-changed"' in comparator
-    assert 'f"{phase}-state-payload-only-changed"' in comparator
-    assert '"baseline-state-read-failed"' in comparator
-    assert '"proposed-state-read-failed"' in comparator
+    assert '["workspace", "show"]' in comparator
+    assert 'workspace.strip() != "default"' in comparator
+    assert '}/default.tfstate"' in comparator
+    assert '"storage",' in comparator and '"objects",' in comparator
+    assert '"describe"' in comparator
+    assert '"--format=value(generation)"' in comparator
+    assert '"--quiet"' in comparator
+    assert "baseline_generation_before" in comparator
+    assert "baseline_generation_after" in comparator
+    assert "proposed_generation_before" in comparator
+    assert "proposed_generation_after" in comparator
+    assert "state pull" not in comparator
     assert "capture_output=True" in comparator
 
 

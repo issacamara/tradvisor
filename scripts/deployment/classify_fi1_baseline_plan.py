@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 if __package__:
     from scripts.deployment.verify_fi1_staging_plan import STAGED
@@ -23,9 +23,6 @@ class BaselineComparisonError(ValueError):
     def __init__(self, category: str) -> None:
         self.category = category
         super().__init__(category)
-
-
-StateFingerprint = Tuple[str, int, bytes]
 
 
 def _run_terraform(
@@ -44,37 +41,70 @@ def _run_terraform(
     return completed.stdout
 
 
-def _state_fingerprint(
-    working_directory: Path, failure_category: str = "backend-state-read-failed"
-) -> StateFingerprint:
+def _require_default_workspace(working_directory: Path, phase: str) -> None:
     try:
-        state_text = _run_terraform(
-            ["state", "pull"], working_directory, failure_category
+        workspace = _run_terraform(
+            ["workspace", "show"],
+            working_directory,
+            f"{phase}-workspace-read-failed",
         )
-        state = json.loads(state_text)
-    except (BaselineComparisonError, UnicodeError, json.JSONDecodeError) as error:
-        raise BaselineComparisonError(failure_category) from error
+    except BaselineComparisonError as error:
+        raise BaselineComparisonError(f"{phase}-workspace-read-failed") from error
+    if workspace.strip() != "default":
+        raise BaselineComparisonError(f"{phase}-workspace-not-default")
+
+
+def _backend_state_object_generation(
+    working_directory: Path,
+    state_bucket: str,
+    state_prefix: str,
+    gcp_project: str,
+    phase: str,
+) -> str:
+    _require_default_workspace(working_directory, phase)
+    normalized_prefix = state_prefix.rstrip("/")
     if (
-        not isinstance(state, Mapping)
-        or not isinstance(state.get("lineage"), str)
-        or type(state.get("serial")) is not int
+        not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", state_bucket)
+        or not normalized_prefix
+        or any(
+            segment in {".", ".."}
+            or not re.fullmatch(r"[A-Za-z0-9._-]+", segment)
+            for segment in normalized_prefix.split("/")
+        )
+        or not re.fullmatch(r"[a-z][a-z0-9-]+", gcp_project)
     ):
-        raise BaselineComparisonError(failure_category)
+        raise BaselineComparisonError(f"{phase}-state-object-read-failed")
+    object_uri = f"gs://{state_bucket}/{normalized_prefix}/default.tfstate"
     try:
-        canonical_state = json.dumps(state, sort_keys=True, separators=(",", ":"))
-    except (TypeError, ValueError) as error:
-        raise BaselineComparisonError(failure_category) from error
-    digest = hashlib.sha256(canonical_state.encode("utf-8")).digest()
-    return state["lineage"], state["serial"], digest
+        completed = subprocess.run(
+            [
+                "gcloud",
+                "storage",
+                "objects",
+                "describe",
+                object_uri,
+                f"--project={gcp_project}",
+                "--format=value(generation)",
+                "--quiet",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as error:
+        raise BaselineComparisonError(f"{phase}-state-object-read-failed") from error
+    generation = completed.stdout.strip()
+    if not re.fullmatch(r"[0-9]+", generation):
+        raise BaselineComparisonError(f"{phase}-state-object-read-failed")
+    return generation
 
 
-def _state_change_category(
-    before: StateFingerprint, after: StateFingerprint, phase: str
+def _state_generation_change_category(
+    before: str, after: str, phase: str
 ) -> Optional[str]:
-    if before[:2] != after[:2]:
-        return f"{phase}-state-lineage-or-serial-changed"
-    if before[2] != after[2]:
-        return f"{phase}-state-payload-only-changed"
+    if before != after:
+        return f"{phase}-state-object-generation-changed"
     return None
 
 
@@ -162,6 +192,7 @@ def compare_with_backend_state(
     proposed_directory: Path,
     state_bucket: str,
     state_prefix: str,
+    gcp_project: str,
 ) -> str:
     backend_args = [
         f"-backend-config=bucket={state_bucket}",
@@ -176,18 +207,41 @@ def compare_with_backend_state(
         ["init", *backend_args], proposed_directory, "proposed-init-failed"
     )
 
-    state_before = _state_fingerprint(
-        baseline_directory, "baseline-state-read-failed"
+    baseline_generation_before = _backend_state_object_generation(
+        baseline_directory,
+        state_bucket,
+        state_prefix,
+        gcp_project,
+        "baseline",
     )
     _run_terraform(
         ["plan", f"-out={baseline_plan}", "-input=false", "-no-color"],
         baseline_directory,
         "baseline-plan-failed",
     )
-    state_between = _state_fingerprint(
-        baseline_directory, "baseline-state-read-failed"
+    baseline_generation_after = _backend_state_object_generation(
+        baseline_directory,
+        state_bucket,
+        state_prefix,
+        gcp_project,
+        "baseline",
     )
-    change_category = _state_change_category(state_before, state_between, "baseline")
+    change_category = _state_generation_change_category(
+        baseline_generation_before, baseline_generation_after, "baseline"
+    )
+    if change_category:
+        raise BaselineComparisonError(change_category)
+
+    proposed_generation_before = _backend_state_object_generation(
+        proposed_directory,
+        state_bucket,
+        state_prefix,
+        gcp_project,
+        "proposed",
+    )
+    change_category = _state_generation_change_category(
+        baseline_generation_after, proposed_generation_before, "between-plans"
+    )
     if change_category:
         raise BaselineComparisonError(change_category)
 
@@ -196,10 +250,16 @@ def compare_with_backend_state(
         proposed_directory,
         "proposed-plan-failed",
     )
-    state_after = _state_fingerprint(
-        proposed_directory, "proposed-state-read-failed"
+    proposed_generation_after = _backend_state_object_generation(
+        proposed_directory,
+        state_bucket,
+        state_prefix,
+        gcp_project,
+        "proposed",
     )
-    change_category = _state_change_category(state_between, state_after, "proposed")
+    change_category = _state_generation_change_category(
+        proposed_generation_before, proposed_generation_after, "proposed"
+    )
     if change_category:
         raise BaselineComparisonError(change_category)
 
@@ -216,6 +276,7 @@ def main() -> int:
     parser.add_argument("--proposed-working-directory", required=True, type=Path)
     parser.add_argument("--state-bucket", required=True)
     parser.add_argument("--state-prefix", required=True)
+    parser.add_argument("--gcp-project", required=True)
     args = parser.parse_args()
     try:
         classification = compare_with_backend_state(
@@ -225,6 +286,7 @@ def main() -> int:
             proposed_directory=args.proposed_working_directory,
             state_bucket=args.state_bucket,
             state_prefix=args.state_prefix,
+            gcp_project=args.gcp_project,
         )
     except BaselineComparisonError as error:
         print(f"Development baseline comparison: {error.category}.", file=sys.stderr)

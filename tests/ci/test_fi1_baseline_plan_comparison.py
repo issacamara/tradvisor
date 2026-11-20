@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import json
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -29,16 +30,6 @@ def _plan() -> dict[str, Any]:
             }
         ],
         "output_changes": {},
-    }
-
-
-def _state(serial: int = 12) -> dict[str, Any]:
-    return {
-        "version": 4,
-        "terraform_version": "1.9.8",
-        "serial": serial,
-        "lineage": "private-lineage",
-        "resources": [{"type": "private_type", "instances": [{"attributes": {"secret": "private"}}]}],
     }
 
 
@@ -103,7 +94,122 @@ def test_baseline_comparison_allows_refresh_variation_with_same_planned_changes(
     assert classify(baseline, proposed) == "matches-development-baseline"
 
 
-def test_backend_state_stability_distinguishes_refresh_variation(
+def test_backend_generation_reads_default_workspace_object_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invocation = {}
+
+    def run_command(arguments, **kwargs):
+        invocation["arguments"] = arguments
+        invocation["kwargs"] = kwargs
+        return SimpleNamespace(stdout="123456789\n")
+
+    monkeypatch.setattr(
+        comparator, "_run_terraform", lambda *_args: "default\n"
+    )
+    monkeypatch.setattr(comparator.subprocess, "run", run_command)
+
+    generation = comparator._backend_state_object_generation(
+        working_directory=Path("private-directory"),
+        state_bucket="private-bucket",
+        state_prefix="private-prefix",
+        gcp_project="dev-tradvisor",
+        phase="baseline",
+    )
+
+    assert generation == "123456789"
+    assert invocation["arguments"] == [
+        "gcloud",
+        "storage",
+        "objects",
+        "describe",
+        "gs://private-bucket/private-prefix/default.tfstate",
+        "--project=dev-tradvisor",
+        "--format=value(generation)",
+        "--quiet",
+    ]
+    assert invocation["kwargs"]["capture_output"] is True
+    assert invocation["kwargs"]["timeout"] == 30
+
+
+def test_backend_generation_fails_closed_for_non_default_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        comparator, "_run_terraform", lambda *_args: "private-workspace\n"
+    )
+    monkeypatch.setattr(
+        comparator.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("gcloud must not run"),
+    )
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator._backend_state_object_generation(
+            working_directory=Path("private-directory"),
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+            gcp_project="dev-tradvisor",
+            phase="baseline",
+        )
+
+    assert error.value.category == "baseline-workspace-not-default"
+    assert "private-workspace" not in str(error.value)
+
+
+def test_backend_generation_fails_closed_when_workspace_cannot_be_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_workspace_read(_arguments, _directory, _failure_category):
+        raise BaselineComparisonError("private-workspace-error")
+
+    monkeypatch.setattr(comparator, "_run_terraform", fail_workspace_read)
+    monkeypatch.setattr(
+        comparator.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("gcloud must not run"),
+    )
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator._backend_state_object_generation(
+            working_directory=Path("private-directory"),
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+            gcp_project="dev-tradvisor",
+            phase="baseline",
+        )
+
+    assert error.value.category == "baseline-workspace-read-failed"
+    assert "private-workspace-error" not in str(error.value)
+
+
+def test_backend_generation_read_failure_does_not_expose_command_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        comparator, "_run_terraform", lambda *_args: "default\n"
+    )
+
+    def fail_with_private_data(*_args, **_kwargs):
+        raise OSError("private-uri private-generation")
+
+    monkeypatch.setattr(comparator.subprocess, "run", fail_with_private_data)
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator._backend_state_object_generation(
+            working_directory=Path("private-directory"),
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+            gcp_project="dev-tradvisor",
+            phase="baseline",
+        )
+
+    assert error.value.category == "baseline-state-object-read-failed"
+    assert "private-uri" not in str(error.value)
+    assert "private-generation" not in str(error.value)
+
+
+def test_backend_generation_stability_allows_refresh_variation(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     baseline = _plan()
@@ -111,16 +217,16 @@ def test_backend_state_stability_distinguishes_refresh_variation(
     proposed["prior_state"]["values"]["root_module"]["resources"].append(
         {"address": "refreshed.resource"}
     )
-    state_text = json.dumps(_state())
-
-    def run_terraform(arguments, _working_directory, _failure_category):
-        return state_text if arguments[:2] == ["state", "pull"] else ""
-
-    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+    monkeypatch.setattr(comparator, "_run_terraform", lambda *_args: "")
+    monkeypatch.setattr(
+        comparator, "_backend_state_object_generation", lambda *_args: "123"
+    )
     monkeypatch.setattr(
         comparator,
         "_load_plan",
-        lambda path, _directory, _category: baseline if path.name.startswith("baseline") else proposed,
+        lambda path, _directory, _category: (
+            baseline if path.name.startswith("baseline") else proposed
+        ),
     )
 
     result = comparator.compare_with_backend_state(
@@ -130,98 +236,33 @@ def test_backend_state_stability_distinguishes_refresh_variation(
         proposed_directory=tmp_path / "proposed",
         state_bucket="private-bucket",
         state_prefix="private-prefix",
+        gcp_project="dev-tradvisor",
     )
 
     assert result == "matches-development-baseline"
 
 
-def test_backend_state_change_fails_closed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    state_reads = 0
-
-    def run_terraform(arguments, _working_directory, _failure_category):
-        nonlocal state_reads
-        if arguments[:2] == ["state", "pull"]:
-            state_reads += 1
-            return json.dumps(_state(serial=12 if state_reads == 1 else 13))
-        return ""
-
-    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
-
-    with pytest.raises(BaselineComparisonError) as error:
-        comparator.compare_with_backend_state(
-            baseline_plan=tmp_path / "baseline.tfplan",
-            baseline_directory=tmp_path / "baseline",
-            proposed_plan=tmp_path / "proposed.tfplan",
-            proposed_directory=tmp_path / "proposed",
-            state_bucket="private-bucket",
-            state_prefix="private-prefix",
-        )
-    assert error.value.category == "baseline-state-lineage-or-serial-changed"
-
-
-def test_backend_state_fingerprint_detects_payload_change_with_same_serial(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    state_reads = 0
-
-    def run_terraform(arguments, _working_directory, _failure_category):
-        nonlocal state_reads
-        if arguments[:2] == ["state", "pull"]:
-            state_reads += 1
-            state = _state()
-            if state_reads == 2:
-                state["resources"][0]["instances"][0]["attributes"]["secret"] = "changed"
-            return json.dumps(state)
-        return ""
-
-    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
-
-    with pytest.raises(BaselineComparisonError) as error:
-        comparator.compare_with_backend_state(
-            baseline_plan=tmp_path / "baseline.tfplan",
-            baseline_directory=tmp_path / "baseline",
-            proposed_plan=tmp_path / "proposed.tfplan",
-            proposed_directory=tmp_path / "proposed",
-            state_bucket="private-bucket",
-            state_prefix="private-prefix",
-        )
-    assert error.value.category == "baseline-state-payload-only-changed"
-
-
 @pytest.mark.parametrize(
-    ("change_kind", "expected_category"),
+    ("generations", "expected_category"),
     [
-        ("lineage-or-serial", "proposed-state-lineage-or-serial-changed"),
-        ("payload", "proposed-state-payload-only-changed"),
+        (["1", "2"], "baseline-state-object-generation-changed"),
+        (["1", "1", "2"], "between-plans-state-object-generation-changed"),
+        (["1", "1", "1", "2"], "proposed-state-object-generation-changed"),
     ],
 )
-def test_proposed_state_diagnostics_identify_difference(
+def test_state_object_generation_diagnostics_identify_change_phase(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
-    change_kind: str,
+    generations: list[str],
     expected_category: str,
 ) -> None:
-    state_reads = 0
-
-    def run_terraform(arguments, _working_directory, _failure_category):
-        nonlocal state_reads
-        if arguments[:2] != ["state", "pull"]:
-            return ""
-        state_reads += 1
-        state = _state()
-        if state_reads == 3:
-            if change_kind == "lineage-or-serial":
-                state["serial"] += 1
-            else:
-                state["resources"][0]["instances"][0]["attributes"][
-                    "secret"
-                ] = "private-changed"
-        return json.dumps(state)
-
-    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
-    monkeypatch.setattr(comparator, "_load_plan", lambda *_args: _plan())
+    generation_reads = iter(generations)
+    monkeypatch.setattr(comparator, "_run_terraform", lambda *_args: "")
+    monkeypatch.setattr(
+        comparator,
+        "_backend_state_object_generation",
+        lambda *_args: next(generation_reads),
+    )
 
     with pytest.raises(BaselineComparisonError) as error:
         comparator.compare_with_backend_state(
@@ -231,21 +272,20 @@ def test_proposed_state_diagnostics_identify_difference(
             proposed_directory=tmp_path / "proposed",
             state_bucket="private-bucket",
             state_prefix="private-prefix",
+            gcp_project="dev-tradvisor",
         )
 
     assert error.value.category == expected_category
-    assert "private-changed" not in str(error.value)
 
 
-def test_backend_state_read_failure_fails_closed(
+def test_state_object_generation_read_failure_fails_closed(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    def run_terraform(arguments, _working_directory, failure_category):
-        if arguments[:2] == ["state", "pull"]:
-            raise BaselineComparisonError(failure_category)
-        return ""
+    def read_generation(*_args):
+        raise BaselineComparisonError("baseline-state-object-read-failed")
 
-    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+    monkeypatch.setattr(comparator, "_run_terraform", lambda *_args: "")
+    monkeypatch.setattr(comparator, "_backend_state_object_generation", read_generation)
 
     with pytest.raises(BaselineComparisonError) as error:
         comparator.compare_with_backend_state(
@@ -255,8 +295,10 @@ def test_backend_state_read_failure_fails_closed(
             proposed_directory=tmp_path / "proposed",
             state_bucket="private-bucket",
             state_prefix="private-prefix",
+            gcp_project="dev-tradvisor",
         )
-    assert error.value.category == "baseline-state-read-failed"
+
+    assert error.value.category == "baseline-state-object-read-failed"
 
 
 def test_baseline_comparison_distinguishes_malformed_resource_changes() -> None:
@@ -317,6 +359,8 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
             "private-bucket",
             "--state-prefix",
             "private-prefix",
+            "--gcp-project",
+            "dev-tradvisor",
         ],
     )
     monkeypatch.setattr(
@@ -335,9 +379,10 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
 @pytest.mark.parametrize(
     ("failure_category",),
     [
-        ("baseline-state-read-failed",),
-        ("baseline-state-lineage-or-serial-changed",),
-        ("proposed-state-payload-only-changed",),
+        ("baseline-state-object-read-failed",),
+        ("baseline-state-object-generation-changed",),
+        ("between-plans-state-object-generation-changed",),
+        ("proposed-state-object-generation-changed",),
         ("baseline-plan-failed",),
     ],
 )
@@ -363,6 +408,8 @@ def test_cli_distinguishes_backend_failure_without_echoing_private_inputs(
             "private-bucket",
             "--state-prefix",
             "private-prefix",
+            "--gcp-project",
+            "dev-tradvisor",
         ],
     )
     monkeypatch.setattr(
