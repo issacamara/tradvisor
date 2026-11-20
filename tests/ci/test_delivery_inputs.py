@@ -83,14 +83,22 @@ def test_development_pr_plan_uses_pinned_base_and_ephemeral_comparison_only() ->
     assert "proposed-dispatcher-step.txt" in baseline
     assert "baseline-dispatcher-step.txt" in baseline
     assert 'cmp -s .terraform.lock.hcl "$baseline_root/terraform/.terraform.lock.hcl"' in plan
-    assert 'echo "Development baseline comparison: baseline-init-failed." >&2' in plan
-    assert 'echo "Development baseline comparison: baseline-plan-failed." >&2' in plan
+    assert '--state-bucket "$TF_STATE_BUCKET"' in plan
+    assert '--state-prefix "$TF_STATE_PREFIX"' in plan
     assert 'bucket=$TF_STATE_BUCKET' in plan
     assert 'prefix=$TF_STATE_PREFIX' in plan
     assert '"$RUNNER_TEMP/development-baseline.tfplan"' in plan
+    assert '"$TF_STATE_BUCKET"' in plan
+    assert '"$TF_STATE_PREFIX"' in plan
     assert 'trap cleanup_private_plans EXIT' in plan
     assert 'rm -f tfplan "$RUNNER_TEMP/development-baseline.tfplan"' in plan
     assert "actions/upload-artifact@v4" not in plan
+    comparator = (Path(__file__).parents[2] / "scripts/deployment/classify_fi1_baseline_plan.py").read_text()
+    assert '["state", "pull"]' in comparator
+    assert "state_before" in comparator and "state_between" in comparator and "state_after" in comparator
+    assert '"backend-state-changed"' in comparator
+    assert '"backend-state-read-failed"' in comparator
+    assert "capture_output=True" in comparator
 
 
 def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:

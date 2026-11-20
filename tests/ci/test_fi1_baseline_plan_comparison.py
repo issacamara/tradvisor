@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import sys
 from typing import Any
 
@@ -28,6 +29,16 @@ def _plan() -> dict[str, Any]:
             }
         ],
         "output_changes": {},
+    }
+
+
+def _state(serial: int = 12) -> dict[str, Any]:
+    return {
+        "version": 4,
+        "terraform_version": "1.9.8",
+        "serial": serial,
+        "lineage": "private-lineage",
+        "resources": [{"type": "private_type", "instances": [{"attributes": {"secret": "private"}}]}],
     }
 
 
@@ -82,16 +93,123 @@ def test_baseline_comparison_excludes_only_staged_fi1_addresses() -> None:
     assert classify(baseline, proposed) == "matches-development-baseline"
 
 
-def test_baseline_comparison_fails_closed_on_different_prior_state() -> None:
+def test_baseline_comparison_allows_refresh_variation_with_same_planned_changes() -> None:
     baseline = _plan()
     proposed = deepcopy(baseline)
     proposed["prior_state"]["values"]["root_module"]["resources"].append(
         {"address": "private.resource"}
     )
 
+    assert classify(baseline, proposed) == "matches-development-baseline"
+
+
+def test_backend_state_stability_distinguishes_refresh_variation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    baseline = _plan()
+    proposed = deepcopy(baseline)
+    proposed["prior_state"]["values"]["root_module"]["resources"].append(
+        {"address": "refreshed.resource"}
+    )
+    state_text = json.dumps(_state())
+
+    def run_terraform(arguments, _working_directory, _failure_category):
+        return state_text if arguments[:2] == ["state", "pull"] else ""
+
+    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+    monkeypatch.setattr(
+        comparator,
+        "_load_plan",
+        lambda path, _directory, _category: baseline if path.name.startswith("baseline") else proposed,
+    )
+
+    result = comparator.compare_with_backend_state(
+        baseline_plan=tmp_path / "baseline.tfplan",
+        baseline_directory=tmp_path / "baseline",
+        proposed_plan=tmp_path / "proposed.tfplan",
+        proposed_directory=tmp_path / "proposed",
+        state_bucket="private-bucket",
+        state_prefix="private-prefix",
+    )
+
+    assert result == "matches-development-baseline"
+
+
+def test_backend_state_change_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    state_reads = 0
+
+    def run_terraform(arguments, _working_directory, _failure_category):
+        nonlocal state_reads
+        if arguments[:2] == ["state", "pull"]:
+            state_reads += 1
+            return json.dumps(_state(serial=12 if state_reads == 1 else 13))
+        return ""
+
+    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+
     with pytest.raises(BaselineComparisonError) as error:
-        classify(baseline, proposed)
-    assert error.value.category == "prior-state-mismatch"
+        comparator.compare_with_backend_state(
+            baseline_plan=tmp_path / "baseline.tfplan",
+            baseline_directory=tmp_path / "baseline",
+            proposed_plan=tmp_path / "proposed.tfplan",
+            proposed_directory=tmp_path / "proposed",
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+        )
+    assert error.value.category == "backend-state-changed"
+
+
+def test_backend_state_fingerprint_detects_payload_change_with_same_serial(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    state_reads = 0
+
+    def run_terraform(arguments, _working_directory, _failure_category):
+        nonlocal state_reads
+        if arguments[:2] == ["state", "pull"]:
+            state_reads += 1
+            state = _state()
+            if state_reads == 2:
+                state["resources"][0]["instances"][0]["attributes"]["secret"] = "changed"
+            return json.dumps(state)
+        return ""
+
+    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator.compare_with_backend_state(
+            baseline_plan=tmp_path / "baseline.tfplan",
+            baseline_directory=tmp_path / "baseline",
+            proposed_plan=tmp_path / "proposed.tfplan",
+            proposed_directory=tmp_path / "proposed",
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+        )
+    assert error.value.category == "backend-state-changed"
+
+
+def test_backend_state_read_failure_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    def run_terraform(arguments, _working_directory, failure_category):
+        if arguments[:2] == ["state", "pull"]:
+            raise BaselineComparisonError(failure_category)
+        return ""
+
+    monkeypatch.setattr(comparator, "_run_terraform", run_terraform)
+
+    with pytest.raises(BaselineComparisonError) as error:
+        comparator.compare_with_backend_state(
+            baseline_plan=tmp_path / "baseline.tfplan",
+            baseline_directory=tmp_path / "baseline",
+            proposed_plan=tmp_path / "proposed.tfplan",
+            proposed_directory=tmp_path / "proposed",
+            state_bucket="private-bucket",
+            state_prefix="private-prefix",
+        )
+    assert error.value.category == "backend-state-read-failed"
 
 
 def test_baseline_comparison_distinguishes_malformed_resource_changes() -> None:
@@ -135,14 +253,6 @@ def test_baseline_comparison_checks_output_values_too() -> None:
 
 
 def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    baseline = _plan()
-    proposed = deepcopy(baseline)
-    proposed["resource_changes"].append(
-        {
-            "address": "google_cloud_run_v2_service.private_resource_identifier",
-            "change": {"actions": ["create"], "after": {"name": "private-value"}},
-        }
-    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -156,35 +266,37 @@ def test_cli_outputs_only_fixed_classification(monkeypatch: pytest.MonkeyPatch, 
             "proposed.tfplan",
             "--proposed-working-directory",
             "proposed",
+            "--state-bucket",
+            "private-bucket",
+            "--state-prefix",
+            "private-prefix",
         ],
     )
     monkeypatch.setattr(
         comparator,
-        "_load_plan",
-        lambda plan_path, _working_directory, _category: baseline
-        if plan_path.name.startswith("baseline")
-        else proposed,
+        "compare_with_backend_state",
+        lambda **_kwargs: "new-or-different-from-development-baseline",
     )
 
     assert comparator.main() == 1
     output = capsys.readouterr().out
     assert output == "Development baseline comparison: new-or-different-from-development-baseline.\n"
-    assert "private_resource_identifier" not in output
-    assert "private-value" not in output
+    assert "private-bucket" not in output
+    assert "private-prefix" not in output
 
 
 @pytest.mark.parametrize(
-    ("failure_phase", "expected_category"),
+    ("failure_category",),
     [
-        ("baseline", "baseline-load-failed"),
-        ("proposed", "proposed-load-failed"),
+        ("backend-state-read-failed",),
+        ("backend-state-changed",),
+        ("baseline-plan-failed",),
     ],
 )
-def test_cli_distinguishes_load_phase_without_echoing_error(
+def test_cli_distinguishes_backend_failure_without_echoing_private_inputs(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    failure_phase: str,
-    expected_category: str,
+    failure_category: str,
 ) -> None:
     monkeypatch.setattr(
         sys,
@@ -199,19 +311,22 @@ def test_cli_distinguishes_load_phase_without_echoing_error(
             "proposed-private-path.tfplan",
             "--proposed-working-directory",
             "private-proposed-directory",
+            "--state-bucket",
+            "private-bucket",
+            "--state-prefix",
+            "private-prefix",
         ],
     )
-
-    def load_plan(plan_path, _working_directory, category):
-        is_baseline = plan_path.name.startswith("baseline")
-        if is_baseline == (failure_phase == "baseline"):
-            raise BaselineComparisonError(category)
-        return _plan()
-
-    monkeypatch.setattr(comparator, "_load_plan", load_plan)
+    monkeypatch.setattr(
+        comparator,
+        "compare_with_backend_state",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            BaselineComparisonError(failure_category)
+        ),
+    )
 
     assert comparator.main() == 1
     diagnostic = capsys.readouterr().err
-    assert diagnostic == f"Development baseline comparison: {expected_category}.\n"
+    assert diagnostic == f"Development baseline comparison: {failure_category}.\n"
     assert "private-path" not in diagnostic
     assert "private-directory" not in diagnostic
