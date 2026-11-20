@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import json
+import sys
 from copy import deepcopy
 from typing import Any
 
@@ -9,6 +12,7 @@ from scripts.deployment.verify_fi1_staging_plan import (
     PROTECTED,
     STAGED,
     PlanVerificationError,
+    main,
     verify,
 )
 
@@ -42,8 +46,9 @@ def test_fi1_staging_plan_rejects_protected_resource_changes(actions: list[str])
         {"address": sorted(PROTECTED)[0], "change": {"actions": actions}}
     )
 
-    with pytest.raises(PlanVerificationError):
+    with pytest.raises(PlanVerificationError) as error:
         verify(plan)
+    assert error.value.category == "protected-actions"
 
 
 @pytest.mark.parametrize("actions", [["delete"], ["delete", "create"], ["update"]])
@@ -51,8 +56,9 @@ def test_fi1_staging_plan_rejects_unexpected_staged_resource_changes(actions: li
     plan = _plan()
     plan["resource_changes"][0]["change"]["actions"] = actions
 
-    with pytest.raises(PlanVerificationError):
+    with pytest.raises(PlanVerificationError) as error:
         verify(plan)
+    assert error.value.category == "staged-actions"
 
 
 @pytest.mark.parametrize("actions", [["delete"], ["delete", "create"], ["update"]])
@@ -65,21 +71,42 @@ def test_fi1_staging_plan_rejects_unrelated_resource_changes(actions: list[str])
         }
     )
 
-    with pytest.raises(PlanVerificationError):
+    with pytest.raises(PlanVerificationError) as error:
         verify(plan)
+    assert error.value.category == "other-actions"
 
 
 def test_fi1_staging_plan_requires_protected_resources_in_prior_and_planned_state() -> None:
     plan = deepcopy(_plan())
     plan["prior_state"]["values"]["root_module"]["resources"].pop()
 
-    with pytest.raises(PlanVerificationError):
+    with pytest.raises(PlanVerificationError) as error:
         verify(plan)
+    assert error.value.category == "missing-protected-resources"
 
 
 def test_fi1_staging_plan_requires_replacement_job_and_invoker() -> None:
     plan = deepcopy(_plan())
     plan["planned_values"]["root_module"]["resources"].pop()
 
-    with pytest.raises(PlanVerificationError):
+    with pytest.raises(PlanVerificationError) as error:
         verify(plan)
+    assert error.value.category == "missing-staged-resources"
+
+
+def test_failure_diagnostic_emits_only_sanitized_category(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan = _plan()
+    plan["resource_changes"].append(
+        {
+            "address": "google_cloud_run_v2_service.private_resource_identifier",
+            "change": {"actions": ["update"]},
+        }
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(plan)))
+
+    assert main() == 1
+    diagnostic = capsys.readouterr().err
+    assert "other-actions" in diagnostic
+    assert "private_resource_identifier" not in diagnostic
