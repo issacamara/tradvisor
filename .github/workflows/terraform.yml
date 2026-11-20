@@ -151,4 +151,8 @@ jobs:
         run: |
           terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="prefix=$TF_STATE_PREFIX" -input=false -no-color >/dev/null
           terraform plan -out=tfplan -input=false -no-color >/dev/null
+          if [ "$TF_VAR_environment" = development ]; then
+            set -o pipefail
+            terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py
+          fi
           terraform show -json tfplan | jq -r '[.resource_changes[]?.change.actions[]] | group_by(.) | map({action: .[0], count: length})'

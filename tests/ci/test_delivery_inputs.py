@@ -62,6 +62,13 @@ def test_terraform_pr_plan_resolves_development_fi1_from_deployment_evidence() -
     assert "TF_VAR_fi1_financial_job_image" in workflow
 
 
+def test_terraform_plan_runs_private_fi1_staging_preservation_guard() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
+    step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
+    assert 'if [ "$TF_VAR_environment" = development ]; then' in step
+    assert "terraform show -json tfplan | python3 ../scripts/deployment/verify_fi1_staging_plan.py" in step
+
+
 def test_terraform_pr_plan_preserves_publication_control_service_url() -> None:
     workflow = (Path(__file__).parents[2] / ".github/workflows/terraform.yml").read_text()
     step = workflow.split("      - name: Plan without publishing state or plan contents", 1)[1]
