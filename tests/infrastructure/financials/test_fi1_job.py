@@ -62,12 +62,18 @@ def test_financial_job_rename_stages_a_protected_replacement() -> None:
     assert "valid Cloud Run Job name" in legacy_name
     assert 'default     = "scrape-financials"' in replacement_name
     assert "valid Cloud Run Job name" in replacement_name
+    legacy_pattern = re.search(
+        r'condition\s*=\s*can\(regex\("([^"]+)"\s*,\s*var\.fi1_financial_job_name\)\)',
+        legacy_name,
+    )
     pattern = re.search(
         r'condition\s*=\s*can\(regex\("([^"]+)"\s*,\s*var\.fi1_financial_replacement_job_name\)\)',
         replacement_name,
     )
-    assert pattern
+    assert legacy_pattern and pattern
+    assert re.fullmatch(legacy_pattern.group(1), "a")
     assert re.fullmatch(pattern.group(1), "scrape-financials")
+    assert re.fullmatch(pattern.group(1), "a")
     assert not re.fullmatch(pattern.group(1), "Scrape-Financials")
     assert not re.fullmatch(pattern.group(1), "scrape-financials-")
     assert not re.fullmatch(pattern.group(1), "s" * 50)
@@ -96,6 +102,17 @@ def test_financial_job_rename_stages_a_protected_replacement() -> None:
         'secret  = google_secret_manager_secret.openrouter.secret_id',
     ):
         assert contract in replacement
+
+    for gate in (
+        "**Plan stop gate:**",
+        "Stop before apply if the reviewed plan proposes destroying,",
+        "- Successful target evidence:",
+        "- Monitoring evidence:",
+        "- Single-trigger evidence:",
+        "- Rollback evidence:",
+        "- Inventory evidence:",
+    ):
+        assert gate in OPERATIONS
 
 
 def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:

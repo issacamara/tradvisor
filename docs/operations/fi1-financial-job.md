@@ -60,6 +60,15 @@ ready. No second schedule is created. Rollback changes the target to `legacy`
 through a separately approved delivery. Do not remove the rollback Job or its
 invoker grant until a separate retirement decision is approved.
 
+**Plan stop gate:** The staging plan may create the replacement Job and its
+invoker grant while leaving the legacy Job, existing Scheduler, and financial
+tables unchanged. A separately approved cutover plan may update only the
+existing Scheduler target in place, after the replacement Job and its invoker
+grant are present. Stop before apply if the reviewed plan proposes destroying,
+replacing, or renaming the legacy Job, Scheduler resource, or either financial
+table, or includes another unexplained change. Do not bypass lifecycle
+protection to continue.
+
 Repository inventory: Terraform and this runbook are the only hard-coded
 Cloud Run job-name references found. The development and release workflows
 resolve the FI-1 image from the commit-bound `fi1_job.digest` and do not name
@@ -70,6 +79,21 @@ operator notes, dashboards, and alerts for the old name and update those
 references as needed. Confirm the effective target and both job-scoped grants
 in the reviewed plan before any approved cutover. The monthly trigger remains
 paused unless schedule activation is separately approved.
+
+Before a later decision to retire the rollback Job, record:
+
+- Successful target evidence: an approved `scrape-financials` execution tied
+  to its commit and immutable image digest.
+- Monitoring evidence: Scheduler delivery and terminal Job outcome, correlated
+  by execution identifier.
+- Single-trigger evidence: the existing monthly Scheduler is the only active
+  trigger and targets the replacement.
+- Rollback evidence: a clean reviewed plan points that Scheduler back to the
+  protected legacy Job and its retained image.
+- Inventory evidence: external manual operators, dashboards, alerts, and
+  scripts have been checked and no live reference requires the legacy name.
+
+Any missing item keeps retirement deferred.
 
 For manual execution, set `FI1_JOB` to the approved current target from
 `fi1_financial_scheduler_target` and confirm the project and region. Manual
