@@ -130,7 +130,7 @@ variable "fi1_financial_job_max_reports_per_symbol" {
 variable "fi1_financial_job_schedule" {
   description = "Monthly Cloud Scheduler cron expression for FI-1 financial ingestion"
   type        = string
-  default     = "0 20 1 * *"
+  default     = "0 6 1 * *"
 }
 
 variable "openrouter_secret_id" {
