@@ -46,7 +46,7 @@ def test_fi1_job_is_disabled_by_default_and_requires_a_digest_image() -> None:
     assert "count               = var.manage_fi1_financial_job ? 1 : 0" in job
     assert 'default     = ""' in image
     assert "@sha256:" in image
-    assert "image = var.fi1_financial_job_image" in job
+    assert "image   = var.fi1_financial_job_image" in job
     assert "length(trimspace(var.fi1_financial_job_image)) > 0" in job
     assert "deletion_protection = true" in job
     assert "prevent_destroy = true" in job
@@ -81,7 +81,7 @@ def test_financial_job_rename_stages_a_protected_replacement() -> None:
     assert "prevent_destroy = true" in legacy and "deletion_protection = true" in legacy
     assert "count               = var.manage_fi1_financial_job ? 1 : 0" in replacement
     assert "name                = var.fi1_financial_replacement_job_name" in replacement
-    assert "image = var.fi1_financial_job_image" in replacement
+    assert "image   = var.fi1_financial_job_image" in replacement
     assert "deletion_protection = true" in replacement
     assert "prevent_destroy = true" in replacement
 
@@ -131,8 +131,10 @@ def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
     assert "secret_data" not in job
     assert "secret_version" not in job
     assert 'name  = "TRADVISOR_FINANCIALS_MODEL_PRIMARY"' in job
-    assert 'value = "gemma-4-31b-it"' in job
-    assert 'value = "nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini"' in job
+    assert 'value = "google/gemma-4-31b-it:free"' in job
+    assert 'value = "openai/gpt-4o-mini"' in job
+    assert "nemotron" not in job
+    assert 'command = ["monthly_financials"]' in job
     assert 'name  = "TRADVISOR_FINANCIALS_SELECTION_MODE"' in job
     assert 'value = "publication_year"' in job
 
@@ -222,8 +224,10 @@ def test_monthly_scheduler_invokes_one_selected_fi1_job_with_resource_level_iam(
     assert "name        = var.fi1_financial_scheduler_name" in scheduler
     assert "resource \"google_cloud_scheduler_job\"" in FINANCIAL
     assert FINANCIAL.count('resource "google_cloud_scheduler_job"') == 1
-    assert 'default     = "0 20 1 * *"' in _variable("fi1_financial_job_schedule")
-    assert 'time_zone   = "Africa/Bamako"' in scheduler
+    assert 'default     = "0 6 1 * *"' in _variable("fi1_financial_job_schedule")
+    assert 'time_zone   = "Etc/UTC"' in scheduler
+    assert "paused      = !var.activate_fi1_financial_schedule" in scheduler
+    assert "default     = false" in activation
     assert "run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/" in scheduler
     assert 'http_method = "POST"' in scheduler
     assert "oauth_token" in scheduler

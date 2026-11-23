@@ -15,7 +15,8 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
       max_retries     = 0
 
       containers {
-        image = var.fi1_financial_job_image
+        image   = var.fi1_financial_job_image
+        command = ["monthly_financials"]
 
         resources {
           limits = {
@@ -62,11 +63,11 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_PRIMARY"
-          value = "gemma-4-31b-it"
+          value = "google/gemma-4-31b-it:free"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_FALLBACKS"
-          value = "nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini"
+          value = "openai/gpt-4o-mini"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS"
@@ -145,7 +146,8 @@ resource "google_cloud_run_v2_job" "fi1_financials_replacement" {
       max_retries     = 0
 
       containers {
-        image = var.fi1_financial_job_image
+        image   = var.fi1_financial_job_image
+        command = ["monthly_financials"]
 
         resources {
           limits = {
@@ -192,11 +194,11 @@ resource "google_cloud_run_v2_job" "fi1_financials_replacement" {
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_PRIMARY"
-          value = "gemma-4-31b-it"
+          value = "google/gemma-4-31b-it:free"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_FALLBACKS"
-          value = "nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini"
+          value = "openai/gpt-4o-mini"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS"
@@ -263,7 +265,7 @@ resource "google_cloud_scheduler_job" "fi1_financials" {
   name        = var.fi1_financial_scheduler_name
   description = "Monthly trigger for the private FI-1 financial ingestion Job"
   schedule    = var.fi1_financial_job_schedule
-  time_zone   = "Africa/Bamako"
+  time_zone   = "Etc/UTC"
   paused      = !var.activate_fi1_financial_schedule
 
   attempt_deadline = "300s"
