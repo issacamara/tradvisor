@@ -83,7 +83,7 @@ jobs:
             -e TRADVISOR_TARGET_PROJECT_ID=fixture-project \
             -e TRADVISOR_INGESTION_DATASET=stocks \
             tradvisor-fi1-job:ci --check-config \
-            | grep -q '"models": \["google/gemma-4-31b-it:free", "openai/gpt-4o-mini"\]'
+            | grep -q '"models": \["google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free"\]'
           docker_check_config \
             -e TRADVISOR_FINANCIALS_SELECTION_MODE=historical \
             | grep -q '"selection_mode":"historical"'

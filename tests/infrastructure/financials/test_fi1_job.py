@@ -132,8 +132,8 @@ def test_job_is_private_bounded_and_injects_only_the_secret_reference() -> None:
     assert "secret_version" not in job
     assert 'name  = "TRADVISOR_FINANCIALS_MODEL_PRIMARY"' in job
     assert 'value = "google/gemma-4-31b-it:free"' in job
-    assert 'value = "openai/gpt-4o-mini"' in job
-    assert "nemotron" not in job
+    assert 'value = "nvidia/nemotron-3-ultra-550b-a55b:free"' in job
+    assert "gpt-4o-mini" not in job
     assert 'command = ["monthly_financials"]' in job
     assert 'name  = "TRADVISOR_FINANCIALS_SELECTION_MODE"' in job
     assert 'value = "publication_year"' in job

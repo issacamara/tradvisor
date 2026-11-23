@@ -28,13 +28,15 @@ from .fi1_job import OWNER_EXTRACTION_PROMPT as PROMPT
 BASE = "https://www.richbourse.com"
 LIST_URL = BASE + "/common/actualite-categorie/index/etats-financiers"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODELS = ("google/gemma-4-31b-it:free", "openai/gpt-4o-mini")
+MODELS = ("google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free")
 FIELDS = ("revenue", "net_income", "total_debt", "cash_and_cash_equivalents", "total_equity")
 COLUMNS = ("symbol", "fiscal_year", *FIELDS, "collected_at", "document_link")
 ANNUAL = re.compile(r"exercice|annuel|etats? financiers?|comptes|provisoire")
 INTERIM = re.compile(r"trimestr|semestr")
 DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 YEAR = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
+# RichBourse answers 403 to ?page= requests unless they look like its own AJAX pagination.
+LIST_HEADERS = {"Referer": LIST_URL, "X-Requested-With": "XMLHttpRequest"}
 MAX_PAGES = 50
 BATCH_SYMBOLS = 10
 
@@ -252,7 +254,7 @@ def run(fetch, get_pdf, post, store, api_key: str, models=MODELS,
             docs = annual_documents(fetch, symbol, year)
         except Exception as error:
             stats["failed"] += 1
-            log(f"{symbol}: listing failed ({type(error).__name__})")
+            log(f"{symbol}: listing failed ({type(error).__name__}: {error})")
             docs = []
         for doc in docs:
             stats["documents"] += 1
@@ -326,19 +328,21 @@ def main(argv: list[str] | None = None) -> None:
 
     session = http.Session(impersonate="chrome", timeout=60)
 
-    def get(url: str, params: dict | None = None):
+    def get(url: str, params: dict | None = None, headers: dict | None = None):
+        reason = "unknown"
         for attempt in range(3):
             time.sleep(0.5 * (attempt + 1))
             try:
-                response = session.get(url, params=params)
+                response = session.get(url, params=params, headers=headers)
                 if response.status_code == 200 and response.url.startswith(BASE + "/"):
                     return response
-            except Exception:
-                pass
-        raise RuntimeError("RichBourse request failed")
+                reason = f"HTTP {response.status_code} at {urlparse(response.url).netloc}"
+            except Exception as error:
+                reason = type(error).__name__
+        raise RuntimeError(f"RichBourse request failed ({reason})")
 
     try:
-        run(fetch=lambda url, params: get(url, params).text,
+        run(fetch=lambda url, params: get(url, params, LIST_HEADERS).text,
             get_pdf=lambda url: get(url).content,
             post=session.post,
             store=Store(bigquery.Client(project=cfg["project"]), cfg["project"], cfg["dataset"]),

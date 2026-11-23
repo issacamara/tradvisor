@@ -67,7 +67,7 @@ resource "google_cloud_run_v2_job" "fi1_financials" {
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_FALLBACKS"
-          value = "openai/gpt-4o-mini"
+          value = "nvidia/nemotron-3-ultra-550b-a55b:free"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS"
@@ -198,7 +198,7 @@ resource "google_cloud_run_v2_job" "fi1_financials_replacement" {
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MODEL_FALLBACKS"
-          value = "openai/gpt-4o-mini"
+          value = "nvidia/nemotron-3-ultra-550b-a55b:free"
         }
         env {
           name  = "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS"
