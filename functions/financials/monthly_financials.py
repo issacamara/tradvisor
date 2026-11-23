@@ -252,7 +252,7 @@ def run(fetch, get_pdf, post, store, api_key: str, models=MODELS,
             docs = annual_documents(fetch, symbol, year)
         except Exception as error:
             stats["failed"] += 1
-            log(f"{symbol}: listing failed ({type(error).__name__})")
+            log(f"{symbol}: listing failed ({type(error).__name__}: {error})")
             docs = []
         for doc in docs:
             stats["documents"] += 1
@@ -327,15 +327,17 @@ def main(argv: list[str] | None = None) -> None:
     session = http.Session(impersonate="chrome", timeout=60)
 
     def get(url: str, params: dict | None = None):
+        reason = "unknown"
         for attempt in range(3):
             time.sleep(0.5 * (attempt + 1))
             try:
                 response = session.get(url, params=params)
                 if response.status_code == 200 and response.url.startswith(BASE + "/"):
                     return response
-            except Exception:
-                pass
-        raise RuntimeError("RichBourse request failed")
+                reason = f"HTTP {response.status_code} at {urlparse(response.url).netloc}"
+            except Exception as error:
+                reason = type(error).__name__
+        raise RuntimeError(f"RichBourse request failed ({reason})")
 
     try:
         run(fetch=lambda url, params: get(url, params).text,
