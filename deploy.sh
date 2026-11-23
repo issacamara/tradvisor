@@ -5,10 +5,7 @@ set -e
 echo "Building Docker images..."
 targets=(
     scrape_shares insert_shares
-    scrape_bonds insert_bonds
-    scrape_indices insert_indices
     scrape_dividends insert_dividends
-    scrape_capitalizations insert_capitalizations
 )
 
 #for target in "${targets[@]}"; do
