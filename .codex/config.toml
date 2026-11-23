@@ -3,3 +3,43 @@ enabled = true
 max_concurrent_threads_per_session = 3
 default_subagent_model = "gpt-6-luna"
 default_subagent_reasoning_effort = "high"
+
+[agents.sf-intake-agent]
+description = "Turn a request into a bounded outcome, known constraints, missing inputs and a justified next phase."
+config_file = "agents/sf-intake-agent.toml"
+
+[agents.sf-business-agent]
+description = "Produce a BRD whose requirements, acceptance criteria and KPIs explain the requested business outcome."
+config_file = "agents/sf-business-agent.toml"
+
+[agents.sf-ux-ui-agent]
+description = "Translate the approved requirements into usable, accessible journeys and verifiable UI behavior."
+config_file = "agents/sf-ux-ui-agent.toml"
+
+[agents.sf-architect-agent]
+description = "Define an implementable design, risk-based verification and operable deployment for one selected target."
+config_file = "agents/sf-architect-agent.toml"
+
+[agents.sf-orchestrator-agent]
+description = "Turn approved inputs into small deliverable issues with clear evidence and safe execution order."
+config_file = "agents/sf-orchestrator-agent.toml"
+
+[agents.sf-implementation-agent]
+description = "Deliver code, tests and affected reusable artifacts through a reviewable PR and the issue-specific verified outcome."
+config_file = "agents/sf-implementation-agent.toml"
+
+[agents.sf-qa-verification-agent]
+description = "Establish whether the current change satisfies its criteria and required quality checks."
+config_file = "agents/sf-qa-verification-agent.toml"
+
+[agents.sf-release-agent]
+description = "Deliver the approved candidate to the intended environment with traceable verification and recovery procedures."
+config_file = "agents/sf-release-agent.toml"
+
+[agents.sf-operations-agent]
+description = "Identify actionable health, cost and KPI changes with traceable affected versions and proportional follow-up."
+config_file = "agents/sf-operations-agent.toml"
+
+[agents.sf-defect-triage-agent]
+description = "Turn a reported failure into prioritized, verifiable work and track the deployed fix to closure."
+config_file = "agents/sf-defect-triage-agent.toml"

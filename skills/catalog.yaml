@@ -1,0 +1,126 @@
+schema_version: 1
+version_policy: Resolve git-commit to the full commit SHA of the pinned factory checkout
+  when recording use.
+skills:
+- name: factory-rca-prevention
+  version: git-commit
+  purpose: Analyze significant or recurring incidents and defects using evidence,
+    competing hypotheses and proportionate prevention actions.
+  when_to_use:
+  - critical incident
+  - recurring defect
+  - security-related failure
+  - explicit RCA request
+  keywords:
+  - incident
+  - root cause
+  - prevention
+  - recurrence
+  inputs:
+  - incident or defect record
+  - affected versions
+  - available event timeline and evidence
+  outputs:
+  - supported causal analysis
+  - hypothesis limits
+  - proportionate follow-up
+  instructions: rca-prevention/SKILL.md
+  source: factory
+  status: implemented
+- name: factory-twelve-factor-app
+  version: git-commit
+  purpose: Assess or implement applicable twelve-factor practices for the selected
+    stack and deployment target.
+  when_to_use:
+  - architecture or deployment design
+  - explicit twelve-factor assessment
+  - runtime changes affecting applicable factors
+  keywords:
+  - configuration
+  - stateless
+  - deployment
+  - twelve-factor
+  inputs:
+  - stack and deployment target
+  - architecture or code
+  - delivery and runtime configuration
+  outputs:
+  - factor assessment with evidence
+  - applicable implementation changes or recommendations
+  - exceptions and limits
+  instructions: twelve-factor-app/SKILL.md
+  source: factory
+  status: implemented
+- name: factory-software-design-patterns
+  version: git-commit
+  purpose: Recommend and apply a suitable software design pattern or a simpler existing
+    solution for a concrete design problem.
+  when_to_use:
+  - explicit pattern selection
+  - architecture tradeoff involving structure or behavior
+  - repeated change that existing design handles poorly
+  keywords:
+  - design pattern
+  - coupling
+  - reuse
+  - structure
+  inputs:
+  - concrete behavior or design problem
+  - existing code and callers
+  - constraints and expected changes
+  outputs:
+  - recommended approach and alternatives
+  - tradeoffs
+  - bounded implementation guidance
+  instructions: software-design-patterns/SKILL.md
+  source: factory
+  status: implemented
+- name: factory-test-strategy-design
+  version: git-commit
+  purpose: Design risk-based verification and test cases linked to requirements and
+    acceptance criteria.
+  when_to_use:
+  - architecture test strategy
+  - new behavior with acceptance criteria
+  - defect regression design
+  - template generation validation
+  keywords:
+  - acceptance criteria
+  - regression
+  - verification
+  - test design
+  inputs:
+  - requirements and ACs
+  - interfaces and supported inputs
+  - failure risks and environment constraints
+  outputs:
+  - risk-based test strategy
+  - cases linked to ACs
+  - evidence and coverage limits
+  instructions: test-strategy-design/SKILL.md
+  source: factory
+  status: implemented
+- name: factory-threat-modeling
+  version: git-commit
+  purpose: Model assets, trust boundaries and threat scenarios for an approved system
+    or proposed architecture.
+  when_to_use:
+  - new architecture with security boundaries
+  - material change to identity or data flows
+  - explicit threat-model request
+  keywords:
+  - assets
+  - trust boundaries
+  - threats
+  - mitigations
+  inputs:
+  - system scope and architecture
+  - actors and data flows
+  - security requirements and assumptions
+  outputs:
+  - assets and trust boundaries
+  - ranked threat scenarios
+  - mitigations and residual risks
+  instructions: threat-modeling/SKILL.md
+  source: factory
+  status: implemented

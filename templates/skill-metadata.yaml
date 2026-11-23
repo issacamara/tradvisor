@@ -1,0 +1,12 @@
+name: skill-name
+version: git-commit
+purpose: Bounded capability supplied by this skill
+when_to_use:
+- Conditions that make this skill applicable
+keywords:
+- Discovery terms
+inputs:
+- Required context and source versions
+outputs:
+- Expected result and evidence
+instructions: skill-name/SKILL.md
