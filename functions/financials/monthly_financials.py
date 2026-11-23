@@ -35,6 +35,8 @@ ANNUAL = re.compile(r"exercice|annuel|etats? financiers?|comptes|provisoire")
 INTERIM = re.compile(r"trimestr|semestr")
 DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 YEAR = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
+# RichBourse answers 403 to ?page= requests unless they look like its own AJAX pagination.
+LIST_HEADERS = {"Referer": LIST_URL, "X-Requested-With": "XMLHttpRequest"}
 MAX_PAGES = 50
 BATCH_SYMBOLS = 10
 
@@ -326,12 +328,12 @@ def main(argv: list[str] | None = None) -> None:
 
     session = http.Session(impersonate="chrome", timeout=60)
 
-    def get(url: str, params: dict | None = None):
+    def get(url: str, params: dict | None = None, headers: dict | None = None):
         reason = "unknown"
         for attempt in range(3):
             time.sleep(0.5 * (attempt + 1))
             try:
-                response = session.get(url, params=params)
+                response = session.get(url, params=params, headers=headers)
                 if response.status_code == 200 and response.url.startswith(BASE + "/"):
                     return response
                 reason = f"HTTP {response.status_code} at {urlparse(response.url).netloc}"
@@ -340,7 +342,7 @@ def main(argv: list[str] | None = None) -> None:
         raise RuntimeError(f"RichBourse request failed ({reason})")
 
     try:
-        run(fetch=lambda url, params: get(url, params).text,
+        run(fetch=lambda url, params: get(url, params, LIST_HEADERS).text,
             get_pdf=lambda url: get(url).content,
             post=session.post,
             store=Store(bigquery.Client(project=cfg["project"]), cfg["project"], cfg["dataset"]),

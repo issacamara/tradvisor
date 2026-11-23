@@ -293,3 +293,7 @@ def test_config_defaults_and_check_config(monkeypatch, capsys) -> None:
     monkeypatch.setenv("TRADVISOR_TARGET_PROJECT_ID", "Bad Project")
     with pytest.raises(SystemExit):
         mf.main(["--check-config"])
+
+
+def test_listing_headers_mimic_site_ajax_pagination():
+    assert mf.LIST_HEADERS == {"Referer": mf.LIST_URL, "X-Requested-With": "XMLHttpRequest"}
