@@ -28,7 +28,7 @@ from .fi1_job import OWNER_EXTRACTION_PROMPT as PROMPT
 BASE = "https://www.richbourse.com"
 LIST_URL = BASE + "/common/actualite-categorie/index/etats-financiers"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODELS = ("google/gemma-4-31b-it:free", "openai/gpt-4o-mini")
+MODELS = ("google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free")
 FIELDS = ("revenue", "net_income", "total_debt", "cash_and_cash_equivalents", "total_equity")
 COLUMNS = ("symbol", "fiscal_year", *FIELDS, "collected_at", "document_link")
 ANNUAL = re.compile(r"exercice|annuel|etats? financiers?|comptes|provisoire")
