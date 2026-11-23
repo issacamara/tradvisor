@@ -10,3 +10,11 @@
 - Work in an isolated wave branch/worktree from current `development`; leave unrelated working-tree changes untouched. Follow waves strictly in order and create one PR per wave, including all delivered issue references.
 - Run applicable local checks and wait for current-head CI. Require a documented current-head review before merging. In this sole-owner repository, the owner review may satisfy the review gate when GitHub cannot accept a self-approval; record that limitation explicitly and never claim that GitHub accepted an independent approval. Stop for a major product, financial, security, architecture, cost, or infrastructure decision; send the owner evidence, options, and a recommendation.
 - Agent role instructions live in `.codex/agents/`. The launch procedure is `planning/AGENT_LAUNCH.md`.
+
+## Software factory
+
+This repository adopts the [software factory](https://github.com/issacamara/software-factory); `.factory.json` records the pinned revision and the `gcp` deployment target. Read `docs/operating-guide.md` for gates, labels, worktrees, handoffs and delivery. Lifecycle roles are `sf-<phase>-agent` (see `agents/`, `.codex/config.toml`, `.claude/agents/`); specialist skills are in `skills/catalog.yaml`. `CLAUDE.md` imports this file.
+
+Precedence: the Tradvisor V1 rules above always win over the factory guide, including the V1 scope limits, production-data and cloud-approval restrictions, privacy of infrastructure evidence, Terraform-managed tables, and the sole-owner review note. The owner's merge decision follows `templates/human-decision.md` and is checked with `scripts/check_gate.py` before merging.
+
+Transition: work already organized as numbered waves finishes under the wave rules above (one PR per wave into `development`, `.codex/agents/` roles, `planning/` launcher). New work uses the factory flow: issue PRs into `epic/<n>`, then one epic PR into `development`, with `phase:`, `type:` and `complexity:` labels on every issue. Legacy `wave-*`, `domain:*`, `agent-ready` and `epic` labels stay until the owner approves retiring them.

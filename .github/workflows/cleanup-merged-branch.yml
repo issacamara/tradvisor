@@ -1,0 +1,42 @@
+name: Clean up merged branch
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [development]
+permissions:
+  contents: write
+  pull-requests: read
+jobs:
+  delete-merged-branch:
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Delete unchanged merged branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_ref=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH")
+          head_sha=$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")
+          case "$head_ref" in main|development) exit 0 ;; esac
+          git check-ref-format --branch "$head_ref" >/dev/null
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          open_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$head_ref" --state open --json number --jq length)
+          open_base_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$head_ref" --state open --json number --jq length)
+          if [ "$open_prs" -ne 0 ] || [ "$open_base_prs" -ne 0 ]; then
+            echo 'Branch is still used by an open pull request; cleanup deferred.'
+            exit 0
+          fi
+          gh auth setup-git
+          git init --quiet
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          current_sha=$(git ls-remote --exit-code --refs origin "refs/heads/$head_ref" | awk '{print $1}') || {
+            echo 'Branch is already absent or cannot be inspected; cleanup deferred.'
+            exit 0
+          }
+          if [ "$current_sha" != "$head_sha" ]; then
+            echo 'Branch advanced after merge; cleanup deferred.'
+            exit 0
+          fi
+          git push --force-with-lease="refs/heads/$head_ref:$head_sha" origin ":refs/heads/$head_ref"

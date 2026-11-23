@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/issacamara/software-factory",
+  "revision": "7786ba2f665b3e525f1005419ecc8382ad22e8a7",
+  "deployment_target": "gcp"
+}
