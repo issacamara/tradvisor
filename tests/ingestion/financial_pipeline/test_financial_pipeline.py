@@ -593,9 +593,8 @@ def test_initialization_loads_fixture_pdf_into_canonical_current_and_revision_ro
     assert init.scrape_financials_init("fixture://source", "fixture-key") == 1
     assert extraction_calls == []
 
-    digest = hashlib.sha256(pdf).hexdigest()
     source_blobs = storage_client.bucket("data-123").blobs
-    assert source_blobs[f"financials/ABC/2025/Fixture annual report.pdf"].download_as_bytes() == pdf
+    assert source_blobs["financials/ABC/2025/Fixture annual report.pdf"].download_as_bytes() == pdf
     assert bigquery_client.tables.get("fixture-project.stocks.financials", []) == []
     assert annual_persisted == []
 
@@ -655,3 +654,52 @@ def test_importing_financial_pipeline_modules_does_not_construct_clients_or_call
         _load_module(SCRIPTS / path, name)
 
     assert calls == []
+
+
+def _install_fake_bigquery(monkeypatch: pytest.MonkeyPatch, get_table_error: Exception) -> type:
+    class NotFound(Exception):
+        pass
+
+    class Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def dataset(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(table=lambda name: name)
+
+        def get_table(self, ref: object) -> None:
+            raise get_table_error if not isinstance(get_table_error, type) else get_table_error()
+
+    exceptions = ModuleType("google.api_core.exceptions")
+    exceptions.NotFound = NotFound  # type: ignore[attr-defined]
+    auth = ModuleType("google.auth")
+    auth.default = lambda: (None, "fixture-project")  # type: ignore[attr-defined]
+    bigquery = ModuleType("google.cloud.bigquery")
+    bigquery.Client = Client  # type: ignore[attr-defined]
+    cloud = ModuleType("google.cloud")
+    cloud.bigquery = bigquery  # type: ignore[attr-defined]
+    for name, module in {
+        "google.api_core.exceptions": exceptions,
+        "google.auth": auth,
+        "google.cloud": cloud,
+        "google.cloud.bigquery": bigquery,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    return NotFound
+
+
+def test_table_exists_is_false_only_when_the_table_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    class NotFoundMarker(Exception):
+        pass
+
+    not_found = _install_fake_bigquery(monkeypatch, NotFoundMarker())
+    sys.modules["google.cloud.bigquery"].Client.get_table = lambda self, ref: (_ for _ in ()).throw(not_found())  # type: ignore[attr-defined]
+    helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
+    assert helper.table_exists("ratings", dataset="stocks") is False
+
+
+def test_table_exists_propagates_permission_and_transport_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_fake_bigquery(monkeypatch, PermissionError("denied"))
+    helper = _load_module(SUPPORT_SCRIPTS / "helper.py", "helper")
+    with pytest.raises(PermissionError):
+        helper.table_exists("ratings", dataset="stocks")

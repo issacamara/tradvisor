@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-from decimal import Decimal
 
 
 def run(rows: int) -> tuple[Decimal, bool]:

@@ -185,7 +185,7 @@ def test_share_scraper_artifact_runs_against_fake_gcs_without_marker_variables(
     scraper_package = _build_artifact(tmp_path / "scraper", "managed", "scrape_shares")
     monkeypatch.chdir(scraper_package)
     scraper = _import_artifact(monkeypatch, scraper_package, "cloud_fake_scraper")
-    helper = _load_helper(scraper_package)
+    _load_helper(scraper_package)
     uploaded: dict[str, str] = {}
 
     class Blob:

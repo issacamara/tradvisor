@@ -2,7 +2,6 @@ import os
 import hashlib
 import io
 import json
-import re
 import gc
 import importlib.util
 import sys
@@ -574,7 +573,6 @@ def save_extraction_artifact(bucket, pdf_sha256, evidence):
 
 
 def get_extraction_artifact_bucket(project_id, bucket_name):
-    from helper import get_project_number
     from google.cloud import storage
 
     credentials, _ = default()
@@ -590,11 +588,17 @@ def get_existing_data_in_bigquery(project_id, table_id):
         FROM `{table_id}`
     """
     
+    from google.api_core.exceptions import NotFound
+
     try:
         results = client.query(query).result()
         return {(row.symbol, row.fiscal_year) for row in results}
-    except Exception:
+    except NotFound:
         return set()
+    except Exception as error:
+        # An empty set would make every report look new and re-ingest it all.
+        emit_event("ingestion.financials.existing_data", "failed", error_class=type(error).__name__)
+        raise
 
 
 def move_pdf_to_archive(blob, source_bucket, project_number, destination_blob_name=None):

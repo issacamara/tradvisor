@@ -60,7 +60,6 @@ class CloudTasksPublicationScheduler:
             f"projects/{self._configuration.project_id}/locations/"
             f"{self._configuration.region}/queues/{self._configuration.queue_name}"
         )
-        payload = json.dumps({"completion": completion.model_dump(mode="json")}).encode()
         request = {
             "task": {
                 "httpRequest": {

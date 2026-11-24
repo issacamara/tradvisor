@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import re
-from typing import Any, Callable, Literal, Mapping, TypeVar
+from typing import Callable, Literal, Mapping, TypeVar
 
 from pydantic import BaseModel
 

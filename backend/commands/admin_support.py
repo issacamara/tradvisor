@@ -48,7 +48,7 @@ def build_clients(environ: Mapping[str, str] | None = None) -> AdminClients:
     """Validate the admin target before importing or constructing cloud clients."""
     config = RuntimeConfiguration.from_environment("admin", environ)
     from google.cloud import firestore  # type: ignore[import-untyped]
-    from google.cloud import storage  # type: ignore[import-untyped]
+    from google.cloud import storage
 
     firestore_client = firestore.Client(
         project=config.project_id,

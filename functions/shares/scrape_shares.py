@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import random
 import re
 import time
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from ingestion_observability import observed_entrypoint
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 RAW_COLUMNS = (
     "symbol",

@@ -137,13 +137,13 @@ class FirestoreAdmissionProjection:
         expected_decision_sequence: int | None,
         record: AdmissionRecord,
     ) -> AdmissionRecord | None:
-        from google.cloud import firestore
+        from google.cloud import firestore  # type: ignore[import-untyped]
 
         transaction = self._client.transaction()
         reference = self._client.collection("application_admissions").document(subject)
         fence_reference = self._client.collection("application_admission_denials").document(subject)
 
-        @firestore.transactional
+        @firestore.transactional  # type: ignore[misc]
         def publish(tx: Any) -> bool:
             snapshots = list(tx.get_all([reference, fence_reference]))
             snapshot, fence_snapshot = snapshots

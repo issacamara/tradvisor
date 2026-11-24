@@ -9,7 +9,7 @@ import threading
 import importlib.util
 import inspect
 from types import ModuleType, SimpleNamespace
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -750,7 +750,7 @@ def test_overlapping_fi1_modes_can_insert_duplicate_logical_keys(
     read_barrier = threading.Barrier(2)
     stored_rows: list[dict[str, Any]] = []
     adapters = []
-    for mode in (first_mode, second_mode):
+    for _mode in (first_mode, second_mode):
         run_adapters = fake.adapters()
         read_existing = run_adapters.read_existing
         write_rows = run_adapters.write_rows

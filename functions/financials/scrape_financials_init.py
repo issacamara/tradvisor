@@ -289,7 +289,7 @@ def get_bucket_name(configuration=None):
     # Look for data bucket
     buckets = list(client.list_buckets())
     for bucket in buckets:
-        if bucket.name.startswith(f"data-"):
+        if bucket.name.startswith("data-"):
             return bucket.name
     
     # Fallback to first bucket
@@ -323,7 +323,6 @@ def download_pdf_to_storage(symbol, fiscal_year, report, bucket_name):
         
         # Upload to Cloud Storage
         # Format: financials/{symbol}/{fiscal_year}/{title}.pdf
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         title = report['title'] 
         blob_name = f"financials/{symbol}/{fiscal_year}/{title}.pdf"
         
@@ -375,7 +374,6 @@ def scrape_financials_init(url=None, openrouter_api_key=None, configuration=None
         if not company.source_slug:
             continue
         slug = company.source_slug
-        company_name = company.name
         symbol = company.symbol
         if not symbol:
             emit_event("ingestion.financials.company", "unsupported")

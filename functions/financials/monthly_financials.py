@@ -161,7 +161,9 @@ def extract(post: Callable[..., Any], text: str, api_key: str, models: Iterable[
             content = response.json()["choices"][0]["message"]["content"]
             return validate(parse_json(content), expected_year, current_year)
         except Exception as error:  # fall through to the next model
-            log(f"model {model} failed ({type(error).__name__})")
+            # RuntimeError text is our own "HTTP <status>"; other messages may carry provider data.
+            detail = f": {error}" if isinstance(error, RuntimeError) else ""
+            log(f"model {model} failed ({type(error).__name__}{detail})")
     return None
 
 
