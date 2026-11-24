@@ -55,6 +55,7 @@ def validate(root: Path) -> None:
         "requirements.lock",
         "helper.py",
         "ingestion_observability.py",
+        "richbourse_client.py",
         "fi1_job.py",
         "scrape_financials_job.py",
         "scrape_financials",
