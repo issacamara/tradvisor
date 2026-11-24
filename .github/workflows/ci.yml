@@ -49,7 +49,7 @@ jobs:
           ruff check backend functions scripts tests
 
       - name: Type check backend
-        run: mypy --strict backend tests/auth tests/store
+        run: mypy --config-file backend/pyproject.toml --strict backend tests/auth tests/store
 
       - name: Run application store tests
         run: python -m pytest tests/store -q

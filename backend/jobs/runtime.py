@@ -57,7 +57,7 @@ class BigQuerySharesReader(AnalyticalSnapshotReader):
         self._active_publication = active_publication
 
     def read(self, snapshot_name: str) -> AnalyticalInputSnapshot | None:
-        from google.cloud import bigquery  # type: ignore[import-untyped]
+        from google.cloud import bigquery
 
         del snapshot_name
         # The analytical snapshot currently contains indicators only. Enrich it
