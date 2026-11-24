@@ -9,9 +9,8 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[3]
-    / "archive"
-    / "legacy-ingestion"
-    / "scripts"
+    / "functions"
+    / "ingestion"
     / "company_reference.py"
 )
 SPEC = importlib.util.spec_from_file_location("company_reference", SCRIPT)

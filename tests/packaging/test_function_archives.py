@@ -8,7 +8,7 @@ import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = ROOT / "functions" / "ingestion"
 DIVIDEND_FUNCTIONS = ROOT / "functions" / "dividends"
 FUNCTION_ROOTS = {
     "scrape_shares": ROOT / "functions" / "shares",
@@ -103,7 +103,7 @@ def test_archive_requirements_are_complete_hashed_locks() -> None:
     assert "duckdb" not in lock.lower()
     assert re.search(r"^google-cloud-firestore==2\.19\.0$", declared, re.MULTILINE)
     assert "google-cloud-firestore==2.19.0 \\\n" in lock
-    assert "# via -r archive/legacy-ingestion/scripts/requirements.in" in lock
+    assert "# via -r functions/ingestion/requirements.in" in lock
     packages = (
         "functions-framework",
         "google-cloud-storage",

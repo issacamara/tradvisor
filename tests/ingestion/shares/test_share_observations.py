@@ -13,7 +13,7 @@ import pytest
 
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "shares"
-LEGACY_SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+LEGACY_SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "ingestion"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(LEGACY_SCRIPTS))
 

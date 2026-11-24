@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOYABLE_ROOTS = (
     ROOT / "backend",
     ROOT / "functions",
-    ROOT / "archive" / "legacy-ingestion" / "scripts",
+    ROOT / "functions" / "ingestion",
     ROOT / "terraform",
 )
 TEXT_SUFFIXES = {

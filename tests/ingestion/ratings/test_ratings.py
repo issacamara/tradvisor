@@ -10,7 +10,7 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "ratings" / "scrape_ratings.py"
 previous_bs4 = sys.modules.get("bs4")
-SUPPORT_SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+SUPPORT_SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "ingestion"
 sys.path.insert(0, str(SUPPORT_SCRIPTS))
 
 bs4 = types.ModuleType("bs4")

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts" / "share_basis.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "ingestion" / "share_basis.py"
 SPEC = importlib.util.spec_from_file_location("share_basis", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 share_basis = importlib.util.module_from_spec(SPEC)

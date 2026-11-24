@@ -14,7 +14,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = ROOT / "functions" / "ingestion"
 FUNCTION_ROOTS = {
     "scrape_shares": ROOT / "functions" / "shares",
     "insert_shares": ROOT / "functions" / "shares",

@@ -242,7 +242,7 @@ class FakeStore:
 
 @pytest.fixture
 def observability(monkeypatch):
-    monkeypatch.syspath_prepend(str(ROOT / "archive/legacy-ingestion/scripts"))
+    monkeypatch.syspath_prepend(str(ROOT / "functions/ingestion"))
 
 
 PAGES = {("ABC", 1): listing(

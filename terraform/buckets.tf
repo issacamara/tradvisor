@@ -13,7 +13,7 @@ locals {
     insert_shares       = "../functions/shares"
     scrape_ratings_init = "../functions/ratings"
   }
-  legacy_function_root = "../archive/legacy-ingestion/scripts"
+  ingestion_function_root = "../functions/ingestion"
 }
 
 data "archive_file" "assets" {
@@ -22,38 +22,38 @@ data "archive_file" "assets" {
   output_path = "${each.key}.zip"
 
   source {
-    content  = file("${local.legacy_function_root}/helper.py")
+    content  = file("${local.ingestion_function_root}/helper.py")
     filename = "helper.py"
   }
   source {
-    content  = file("${local.legacy_function_root}/ingestion_configuration.py")
+    content  = file("${local.ingestion_function_root}/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
   }
   source {
-    content  = file("${local.legacy_function_root}/ingestion_observability.py")
+    content  = file("${local.ingestion_function_root}/ingestion_observability.py")
     filename = "ingestion_observability.py"
   }
   source {
-    content  = file("${local.legacy_function_root}/requirements.txt")
+    content  = file("${local.ingestion_function_root}/requirements.txt")
     filename = "requirements.txt"
   }
   source {
-    content  = file("${local.legacy_function_root}/requirements.in")
+    content  = file("${local.ingestion_function_root}/requirements.in")
     filename = "requirements.in"
   }
   source {
-    content  = file("${local.legacy_function_root}/requirements.lock")
+    content  = file("${local.ingestion_function_root}/requirements.lock")
     filename = "requirements.lock"
   }
   source {
-    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.ingestion_function_root)}/${each.key}.py")
     filename = "main.py"
   }
 
   dynamic "source" {
     for_each = lookup(var.function_local_files, each.key, [])
     content {
-      content  = file("${lookup(local.function_dependency_roots, each.key, local.legacy_function_root)}/${source.value}")
+      content  = file("${lookup(local.function_dependency_roots, each.key, local.ingestion_function_root)}/${source.value}")
       filename = source.value
     }
   }
@@ -61,7 +61,7 @@ data "archive_file" "assets" {
   dynamic "source" {
     for_each = contains(["scrape_ratings", "insert_ratings"], each.key) ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
+      content  = file("../functions/ingestion/mapping.csv")
       filename = "mapping.csv"
     }
   }
@@ -69,7 +69,7 @@ data "archive_file" "assets" {
   dynamic "source" {
     for_each = contains(["scrape_ratings"], each.key) ? [1] : []
     content {
-      content  = file("../archive/legacy-ingestion/scripts/scrape_ratings_init.py")
+      content  = file("../functions/ingestion/scrape_ratings_init.py")
       filename = "scrape_ratings_init.py"
     }
   }
@@ -81,41 +81,41 @@ data "archive_file" "new_function_assets" {
   output_path = "${each.key}.zip"
 
   source {
-    content  = file("../archive/legacy-ingestion/scripts/helper.py")
+    content  = file("../functions/ingestion/helper.py")
     filename = "helper.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/ingestion_configuration.py")
+    content  = file("../functions/ingestion/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/ingestion_observability.py")
+    content  = file("../functions/ingestion/ingestion_observability.py")
     filename = "ingestion_observability.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
+    content  = file("../functions/ingestion/requirements.txt")
     filename = "requirements.txt"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.in")
+    content  = file("../functions/ingestion/requirements.in")
     filename = "requirements.in"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.lock")
+    content  = file("../functions/ingestion/requirements.lock")
     filename = "requirements.lock"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
+    content  = file("../functions/ingestion/mapping.csv")
     filename = "mapping.csv"
   }
   source {
-    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.ingestion_function_root)}/${each.key}.py")
     filename = "main.py"
   }
   dynamic "source" {
     for_each = lookup(var.function_local_files, each.key, [])
     content {
-      content  = file("${lookup(local.function_dependency_roots, each.key, local.legacy_function_root)}/${source.value}")
+      content  = file("${lookup(local.function_dependency_roots, each.key, local.ingestion_function_root)}/${source.value}")
       filename = source.value
     }
   }
@@ -134,35 +134,35 @@ data "archive_file" "initialization_assets" {
   output_path = "${each.key}.zip"
 
   source {
-    content  = file("../archive/legacy-ingestion/scripts/helper.py")
+    content  = file("../functions/ingestion/helper.py")
     filename = "helper.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/ingestion_configuration.py")
+    content  = file("../functions/ingestion/ingestion_configuration.py")
     filename = "ingestion_configuration.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/ingestion_observability.py")
+    content  = file("../functions/ingestion/ingestion_observability.py")
     filename = "ingestion_observability.py"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.txt")
+    content  = file("../functions/ingestion/requirements.txt")
     filename = "requirements.txt"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.in")
+    content  = file("../functions/ingestion/requirements.in")
     filename = "requirements.in"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/requirements.lock")
+    content  = file("../functions/ingestion/requirements.lock")
     filename = "requirements.lock"
   }
   source {
-    content  = file("../archive/legacy-ingestion/scripts/mapping.csv")
+    content  = file("../functions/ingestion/mapping.csv")
     filename = "mapping.csv"
   }
   source {
-    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.legacy_function_root)}/${each.key}.py")
+    content  = file("${lookup(local.function_entrypoint_roots, each.key, local.ingestion_function_root)}/${each.key}.py")
     filename = "main.py"
   }
   dynamic "source" {

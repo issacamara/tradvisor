@@ -128,9 +128,8 @@ def test_parser_manifest_is_deterministic_and_run_ids_are_unique() -> None:
 def test_deployed_helper_excludes_filesystem_snapshot_persistence() -> None:
     helper_path = (
         Path(__file__).resolve().parents[3]
-        / "archive"
-        / "legacy-ingestion"
-        / "scripts"
+        / "functions"
+        / "ingestion"
         / "helper.py"
     )
     specification = importlib.util.spec_from_file_location("deployed_ingestion_helper", helper_path)

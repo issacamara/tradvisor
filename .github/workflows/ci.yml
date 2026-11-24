@@ -36,9 +36,9 @@ jobs:
             --extra=test --extra=type --extra=lock \
             --output-file=backend/requirements/test.lock backend/pyproject.toml
           pip-compile --strip-extras --generate-hashes \
-            --output-file=archive/legacy-ingestion/scripts/requirements.lock \
-            archive/legacy-ingestion/scripts/requirements.in
-          git diff --exit-code -- backend/requirements archive/legacy-ingestion/scripts/requirements.lock
+            --output-file=functions/ingestion/requirements.lock \
+            functions/ingestion/requirements.in
+          git diff --exit-code -- backend/requirements functions/ingestion/requirements.lock
 
       - name: Run backend regression and wave suites
         run: python -m pytest tests -q
@@ -53,7 +53,7 @@ jobs:
         run: mypy --strict backend/store tests/store
 
       - name: Check Python syntax
-        run: python -m compileall archive/legacy-ingestion/scripts functions
+        run: python -m compileall functions/ingestion functions
 
       - name: Build and smoke-check the FI-1 job image
         run: |
