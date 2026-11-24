@@ -56,7 +56,7 @@ flowchart LR
 ### 5.2 RichBourse annual-statement adapter
 
 - **Purpose:** Parse the selector and symbol-filtered pages, identify annual statement links, and reject quarterly/half-year activity reports.
-- **Reused:** Extend the existing `functions/financials/scrape_financials.py` RichBourse parsing/transport seam rather than create a second scraper.
+- **Reused:** Extend the existing RichBourse parsing seam in `functions/financials/fi1_job.py`, with transport in the shared `functions/financials/richbourse_client.py`, rather than create a second scraper. The earlier `scrape_financials.py` was removed as dead code.
 - **Interfaces/data:** Returns symbol, fiscal year, announcement metadata, and absolute document link; it does not persist a PDF. `parse_annual_candidates(html, symbol, *, current_year, limit=5, selection_mode="historical")` keeps historical as the omitted-mode default; `previous_year` admits only `current_year - 1`, before the cap.
 - **Technology:** Existing curl-cffi/BeautifulSoup approach with bounded retries and one request at a time.
 
@@ -101,7 +101,7 @@ The FI-1 job keeps its parsing and validation helpers beside the runtime entrypo
 
 | Existing asset | Used for | Why it fits |
 |---|---|---|
-| `functions/financials/scrape_financials.py` | RichBourse transport and annual-report discovery seam | Already handles symbol pages, fiscal-year extraction, interim-report rejection, and transport failures. |
+| `functions/financials/richbourse_client.py` | RichBourse transport, retries, redirect and origin checks | Shared by the FI-1 job and the monthly job; replaced the transport in the removed `scrape_financials.py`. |
 | `functions/financials/insert_financials.py` | PDF text/extraction and financial normalization seam | Already contains provider, extraction, and normalization behavior to consolidate. |
 | `tests/ingestion/financial_pipeline/` | Offline regression coverage | Existing test location owns financial pipeline fixtures and behavior. |
 | Terraform BigQuery staging/MERGE resources | Financial row write | Satisfies the Terraform-managed-table policy and current 12-factor amendment. |

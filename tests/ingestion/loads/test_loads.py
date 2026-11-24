@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import hashlib
 import re
 import sys
 from pathlib import Path
@@ -261,72 +260,6 @@ def _load_financial_processor(
     specification.loader.exec_module(module)
     monkeypatch.setattr(module, "get_existing_data_in_bigquery", lambda project_id: set())
     return module
-
-
-def _load_monthly_scraper(
-    monkeypatch: pytest.MonkeyPatch,
-    helper: ModuleType,
-) -> ModuleType:
-    requests = SimpleNamespace(
-        Session=lambda: SimpleNamespace(
-            get=lambda *args, **kwargs: SimpleNamespace(
-                status_code=200, content=b"%PDF-1.7\nmonthly annual report"
-            ),
-            close=lambda: None,
-        )
-    )
-    curl_cffi = ModuleType("curl_cffi")
-    curl_cffi.CurlHttpVersion = SimpleNamespace(V1_1=2)  # type: ignore[attr-defined]
-    curl_cffi.requests = requests  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "curl_cffi", curl_cffi)
-    yaml = ModuleType("yaml")
-    yaml.safe_load = lambda value: {}  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "yaml", yaml)
-    bs4 = ModuleType("bs4")
-    bs4.BeautifulSoup = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "bs4", bs4)
-    functions_framework = ModuleType("functions_framework")
-    functions_framework.http = lambda function: function  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "functions_framework", functions_framework)
-
-    google = sys.modules["google"]
-    google_auth = ModuleType("google.auth")
-    google_auth.default = lambda: ("credentials", "project")  # type: ignore[attr-defined]
-    google.auth = google_auth  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "google.auth", google_auth)
-    monkeypatch.setitem(sys.modules, "helper", helper)
-
-    scripts = Path(__file__).resolve().parents[3] / "functions" / "financials"
-    path = scripts / "scrape_financials.py"
-    specification = importlib.util.spec_from_file_location(
-        "ingestion_monthly_scraper_loads", path
-    )
-    assert specification is not None
-    assert specification.loader is not None
-    module = importlib.util.module_from_spec(specification)
-    sys.modules[specification.name] = module
-    specification.loader.exec_module(module)
-    return module
-
-
-def test_monthly_scraper_existing_lookup_uses_managed_financial_schema(
-    loader: tuple[ModuleType, _FakeBigQueryClient],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    helper, client = loader
-    client.tables["project.stocks.financials"] = [{
-        "symbol": "ABC",
-        "fiscal_year": 2025,
-        "document_link": "https://reports.example/annual.pdf",
-    }]
-    scraper = _load_monthly_scraper(monkeypatch, helper)
-
-    existing = scraper.get_existing_symbols_and_years("project.stocks.financials")
-
-    assert existing == {
-        ("ABC", 2025): {"document_link": "https://reports.example/annual.pdf"}
-    }
-    assert "announcement_date" not in client.select_queries[-1]
 
 
 def test_retries_and_revision_batches_use_isolated_staging(
@@ -783,118 +716,6 @@ def test_monthly_scrape_commit_order_keeps_current_and_revision_consistent(
     assert client.merge_queries[0].startswith("\n        MERGE `project.stocks.financials`")
     assert client.merge_queries[1].startswith("\n        MERGE `project.stocks.financials`")
     assert client.merge_queries[2].startswith("\n        MERGE `project.stocks.financial_report_revisions`")
-
-
-def test_monthly_scraper_recovers_current_load_failure_without_revision_mismatch(
-    loader: tuple[ModuleType, _FakeBigQueryClient],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    helper, client = loader
-    scraper = _load_monthly_scraper(monkeypatch, helper)
-    source_url = "https://reports.example/annual.pdf"
-    announcement = {
-        "fiscal_year": 2025,
-        "announcement_date": "2026-04-01",
-        "url": source_url,
-    }
-    monkeypatch.setattr(scraper, "table_exists", lambda name: True)
-    monkeypatch.setattr(
-        scraper,
-        "get_existing_symbols_and_years",
-        lambda: {("OTHER", 2024): {"document_link": "https://reports.example/other.pdf"}},
-    )
-    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
-    monkeypatch.setattr(
-        scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
-    )
-    parsed_results = iter(
-        [
-            {"revenue": 500, "net_income": 100, "total_debt": 80,
-             "cash_and_cash_equivalents": 40, "total_equity": 200},
-            {"revenue": 500, "net_income": 125, "total_debt": 80,
-             "cash_and_cash_equivalents": 40, "total_equity": 200},
-        ]
-    )
-    monkeypatch.setattr(
-        scraper,
-        "extract_financials_from_pdf",
-        lambda content, api_key: next(parsed_results),
-    )
-
-    client.merge_error = RuntimeError("current-table merge failed")
-    with pytest.raises(RuntimeError, match="current-table merge failed"):
-        scraper.scrape_financials("https://reports.example", "test-key")
-    assert "project.stocks.financial_report_revisions" not in client.tables
-
-    client.merge_error = None
-    scraper.scrape_financials("https://reports.example", "test-key")
-
-    current = client.tables["project.stocks.financials"][0]
-    revision = client.tables["project.stocks.financial_report_revisions"][0]
-    assert current["net_income"] == revision["net_income"] == 125
-
-
-def test_monthly_scraper_detects_replaced_pdf_at_same_url_and_date(
-    loader: tuple[ModuleType, _FakeBigQueryClient],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    helper, client = loader
-    scraper = _load_monthly_scraper(monkeypatch, helper)
-    source_url = "https://reports.example/annual.pdf"
-    report_bytes = b"%PDF-1.7\nmonthly annual report"
-    previous_hash = hashlib.sha256(b"previous PDF bytes").hexdigest()
-    client.tables["project.stocks.financials"] = [{
-        "symbol": "ABC",
-        "fiscal_year": 2025,
-        "document_link": source_url,
-        "net_income": 100,
-    }]
-    client.tables["project.stocks.financial_report_revisions"] = [{
-        "symbol": "ABC",
-        "fiscal_year": 2025,
-        "document_link": source_url,
-        "document_revision": previous_hash,
-        "net_income": 100,
-    }]
-    announcement = {
-        "fiscal_year": 2025,
-        "announcement_date": "2026-04-01",
-        "url": source_url,
-    }
-    monkeypatch.setattr(scraper, "table_exists", lambda name: True)
-    monkeypatch.setattr(
-        scraper,
-        "get_existing_symbols_and_years",
-        lambda: {("ABC", 2025): {
-            "document_link": source_url
-        }},
-    )
-    monkeypatch.setattr(scraper, "get_symbols_from_company_reference", lambda project_id: ["ABC"])
-    monkeypatch.setattr(
-        scraper, "get_announcements_for_symbol", lambda symbol: [announcement]
-    )
-    monkeypatch.setattr(
-        scraper,
-        "extract_financials_from_pdf",
-        lambda content, api_key: {
-            "revenue": 500,
-            "net_income": 125,
-            "total_debt": 80,
-            "cash_and_cash_equivalents": 40,
-            "total_equity": 200,
-        },
-    )
-
-    scraper.scrape_financials("https://reports.example", "test-key")
-
-    current = client.tables["project.stocks.financials"][0]
-    revisions = client.tables["project.stocks.financial_report_revisions"]
-    assert current["net_income"] == 125
-    assert len(revisions) == 2
-    assert {row["document_revision"] for row in revisions} == {
-        previous_hash,
-        hashlib.sha256(report_bytes).hexdigest(),
-    }
 
 
 def test_financial_pdf_caller_commits_revision_before_retryable_archive(
