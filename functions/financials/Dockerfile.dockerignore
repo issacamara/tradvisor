@@ -5,6 +5,7 @@
 !functions/ingestion/ingestion_observability.py
 !functions/
 !functions/financials/
+!functions/financials/richbourse_client.py
 !functions/financials/fi1_job.py
 !functions/financials/scrape_financials_job.py
 !functions/financials/scrape_financials

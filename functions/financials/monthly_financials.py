@@ -24,6 +24,7 @@ from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
 from .fi1_job import OWNER_EXTRACTION_PROMPT as PROMPT
+from .richbourse_client import fetch as richbourse_fetch
 
 BASE = "https://www.richbourse.com"
 LIST_URL = BASE + "/common/actualite-categorie/index/etats-financiers"
@@ -329,17 +330,8 @@ def main(argv: list[str] | None = None) -> None:
     session = http.Session(impersonate="chrome", timeout=60)
 
     def get(url: str, params: dict | None = None, headers: dict | None = None):
-        reason = "unknown"
-        for attempt in range(3):
-            time.sleep(0.5 * (attempt + 1))
-            try:
-                response = session.get(url, params=params, headers=headers)
-                if response.status_code == 200 and response.url.startswith(BASE + "/"):
-                    return response
-                reason = f"HTTP {response.status_code} at {urlparse(response.url).netloc}"
-            except Exception as error:
-                reason = type(error).__name__
-        raise RuntimeError(f"RichBourse request failed ({reason})")
+        time.sleep(0.5)  # pace requests to the provider
+        return richbourse_fetch(url, params=params, headers=headers, timeout=60, session=session)
 
     try:
         run(fetch=lambda url, params: get(url, params, LIST_HEADERS).text,

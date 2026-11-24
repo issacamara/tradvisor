@@ -15,6 +15,9 @@ from numbers import Real
 from urllib.parse import quote, urljoin, urlparse
 from uuid import uuid4
 
+from .richbourse_client import fetch as richbourse_fetch
+from .richbourse_client import is_approved_url
+
 SELECTOR_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
 RICHBOURSE_ORIGIN = "https://www.richbourse.com"
 EXTRACTION_KEYS = (
@@ -97,11 +100,7 @@ MAX_ANNUAL_CANDIDATES = 5
 SOURCE_PACING_SECONDS = 1
 RUNTIME_TARGET = "financial_ingestion_job"
 SOURCE_TIMEOUT_SECONDS = 30
-SOURCE_ATTEMPTS = 3
-_RETRYABLE_SOURCE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
-MAX_REDIRECTS = 5
 PROVIDER_TIMEOUT_SECONDS = 120
-_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _FINANCIAL_VALUE_KEYS = (
     "revenue",
     "net_income",
@@ -150,18 +149,7 @@ def richbourse_symbol_page_url_for_page(symbol: str, page: int) -> str:
 
 
 def is_approved_document_url(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-        return (
-            parsed.scheme.casefold() == "https"
-            and parsed.hostname is not None
-            and parsed.hostname.casefold() == "www.richbourse.com"
-            and parsed.port is None
-            and parsed.username is None
-            and parsed.password is None
-        )
-    except ValueError:
-        return False
+    return is_approved_url(url)
 
 
 def parse_annual_candidates(
@@ -498,59 +486,13 @@ def _log_stage_failure(stage: str, error: Exception) -> None:
 
 
 def _get_response(url: str, *, accept: str, timeout: float) -> Any:
-    """Fetch one RichBourse response, checking each redirect before following it."""
-    from curl_cffi import CurlHttpVersion, requests
-
-    request_deadline = time.monotonic() + timeout
-    current_url = url
-    for redirect_count in range(MAX_REDIRECTS + 1):
-        if not is_approved_document_url(current_url):
-            raise ValueError("RichBourse URL is outside the approved origin")
-        last_error: Exception | None = None
-        response = None
-        for attempt in range(SOURCE_ATTEMPTS):
-            remaining = request_deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("RichBourse request deadline exceeded")
-            try:
-                response = requests.get(
-                    current_url,
-                    headers={"Accept": accept, "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8"},
-                    timeout=remaining,
-                    impersonate="chrome",
-                    http_version=CurlHttpVersion.V1_1,
-                    allow_redirects=False,
-                )
-                if response.status_code in _RETRYABLE_SOURCE_STATUSES or (
-                    response.status_code == 200 and not response.content
-                ):
-                    if attempt + 1 == SOURCE_ATTEMPTS:
-                        raise RuntimeError("RichBourse response remained unavailable")
-                    time.sleep(min((1, 2)[attempt], max(0.0, request_deadline - time.monotonic())))
-                    continue
-                break
-            except RuntimeError:
-                raise
-            except Exception as error:
-                last_error = error
-                if attempt + 1 == SOURCE_ATTEMPTS:
-                    raise RuntimeError("RichBourse transport failed") from error
-                time.sleep(min((1, 2)[attempt], max(0.0, request_deadline - time.monotonic())))
-        if response is None:
-            raise RuntimeError("RichBourse transport failed") from last_error
-        if response.status_code in _REDIRECT_STATUSES:
-            location = response.headers.get("Location")
-            if not location or redirect_count == MAX_REDIRECTS:
-                raise RuntimeError("RichBourse redirect limit exceeded")
-            target = urljoin(current_url, location)
-            if not is_approved_document_url(target):
-                raise ValueError("RichBourse redirect is outside the approved origin")
-            current_url = target
-            continue
-        if response.status_code != 200 or not response.content:
-            raise RuntimeError(f"RichBourse HTTP {response.status_code}")
-        return response
-    raise RuntimeError("RichBourse redirect limit exceeded")
+    """Fetch one RichBourse response through the shared client."""
+    return richbourse_fetch(
+        url,
+        accept=accept,
+        headers={"Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8"},
+        timeout=timeout,
+    )
 
 
 def _fetch_text(url: str, timeout: float) -> str:
