@@ -278,10 +278,7 @@ def _source_config() -> dict[str, dict[str, str]]:
         "url": {
             "shares": "https://source.example.test/shares",
             "brvm_session": "https://source.example.test/sessions",
-            "bonds": "https://source.example.test/bonds",
-            "capitalizations": "https://source.example.test/capitalizations",
             "volumes": "https://source.example.test/volumes",
-            "indices": "https://source.example.test/indices",
             "dividends": "https://source.example.test/dividends",
             "financials": "https://source.example.test/financials",
             "ratings": "https://source.example.test/ratings",
