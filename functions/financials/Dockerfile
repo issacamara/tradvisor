@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY archive/legacy-ingestion/scripts/requirements.lock /app/requirements.lock
+COPY functions/ingestion/requirements.lock /app/requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes -r /app/requirements.lock
 
 RUN mkdir -p /app/functions/financials
@@ -15,8 +15,8 @@ COPY functions/financials/monthly_financials.py /app/functions/financials/
 COPY functions/financials/scrape_financials /usr/local/bin/scrape_financials
 COPY functions/financials/monthly_financials /usr/local/bin/monthly_financials
 COPY functions/financials/insert_financials.py /app/insert_financials.py
-COPY archive/legacy-ingestion/scripts/helper.py /app/helper.py
-COPY archive/legacy-ingestion/scripts/ingestion_observability.py /app/ingestion_observability.py
+COPY functions/ingestion/helper.py /app/helper.py
+COPY functions/ingestion/ingestion_observability.py /app/ingestion_observability.py
 RUN chmod 0555 /usr/local/bin/scrape_financials /usr/local/bin/monthly_financials
 
 USER 10001:10001

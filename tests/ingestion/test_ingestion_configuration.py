@@ -11,9 +11,8 @@ import pytest
 
 CONFIGURATION = (
     Path(__file__).resolve().parents[2]
-    / "archive"
-    / "legacy-ingestion"
-    / "scripts"
+    / "functions"
+    / "ingestion"
     / "ingestion_configuration.py"
 )
 

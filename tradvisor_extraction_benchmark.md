@@ -5,7 +5,7 @@
 
 ## Correction
 
-The stakeholder confirmed that financial-report PDF processing is already addressed by `archive/legacy-ingestion/scripts/scrape_financials.py` and `scrape_financials_init.py`. Reuse this pipeline, including its existing downstream `insert_financials.py` path, rather than introducing a new extraction implementation.
+The stakeholder confirmed that financial-report PDF processing is already addressed by `functions/ingestion/scrape_financials.py` and `scrape_financials_init.py`. Reuse this pipeline, including its existing downstream `insert_financials.py` path, rather than introducing a new extraction implementation.
 
 The previous sample request and standalone benchmark procedure are withdrawn. No additional PDFs or EUR 1/month extraction allowance are required for architecture review. Verify integration, extracted-field contracts and actual operating costs during delivery alongside whole-stack cost checks.
 

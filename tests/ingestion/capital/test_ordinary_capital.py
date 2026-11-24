@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts" / "ordinary_capital.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "functions" / "ingestion" / "ordinary_capital.py"
 SPEC = importlib.util.spec_from_file_location("ordinary_capital", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 ordinary_capital = importlib.util.module_from_spec(SPEC)

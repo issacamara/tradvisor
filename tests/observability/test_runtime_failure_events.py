@@ -35,7 +35,7 @@ def test_daily_failure_event_contains_only_error_class(monkeypatch: pytest.Monke
 
 
 def test_packaged_entrypoint_formatter_redacts_exception_text(capsys: pytest.CaptureFixture[str]) -> None:
-    path = Path(__file__).parents[2] / "archive" / "legacy-ingestion" / "scripts" / "ingestion_observability.py"
+    path = Path(__file__).parents[2] / "functions" / "ingestion" / "ingestion_observability.py"
     spec = importlib.util.spec_from_file_location("packaged_ingestion_observability", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -58,7 +58,7 @@ def test_packaged_entrypoint_formatter_redacts_exception_text(capsys: pytest.Cap
 def test_generic_formatter_remains_available_without_fi1_event_builders(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    path = Path(__file__).parents[2] / "archive" / "legacy-ingestion" / "scripts" / "ingestion_observability.py"
+    path = Path(__file__).parents[2] / "functions" / "ingestion" / "ingestion_observability.py"
     spec = importlib.util.spec_from_file_location("generic_ingestion_observability", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -729,7 +729,7 @@ def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytes
     assert callable(args[4])
     assert kwargs == {"run_id": "fi1-run"}
 
-    writer_path = Path(__file__).parents[3] / "archive/legacy-ingestion/scripts/helper.py"
+    writer_path = Path(__file__).parents[3] / "functions/ingestion/helper.py"
     spec = importlib.util.spec_from_file_location("fi1_managed_helper_contract", writer_path)
     assert spec is not None and spec.loader is not None
     helper_module = importlib.util.module_from_spec(spec)

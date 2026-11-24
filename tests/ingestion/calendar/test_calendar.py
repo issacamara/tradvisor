@@ -10,9 +10,8 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[3]
-    / "archive"
-    / "legacy-ingestion"
-    / "scripts"
+    / "functions"
+    / "ingestion"
     / "calendar.py"
 )
 SPEC = importlib.util.spec_from_file_location("exchange_calendar", SCRIPT)

@@ -4,7 +4,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[3] / "archive" / "legacy-ingestion" / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[3] / "functions" / "ingestion"
 sys.path.insert(0, str(SCRIPTS))
 
 from financial_banks import assess_bank_capital_history, normalize_bank_report

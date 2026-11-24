@@ -17,9 +17,8 @@ import pytest
 def _load_helper() -> ModuleType:
     helper_path = (
         Path(__file__).resolve().parents[3]
-        / "archive"
-        / "legacy-ingestion"
-        / "scripts"
+        / "functions"
+        / "ingestion"
         / "helper.py"
     )
     specification = importlib.util.spec_from_file_location("ingestion_helper_loads", helper_path)
@@ -1118,9 +1117,8 @@ def _load_cloud_consumer(
 ) -> ModuleType:
     configuration_path = (
         Path(__file__).resolve().parents[3]
-        / "archive"
-        / "legacy-ingestion"
-        / "scripts"
+        / "functions"
+        / "ingestion"
         / "ingestion_configuration.py"
     )
     configuration_specification = importlib.util.spec_from_file_location(

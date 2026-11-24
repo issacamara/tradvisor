@@ -12,7 +12,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = ROOT / "archive" / "legacy-ingestion" / "scripts" / "financial_normalization.py"
+SCRIPT = ROOT / "functions" / "ingestion" / "financial_normalization.py"
 SPEC = importlib.util.spec_from_file_location("financial_normalization", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 financial_normalization = importlib.util.module_from_spec(SPEC)

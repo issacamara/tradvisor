@@ -12,7 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / "functions" / "financials"
-SUPPORT_SCRIPTS = ROOT / "archive" / "legacy-ingestion" / "scripts"
+SUPPORT_SCRIPTS = ROOT / "functions" / "ingestion"
 
 
 def _load_module(path: Path, name: str) -> ModuleType:

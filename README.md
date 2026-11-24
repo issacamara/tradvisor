@@ -6,7 +6,7 @@ Tradvisor V1 is being refocused around the Business Requirements Document in
 The repository currently contains the V1 requirements and the legacy
 data-ingestion foundation for BRVM market data:
 
-- `archive/legacy-ingestion/scripts/`: previous scrapers and loaders for shares,
+- `functions/ingestion/`: previous scrapers and loaders for shares,
   and dividends. These are preserved as reference material while the V1
   architecture is redesigned. The bonds, indices, and capitalizations
   scrapers were removed.
