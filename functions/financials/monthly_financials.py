@@ -23,13 +23,14 @@ from typing import Any, Callable, Iterable
 from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
+from .fi1_job import MODEL_ORDER as MODELS
 from .fi1_job import OWNER_EXTRACTION_PROMPT as PROMPT
+from .fi1_job import parse_model_order
 from .richbourse_client import fetch as richbourse_fetch
 
 BASE = "https://www.richbourse.com"
 LIST_URL = BASE + "/common/actualite-categorie/index/etats-financiers"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODELS = ("google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free")
 FIELDS = ("revenue", "net_income", "total_debt", "cash_and_cash_equivalents", "total_equity")
 COLUMNS = ("symbol", "fiscal_year", *FIELDS, "collected_at", "document_link")
 ANNUAL = re.compile(r"exercice|annuel|etats? financiers?|comptes|provisoire")
@@ -141,7 +142,7 @@ def validate(data: dict, expected_year: int | None, current_year: int) -> dict:
 def extract(post: Callable[..., Any], text: str, api_key: str, models: Iterable[str],
             expected_year: int | None, current_year: int) -> dict | None:
     """Try each model in order; return the first validated result."""
-    for model in models:
+    for position, model in enumerate(models):
         try:
             response = post(
                 OPENROUTER_URL,
@@ -159,7 +160,10 @@ def extract(post: Callable[..., Any], text: str, api_key: str, models: Iterable[
             if response.status_code != 200:
                 raise RuntimeError(f"HTTP {response.status_code}")
             content = response.json()["choices"][0]["message"]["content"]
-            return validate(parse_json(content), expected_year, current_year)
+            result = validate(parse_json(content), expected_year, current_year)
+            if position:
+                log(f"fallback model used ({model})")
+            return result
         except Exception as error:  # fall through to the next model
             # RuntimeError text is our own "HTTP <status>"; other messages may carry provider data.
             detail = f": {error}" if isinstance(error, RuntimeError) else ""
@@ -301,7 +305,7 @@ def config(env: dict) -> dict:
     dataset = env.get("TRADVISOR_INGESTION_DATASET", "stocks")
     primary = env.get("TRADVISOR_FINANCIALS_MODEL_PRIMARY") or MODELS[0]
     fallbacks = env.get("TRADVISOR_FINANCIALS_MODEL_FALLBACKS", ",".join(MODELS[1:]))
-    models = tuple(dict.fromkeys([primary, *(m.strip() for m in fallbacks.split(",") if m.strip())]))
+    models = parse_model_order(primary, fallbacks)
     if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", project):
         raise ValueError("invalid project")
     if not re.fullmatch(r"[A-Za-z_]\w*", dataset):
