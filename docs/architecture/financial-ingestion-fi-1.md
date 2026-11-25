@@ -56,7 +56,7 @@ flowchart LR
 ### 5.2 RichBourse annual-statement adapter
 
 - **Purpose:** Parse the selector and symbol-filtered pages, identify annual statement links, and reject quarterly/half-year activity reports.
-- **Reused:** Extend the existing RichBourse parsing seam in `functions/financials/fi1_job.py`, with transport in the shared `functions/financials/richbourse_client.py`, rather than create a second scraper. The earlier `scrape_financials.py` was removed as dead code.
+- **Reused:** Extend the existing RichBourse parsing seam in `functions/financials/fi1_source.py` (batch orchestration stays in `fi1_job.py`; the prompt, provider call and validation are in `fi1_extraction.py`; runtime settings are in `fi1_config.py`), with transport in the shared `functions/financials/richbourse_client.py`, rather than create a second scraper. The earlier `scrape_financials.py` was removed as dead code.
 - **Interfaces/data:** Returns symbol, fiscal year, announcement metadata, and absolute document link; it does not persist a PDF. `parse_annual_candidates(html, symbol, *, current_year, limit=5, selection_mode="historical")` keeps historical as the omitted-mode default; `previous_year` admits only `current_year - 1`, before the cap.
 - **Technology:** Existing curl-cffi/BeautifulSoup approach with bounded retries and one request at a time.
 

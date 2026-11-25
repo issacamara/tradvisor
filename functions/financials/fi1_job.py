@@ -2,112 +2,84 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-import math
 import json
 import os
 import re
 import time
-from typing import Any, Callable, Mapping, Sequence
-import unicodedata
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from numbers import Real
-from urllib.parse import quote, urljoin, urlparse
 from uuid import uuid4
+from typing import Any, Callable, Mapping, Sequence
 
-from .richbourse_client import fetch as richbourse_fetch
-from .richbourse_client import is_approved_url
-
-SELECTOR_URL = "https://www.richbourse.com/common/actualite-categorie/index/etats-financiers"
-RICHBOURSE_ORIGIN = "https://www.richbourse.com"
-EXTRACTION_KEYS = (
-    "fiscal_year",
-    "revenue",
-    "net_income",
-    "total_debt",
-    "cash_and_cash_equivalents",
-    "total_equity",
+from .fi1_source import (
+    SELECTOR_URL,
+    SOURCE_TIMEOUT_SECONDS,
+    _download_pdf,
+    _fetch_text,
+    _page_fiscal_years,
+    _page_publication_years,
+    _page_signature,
+    parse_annual_candidates,
+    parse_selector_symbols,
+    richbourse_symbol_page_url_for_page,
 )
-_YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
-_INTERIM_TERMS = (
-    "trimestre", "trimestriel", "semestr", "semester", "quarter", "half year",
-    "six month", "mi-annee",
+from .fi1_source import (
+    RICHBOURSE_ORIGIN,
+    _ANNUAL_TERMS,
+    _DATE,
+    _INTERIM_TERMS,
+    _YEAR,
+    _get_response,
+    _plain_text,
+    _publication_year,
+    is_approved_document_url,
+    richbourse_symbol_page_url,
 )
-_ANNUAL_TERMS = (
-    "annuel", "exercice", "etat financier", "etats financiers", "rapport annuel",
-    "bilan annuel", "comptes annuels",
+from .fi1_extraction import (
+    MODEL_ORDER,
+    PROVIDER_TIMEOUT_SECONDS,
+    _FINANCIAL_VALUE_KEYS,
+    _error_class,
+    _pdf_text,
+    _provider_attempt,
+    validate_extraction,
 )
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_ORDER = (
-    "gemma-4-31b-it",
-    "nvidia/nemotron-3.5-lightning:free",
-    "openai/gpt-4o-mini",
+from .fi1_extraction import (
+    EXTRACTION_KEYS,
+    OPENROUTER_URL,
+    OWNER_EXTRACTION_PROMPT,
+    ProviderHTTPError,
 )
-OWNER_EXTRACTION_PROMPT = """You are a financial data extraction expert. Extract structured financial data from a BRVM annual financial statement PDF.
-
-For each document, extract the following fields:
-
-fiscal_year: The fiscal year of the report (e.g., 2024). Use the most recent year covered by the statement, not the publication date.
-
-revenue: Generic operating revenue or "chiffre d'affaires" only. Never put bank net banking income ("produit net bancaire" / PNB), insurer premiums, interest income, or any category-specific activity measure in this field. Extract PNB separately as pnb. In local currency (XOF/FCFA), expressed in full units.
-
-net_income: Net income or "résultat net" (résultat net de l'exercice). Use the net result attributable to the company (résultat net part du groupe if consolidated accounts are shown alongside company-only accounts, otherwise résultat net). In local currency, expressed in full units.
-
-total_debt: Definition depends on company type:
-  - For NON-FINANCIAL companies (industrial, commercial, services, utilities): use total financial/interest-bearing debt — "dettes financières", "emprunts et dettes financières", or total dettes (excluding trade payables/fournisseurs and other non-financial liabilities when itemized separately). If only "total passif" is available with no breakdown, use total passif minus capitaux propres.
-  - For BANKS and financial institutions: "total_debt" does not follow the standard corporate definition. Instead, use the sum of interest-bearing liabilities to third parties, typically composed of: "dettes envers les établissements de crédit" (interbank borrowings), "dettes envers la clientèle" (customer deposits), and "emprunts obligataires et dettes rattachées" (bonds and related debt), if separately reported. If these line items are not individually broken out, use "total dettes" or "total passif" (excluding "capitaux propres" and "provisions techniques" for insurers) as a fallback. Do not include "capitaux propres", "provisions pour risques et charges", or off-balance-sheet commitments in this figure.
-  - For INSURANCE companies: use total technical and financial liabilities excluding equity — primarily "provisions techniques" plus any interest-bearing debt, if the breakdown is available; otherwise use total passif minus capitaux propres.
-  In local currency, expressed in full units.
-
-cash_and_cash_equivalents: Cash and cash equivalents — "trésorerie", "trésorerie et équivalents de trésorerie", or "disponibilités". For banks, this may appear as "caisse, banques centrales" or "trésorerie active" — use that if the standard line is absent. In local currency, expressed in full units.
-
-total_equity: Total equity — "capitaux propres" or "capitaux propres part du groupe" (total, including reserves, capital, and retained earnings — "report à nouveau"). In local currency, expressed in full units.
-
-symbol: The first 4 or 5 letters of the document name (before the "_" character).
-
-CRITICAL — DETECT COMPANY TYPE FIRST:
-Before extracting total_debt, determine whether the document is a bank/financial institution, an insurance company, or a non-financial (corporate) company, based on the statement structure, sector references, or company name (e.g., BOA, SGBCI, NSIA, SONIBANK are banks/insurers; industrial or commercial names like SONATEL, NESTLE, SOLIBRA are non-financial). Apply the matching total_debt definition above.
-
-CRITICAL — UNIT NORMALIZATION:
-Financial statements often present figures in thousands, millions, or billions of XOF, with the unit noted near the table header or in a footnote (e.g., "en milliers de FCFA", "en millions de FCFA", "montants exprimés en milliers d'unités monétaires"). You MUST detect this unit and convert every extracted monetary value into full base units (i.e., the actual FCFA amount) before returning it. Examples:
-- If the statement says "en milliers de FCFA" and shows 12 345, the actual value is 12345000.
-- If the statement says "en millions de FCFA" and shows 12, the actual value is 12000000.
-- If the statement says "en milliards de FCFA" and shows 1.2, the actual value is 1200000000.
-- If no unit is specified, assume the figures are already in full units (do not scale).
-Apply the detected scale factor consistently to ALL five monetary fields (revenue, net_income, total_debt, cash_and_cash_equivalents, total_equity) — do not mix scales within the same document. Double-check that the final numbers are plausible in magnitude for a BRVM-listed company (typically hundreds of millions to hundreds of billions of FCFA).
-
-Instructions for each document:
-- The documents are from companies listed on the BRVM (Bourse Régionale des Valeurs Mobilières), West Africa, and prepared under SYSCOHADA révisé / BCEAO-PCB norms.
-- The documents may be in French — look for: "chiffre d'affaires", "résultat net", "trésorerie", "capitaux propres", "dettes", "passifs", along with the unit disclosure (milliers/millions/milliards).
-- Extract the most recent fiscal year's data (usually the first/leftmost column in the balance sheet and income statement).
-- If a field is not found, use null — do not guess or estimate.
-- Do not include any explanation or text outside the output.
-
-Output format:\x20
-{
-  "fiscal_year": <integer or null>,
-  "revenue": <number or null>,
-  "net_income": <number or null>,
-  "total_debt": <number or null>,
-  "cash_and_cash_equivalents": <number or null>,
-  "total_equity": <number or null>
-}
-
-"""
-MAX_RUNTIME_SECONDS = 60 * 60
-MAX_PAGE_CONCURRENCY = 4
-MAX_ANNUAL_CANDIDATES = 5
-SOURCE_PACING_SECONDS = 1
-RUNTIME_TARGET = "financial_ingestion_job"
-SOURCE_TIMEOUT_SECONDS = 30
-PROVIDER_TIMEOUT_SECONDS = 120
-_FINANCIAL_VALUE_KEYS = (
-    "revenue",
-    "net_income",
-    "total_debt",
-    "cash_and_cash_equivalents",
-    "total_equity",
+from .fi1_config import (
+    MAX_ANNUAL_CANDIDATES,
+    MAX_PAGE_CONCURRENCY,
+    MAX_RUNTIME_SECONDS,
+    RuntimeConfiguration,
+    SOURCE_PACING_SECONDS,
 )
+from .fi1_config import RUNTIME_TARGET
+
+# Names moved to the fi1_* modules; kept importable from here for callers and tests.
+__all__ = [
+    "EXTRACTION_KEYS",
+    "OPENROUTER_URL",
+    "OWNER_EXTRACTION_PROMPT",
+    "ProviderHTTPError",
+    "RICHBOURSE_ORIGIN",
+    "RUNTIME_TARGET",
+    "_ANNUAL_TERMS",
+    "_DATE",
+    "_INTERIM_TERMS",
+    "_YEAR",
+    "_get_response",
+    "_plain_text",
+    "_publication_year",
+    "is_approved_document_url",
+    "richbourse_symbol_page_url",
+]
+
+
 _LOG_TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
 _SENSITIVE_LOG_TOKEN = re.compile(
     r"authorization|bearer|token|password|secret|api[_-]?key|email|uid|identifier|body",
@@ -115,313 +87,8 @@ _SENSITIVE_LOG_TOKEN = re.compile(
 )
 
 
-def _plain_text(value: str) -> str:
-    decomposed = unicodedata.normalize("NFD", value.casefold())
-    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
-
-
-def parse_selector_symbols(html: str) -> tuple[str, ...]:
-    from bs4 import BeautifulSoup
-
-    selector = BeautifulSoup(html, "html.parser").find("select", id="symbole")
-    if selector is None:
-        raise ValueError("RichBourse symbol selector is missing")
-    return tuple(
-        dict.fromkeys(
-            value
-            for option in selector.find_all("option")
-            if (value := (option.get("value") or "").strip())
-        )
-    )
-
-
-def richbourse_symbol_page_url(symbol: str) -> str:
-    symbol = symbol.strip()
-    if not symbol:
-        raise ValueError("symbol is required")
-    return f"{SELECTOR_URL}?symbole={quote(symbol, safe='')}"
-
-
-def richbourse_symbol_page_url_for_page(symbol: str, page: int) -> str:
-    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
-        raise ValueError("page must be a positive integer")
-    return f"{richbourse_symbol_page_url(symbol)}&page={page}"
-
-
-def is_approved_document_url(url: str) -> bool:
-    return is_approved_url(url)
-
-
-def parse_annual_candidates(
-    html: str,
-    symbol: str,
-    *,
-    current_year: int,
-    limit: int = 5,
-    selection_mode: str = "historical",
-) -> tuple[dict[str, Any], ...]:
-    from bs4 import BeautifulSoup
-
-    symbol = symbol.strip()
-    if not symbol:
-        raise ValueError("symbol is required")
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-        raise ValueError("limit must be a positive integer")
-    if not isinstance(selection_mode, str) or selection_mode not in {
-        "historical", "previous_year", "publication_year"
-    }:
-        raise ValueError("selection_mode must be historical, previous_year, or publication_year")
-
-    soup = BeautifulSoup(html, "html.parser")
-    by_year: dict[int, dict[str, Any]] = {}
-    candidates: list[dict[str, Any]] = []
-    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
-        link = row.find("a", href=True)
-        if link is None:
-            continue
-        title = link.get_text(" ", strip=True)
-        document_link = urljoin(SELECTOR_URL, link["href"].strip())
-        if not is_approved_document_url(document_link):
-            continue
-
-        slug = _plain_text(urlparse(document_link).path.replace("-", " ").replace("_", " "))
-        normalized = _plain_text(title)
-        identity = f"{normalized} {slug}"
-        if any(term in identity for term in _INTERIM_TERMS):
-            continue
-        if not any(term in identity for term in _ANNUAL_TERMS):
-            continue
-        fiscal_year_match = _YEAR.search(normalized)
-        if fiscal_year_match is None:
-            fiscal_year_match = _YEAR.search(slug)
-        if fiscal_year_match is None:
-            continue
-
-        fiscal_year = int(fiscal_year_match.group(1))
-        publication_year = _publication_year(row)
-        if selection_mode == "publication_year":
-            if publication_year is None or publication_year != current_year:
-                continue
-            candidates.append(
-                {"symbol": symbol, "fiscal_year": fiscal_year, "document_link": document_link}
-            )
-            continue
-
-        year = fiscal_year
-        if selection_mode == "previous_year":
-            if year != current_year - 1:
-                continue
-        elif not current_year - 5 <= year < current_year:
-            continue
-
-        if year in by_year:
-            continue
-        by_year[year] = {"symbol": symbol, "fiscal_year": year, "document_link": document_link}
-
-    if selection_mode == "publication_year":
-        # Unlike historical selection, publication-year mode must be able to
-        # try every eligible document in listing order until one validates.
-        return tuple(candidates)
-    return tuple(by_year[year] for year in sorted(by_year, reverse=True)[:limit])
-
-
-_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/((?:19|20)\d{2})\Z")
-
-
-def _publication_year(row: Any) -> int | None:
-    for value in row.stripped_strings:
-        match = _DATE.search(value)
-        if match is None:
-            continue
-        try:
-            return datetime.strptime(match.group(), "%d/%m/%Y").year
-        except ValueError:
-            continue
-    return None
-
-
-def _page_publication_years(html: str) -> tuple[int, ...]:
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html, "html.parser")
-    years = []
-    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
-        year = _publication_year(row)
-        if year is not None:
-            years.append(year)
-    return tuple(years)
-
-
-def _page_fiscal_years(html: str) -> tuple[int, ...]:
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html, "html.parser")
-    years = []
-    for row in soup.select("div.ligne_paire, div.ligne_impaire"):
-        link = row.find("a", href=True)
-        if link is None:
-            continue
-        source_text = _plain_text(link.get_text(" ", strip=True))
-        year = _YEAR.search(source_text)
-        if year is None:
-            year = _YEAR.search(_plain_text(urlparse(link["href"]).path))
-        if year:
-            years.append(int(year.group(1)))
-    return tuple(years)
-
-
-def _page_signature(html: str) -> str:
-    from bs4 import BeautifulSoup
-
-    return " ".join(BeautifulSoup(html, "html.parser").stripped_strings)
-
-
-def validate_extraction(
-    payload: Mapping[str, object], *, source_fiscal_year: int
-) -> dict[str, Real | int | None]:
-    if not isinstance(payload, Mapping) or set(payload) != set(EXTRACTION_KEYS):
-        raise ValueError("extraction must contain exactly the FI-1 keys")
-    if (
-        isinstance(source_fiscal_year, bool)
-        or not isinstance(source_fiscal_year, int)
-        or isinstance(payload["fiscal_year"], bool)
-        or not isinstance(payload["fiscal_year"], int)
-        or payload["fiscal_year"] != source_fiscal_year
-    ):
-        raise ValueError("extracted fiscal year does not match source metadata")
-
-    values: dict[str, Real | int | None] = {"fiscal_year": source_fiscal_year}
-    for key in EXTRACTION_KEYS[1:]:
-        value = payload[key]
-        if value is not None:
-            try:
-                finite = math.isfinite(value)
-            except (OverflowError, TypeError, ValueError):
-                finite = False
-            if isinstance(value, bool) or not isinstance(value, Real) or not finite:
-                raise ValueError("extraction values must be finite numbers or null")
-        values[key] = value
-    return values
-
-
 class JobDeadlineExceeded(TimeoutError):
     """The configured job time budget was exhausted."""
-
-
-class ProviderHTTPError(RuntimeError):
-    """OpenRouter returned an HTTP failure with a safe status-only code."""
-
-    def __init__(self, status_code: int) -> None:
-        if not 100 <= status_code <= 599:
-            raise ValueError("provider HTTP status is invalid")
-        self.status_code = status_code
-        super().__init__(f"ProviderHTTP{status_code}")
-
-
-@dataclass(frozen=True)
-class RuntimeConfiguration:
-    """Validated non-secret settings supplied by the Terraform-managed job."""
-
-    project_id: str
-    environment: str
-    dataset: str
-    financials_table: str
-    staging_table: str
-    model_order: tuple[str, ...]
-    max_concurrent_requests: int
-    max_reports_per_symbol: int
-    selection_mode: str
-
-    @classmethod
-    def from_environment(
-        cls, environ: Mapping[str, str] | None = None
-    ) -> "RuntimeConfiguration":
-        values = os.environ if environ is None else environ
-        selection_mode = values.get("TRADVISOR_FINANCIALS_SELECTION_MODE", "historical")
-        if not isinstance(selection_mode, str) or selection_mode not in {
-            "historical", "previous_year", "publication_year"
-        }:
-            raise ValueError(
-                "TRADVISOR_FINANCIALS_SELECTION_MODE must be historical, previous_year, or publication_year"
-            )
-        if values.get("TRADVISOR_RUNTIME_TARGET") != RUNTIME_TARGET:
-            raise ValueError("TRADVISOR_RUNTIME_TARGET must select the FI-1 job")
-        environment = values.get("TRADVISOR_ENVIRONMENT", "")
-        if environment not in {"development", "production"}:
-            raise ValueError("TRADVISOR_ENVIRONMENT must be development or production")
-        project_id = values.get("TRADVISOR_TARGET_PROJECT_ID", "")
-        if not project_id or values.get("TRADVISOR_ENVIRONMENT_PROJECT_ID") != project_id:
-            raise ValueError("FI-1 target and environment projects must match")
-        if values.get("GOOGLE_CLOUD_PROJECT") != project_id:
-            raise ValueError("Google Cloud project must match the FI-1 target project")
-        dataset = values.get("TRADVISOR_INGESTION_DATASET", "")
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dataset) is None:
-            raise ValueError("invalid financial dataset configuration")
-
-        prefix = f"{project_id}.{dataset}."
-        if values.get("TRADVISOR_INGESTION_COMPANIES_TABLE") != prefix + "brvm_companies":
-            raise ValueError("FI-1 company table does not match its managed dataset")
-        financials_table = values.get("TRADVISOR_INGESTION_FINANCIALS_TABLE", "")
-        staging_table = values.get("TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE", "")
-        if financials_table != prefix + "financials":
-            raise ValueError("FI-1 financial table does not match its managed dataset")
-        if staging_table != prefix + "financials_staging":
-            raise ValueError("FI-1 staging table does not match its managed dataset")
-
-        primary = values.get("TRADVISOR_FINANCIALS_MODEL_PRIMARY", "")
-        fallbacks = tuple(
-            item.strip()
-            for item in values.get("TRADVISOR_FINANCIALS_MODEL_FALLBACKS", "").split(",")
-            if item.strip()
-        )
-        model_order = (primary, *fallbacks)
-        if not primary or len(set(model_order)) != len(model_order):
-            raise ValueError("FI-1 model configuration must contain unique ordered models")
-
-        def bounded_integer(name: str, *, minimum: int, maximum: int) -> int:
-            value = values.get(name, "")
-            if not value.isdecimal():
-                raise ValueError(f"{name} must be an integer")
-            parsed = int(value)
-            if not minimum <= parsed <= maximum:
-                raise ValueError(f"{name} is outside its approved bounds")
-            return parsed
-
-        bounded_integer("TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL", minimum=1, maximum=1)
-        return cls(
-            project_id=project_id,
-            environment=environment,
-            dataset=dataset,
-            financials_table=financials_table,
-            staging_table=staging_table,
-            model_order=model_order,
-            max_concurrent_requests=bounded_integer(
-                "TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS",
-                minimum=1,
-                maximum=MAX_PAGE_CONCURRENCY,
-            ),
-            max_reports_per_symbol=bounded_integer(
-                "TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL",
-                minimum=1,
-                maximum=MAX_ANNUAL_CANDIDATES,
-            ),
-            selection_mode=selection_mode,
-        )
-
-    def public_summary(self) -> dict[str, Any]:
-        """Return non-secret settings for container configuration smoke checks."""
-        return {
-            "runtime_target": RUNTIME_TARGET,
-            "environment": self.environment,
-            "project_id": self.project_id,
-            "dataset": self.dataset,
-            "financials_table": self.financials_table,
-            "staging_table": self.staging_table,
-            "model_order": list(self.model_order),
-            "max_concurrent_requests": self.max_concurrent_requests,
-            "max_reports_per_symbol": self.max_reports_per_symbol,
-            "selection_mode": self.selection_mode,
-        }
 
 
 @dataclass(frozen=True)
@@ -483,82 +150,6 @@ def _safe_log_token(value: str) -> str:
 
 def _log_stage_failure(stage: str, error: Exception) -> None:
     print(f"FI-1 {stage} failed ({_safe_log_token(_error_class(error))})", flush=True)
-
-
-def _get_response(url: str, *, accept: str, timeout: float) -> Any:
-    """Fetch one RichBourse response through the shared client."""
-    return richbourse_fetch(
-        url,
-        accept=accept,
-        headers={"Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8"},
-        timeout=timeout,
-    )
-
-
-def _fetch_text(url: str, timeout: float) -> str:
-    response = _get_response(
-        url,
-        accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        timeout=timeout,
-    )
-    return response.content.decode("utf-8", errors="replace")
-
-
-def _download_pdf(url: str, timeout: float) -> bytes:
-    response = _get_response(url, accept="application/pdf,*/*;q=0.8", timeout=timeout)
-    content = bytes(response.content)
-    if not content.startswith(b"%PDF-"):
-        raise ValueError("RichBourse response is not a PDF")
-    return content
-
-
-def _pdf_text(pdf_bytes: bytes) -> str:
-    """Reuse the existing PDF text adapter without retaining its output."""
-    from insert_financials import extract_text_from_pdf
-
-    text = extract_text_from_pdf(pdf_bytes)
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("PDF contains no extractable text")
-    return text
-
-
-def _provider_attempt(
-    document_text: str, model: str, api_key: str, timeout: float
-) -> Mapping[str, object]:
-    from curl_cffi import CurlHttpVersion, requests
-
-    response = requests.post(
-        OPENROUTER_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://tradvisor.app",
-            "X-Title": "TRADVISOR BRVM",
-        },
-        json={
-            "model": model,
-            "provider": {"allow_fallbacks": False},
-            "response_format": {"type": "json_object"},
-            "temperature": 0,
-            "messages": [
-                {"role": "system", "content": OWNER_EXTRACTION_PROMPT},
-                {"role": "user", "content": document_text},
-            ],
-        },
-        timeout=timeout,
-        impersonate="chrome",
-        http_version=CurlHttpVersion.V1_1,
-    )
-    if response.status_code != 200:
-        raise ProviderHTTPError(response.status_code)
-    payload = response.json()
-    content = payload["choices"][0]["message"]["content"]
-    if not isinstance(content, str):
-        raise ValueError("provider result is not JSON text")
-    result = json.loads(content)
-    if not isinstance(result, Mapping):
-        raise ValueError("provider result is not an object")
-    return result
 
 
 def _default_adapters(
@@ -934,12 +525,6 @@ def _extract_candidate(
                 failure_class.append(_error_class(error))
             continue
     return None
-
-
-def _error_class(error: Exception) -> str:
-    if isinstance(error, ProviderHTTPError):
-        return f"ProviderHTTP{error.status_code}"
-    return type(error).__name__
 
 
 def main(argv: Sequence[str] | None = None) -> None:

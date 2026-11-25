@@ -6,6 +6,9 @@
 !functions/
 !functions/financials/
 !functions/financials/richbourse_client.py
+!functions/financials/fi1_config.py
+!functions/financials/fi1_extraction.py
+!functions/financials/fi1_source.py
 !functions/financials/fi1_job.py
 !functions/financials/scrape_financials_job.py
 !functions/financials/scrape_financials

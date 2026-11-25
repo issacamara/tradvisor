@@ -10,6 +10,9 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /app/requirements.l
 
 RUN mkdir -p /app/functions/financials
 COPY functions/financials/richbourse_client.py /app/functions/financials/
+COPY functions/financials/fi1_config.py /app/functions/financials/
+COPY functions/financials/fi1_extraction.py /app/functions/financials/
+COPY functions/financials/fi1_source.py /app/functions/financials/
 COPY functions/financials/fi1_job.py /app/functions/financials/
 COPY functions/financials/scrape_financials_job.py /app/functions/financials/
 COPY functions/financials/monthly_financials.py /app/functions/financials/
