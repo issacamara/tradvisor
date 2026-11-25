@@ -190,4 +190,4 @@ The owner approved R1–R7 on 2026-10-12, including complete DuckDB removal. The
 
 These are approved design requirements, not claims that the codebase is now compliant. Implementation must preserve existing resources and source evidence, pass focused checks and current-head review/CI, and obtain separate authorization for cloud plans/applies, migrations, paid queries, seeding, schedule activation or production changes.
 
-Only the engineering amendment is synchronized with `tradvisor_architecture.md`. The pre-existing Swing guard/eligibility wording difference is preserved and requires separate owner reconciliation before any financial-rule change; TF-1 does not choose between those formulations.
+Only the engineering amendment is synchronized with `../../docs/reference/tradvisor_architecture.md`. The pre-existing Swing guard/eligibility wording difference is preserved and requires separate owner reconciliation before any financial-rule change; TF-1 does not choose between those formulations.

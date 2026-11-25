@@ -3,7 +3,7 @@
 **Version:** 1.1
 **Date:** 2026-09-20
 **Status:** Adopted evaluation baseline under stakeholder delegation; not empirically calibrated
-**References:** `tradvisor_brd.md` sections 6.4-6.6; `tradvisor_architecture.md` section 5
+**References:** `../../docs/reference/tradvisor_brd.md` sections 6.4-6.6; `../../docs/reference/tradvisor_architecture.md` section 5
 
 ## 1. Authority And Boundaries
 

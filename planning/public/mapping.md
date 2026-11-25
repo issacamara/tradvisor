@@ -3,7 +3,7 @@
 **Version:** 0.5
 **Date:** 2026-09-20
 **Status:** PROPOSAL - evidence-based implementation mapping; not production coverage certification
-**References:** [BRD v1.23](tradvisor_brd.md), [Architecture v0.38](tradvisor_architecture.md), [API/data contract v0.12](tradvisor_api_data_contract.md), [Financial contract v1.1](tradvisor_financial_contract.md)
+**References:** [BRD v1.23](../../docs/reference/tradvisor_brd.md), [Architecture v0.38](../../docs/reference/tradvisor_architecture.md), [API/data contract v0.12](../../docs/reference/tradvisor_api_data_contract.md), [Financial contract v1.1](../../docs/reference/tradvisor_financial_contract.md)
 
 ## 1. Scope And Findings
 
