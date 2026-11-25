@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checkpointed dispatcher entry point for the autonomous Codex workflow."""
-import json, os, subprocess, sys, time
+import json, subprocess, sys, time
 from pathlib import Path
 HERE=Path(__file__).parent; ROOT=HERE.parent; RUNS=ROOT/'.agent-runs'; STATE=RUNS/'active.json'
 def command(*args): return subprocess.check_output(args,cwd=ROOT,text=True).strip()

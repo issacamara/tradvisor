@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 HERE=Path(__file__).parent
 def main():
-    bundle=json.loads((HERE/'backlog.json').read_text())
+    json.loads((HERE/'backlog.json').read_text())  # fail early if the backlog is missing or invalid
     bodies=json.loads((HERE/'issue_bodies.json').read_text()) if (HERE/'issue_bodies.json').exists() else {'epic':'','tickets':{}}
     (HERE/'tradvisor_backlog.md').write_text(bodies.get('epic',''))
     (HERE/'issues').mkdir(exist_ok=True)

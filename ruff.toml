@@ -10,3 +10,9 @@ ignore = [
   "B023",  # loop-variable closures in the test harnesses; revisit separately
   "B905",  # zip(strict=) not required yet
 ]
+
+[lint.per-file-ignores]
+# Fixtures imported from a sibling support module are redefined by the test
+# parameters that request them; that is how pytest wires them.
+"tests/ingestion/loads/test_*.py" = ["F811"]
+"tests/ingestion/financial_pipeline/test_fi1_*.py" = ["F811"]
