@@ -38,11 +38,18 @@ _ANNUAL_TERMS = (
     "bilan annuel", "comptes annuels",
 )
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_ORDER = (
-    "gemma-4-31b-it",
-    "nvidia/nemotron-3.5-lightning:free",
-    "openai/gpt-4o-mini",
-)
+# Single default model chain; Terraform and monthly_financials must match it.
+MODEL_ORDER = ("google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free")
+_MODEL_ID = re.compile(r"[a-z0-9][a-z0-9_.-]*/[A-Za-z0-9_.:-]+")
+
+
+def parse_model_order(primary: str, fallbacks_csv: str) -> tuple[str, ...]:
+    """Validate the ordered OpenRouter chain: provider-prefixed, unique ids."""
+    fallbacks = [item.strip() for item in fallbacks_csv.split(",") if item.strip()]
+    order = (primary, *fallbacks)
+    if len(set(order)) != len(order) or not all(_MODEL_ID.fullmatch(m) for m in order):
+        raise ValueError("model configuration must be unique provider/model ids")
+    return order
 OWNER_EXTRACTION_PROMPT = """You are a financial data extraction expert. Extract structured financial data from a BRVM annual financial statement PDF.
 
 For each document, extract the following fields:
@@ -368,15 +375,10 @@ class RuntimeConfiguration:
         if staging_table != prefix + "financials_staging":
             raise ValueError("FI-1 staging table does not match its managed dataset")
 
-        primary = values.get("TRADVISOR_FINANCIALS_MODEL_PRIMARY", "")
-        fallbacks = tuple(
-            item.strip()
-            for item in values.get("TRADVISOR_FINANCIALS_MODEL_FALLBACKS", "").split(",")
-            if item.strip()
+        model_order = parse_model_order(
+            values.get("TRADVISOR_FINANCIALS_MODEL_PRIMARY", ""),
+            values.get("TRADVISOR_FINANCIALS_MODEL_FALLBACKS", ""),
         )
-        model_order = (primary, *fallbacks)
-        if not primary or len(set(model_order)) != len(model_order):
-            raise ValueError("FI-1 model configuration must contain unique ordered models")
 
         def bounded_integer(name: str, *, minimum: int, maximum: int) -> int:
             value = values.get(name, "")
@@ -926,6 +928,8 @@ def _extract_candidate(
             )
             if not any(extraction[key] is not None for key in _FINANCIAL_VALUE_KEYS):
                 raise ValueError("provider result has no usable financial values")
+            if model != model_order[0]:
+                print(f"FI-1 fallback model used ({_safe_log_token(model)})", flush=True)
             return extraction
         except JobDeadlineExceeded:
             raise

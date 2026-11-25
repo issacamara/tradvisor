@@ -71,8 +71,8 @@ jobs:
               -e TRADVISOR_INGESTION_COMPANIES_TABLE=fixture-project.stocks.brvm_companies \
               -e TRADVISOR_INGESTION_FINANCIALS_TABLE=fixture-project.stocks.financials \
               -e TRADVISOR_INGESTION_FINANCIALS_STAGING_TABLE=fixture-project.stocks.financials_staging \
-              -e TRADVISOR_FINANCIALS_MODEL_PRIMARY=gemma-4-31b-it \
-              -e TRADVISOR_FINANCIALS_MODEL_FALLBACKS=nvidia/nemotron-3.5-lightning:free,openai/gpt-4o-mini \
+              -e TRADVISOR_FINANCIALS_MODEL_PRIMARY=google/gemma-4-31b-it:free \
+              -e TRADVISOR_FINANCIALS_MODEL_FALLBACKS=nvidia/nemotron-3-ultra-550b-a55b:free \
               -e TRADVISOR_FINANCIALS_MAX_CONCURRENT_REQUESTS=4 \
               -e TRADVISOR_FINANCIALS_MAX_REPORTS_PER_SYMBOL=5 \
               -e TRADVISOR_FINANCIALS_MAX_ATTEMPTS_PER_MODEL=1 \
