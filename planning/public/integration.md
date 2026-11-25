@@ -3,7 +3,7 @@
 **Status:** APPROVED - integration design baseline; not implemented
 **Version:** 1.0
 **Date:** 2026-09-20
-**References:** [Architecture v0.38](tradvisor_architecture.md), [API/data contract v0.12](tradvisor_api_data_contract.md), [Source mapping v0.5](tradvisor_source_mapping.md)
+**References:** [Architecture v0.38](../../docs/reference/tradvisor_architecture.md), [API/data contract v0.12](../../docs/reference/tradvisor_api_data_contract.md), [Source mapping v0.5](../../docs/reference/tradvisor_source_mapping.md)
 
 ## 1. Review Boundary
 

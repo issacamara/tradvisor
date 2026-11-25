@@ -7,7 +7,7 @@
 
 ## 1. Authority And Review Boundary
 
-**Integration baseline approved 2026-09-20:** [Integration Design v1.0](tradvisor_integration_draft.md) is normative for session timing, execution-price publication and recovery-register ordering/completeness. Its sections 2-4 supersede earlier unspecified integrations and fence-first reset sequencing. Use a verified officialization-plus-60-seconds cutoff; publish immutable execution revisions with server timestamps and transactionally checked control records; persist restrictive recovery intent before live fencing/denial. Scan register intents and ordered heads before reopening, block globally on incomplete inventory, and block affected subjects on unresolved chains/intents. Isolate the old database and workers before reopening the restored target. The linked verification matrix remains required implementation work.
+**Integration baseline approved 2026-09-20:** [Integration Design v1.0](../../docs/reference/tradvisor_integration_draft.md) is normative for session timing, execution-price publication and recovery-register ordering/completeness. Its sections 2-4 supersede earlier unspecified integrations and fence-first reset sequencing. Use a verified officialization-plus-60-seconds cutoff; publish immutable execution revisions with server timestamps and transactionally checked control records; persist restrictive recovery intent before live fencing/denial. Scan register intents and ordered heads before reopening, block globally on incomplete inventory, and block affected subjects on unresolved chains/intents. Isolate the old database and workers before reopening the restored target. The linked verification matrix remains required implementation work.
 
 Preserve the approved financial rules, private admission, deferred Dividend/Balanced scoring, and operating/retention requirements. This document specifies transport and logical data contracts, not a new service or a change to investment rules. Existing source tables are inputs, not evidence that every field below is already available. BRD controls scope and the financial contract controls calculations.
 
@@ -88,7 +88,7 @@ Per-stock unavailable analysis is a successful 200 response with explicit calcul
 
 ## 6. Logical Analytical Inputs
 
-[Source-To-Calculation Mapping v0.5](tradvisor_source_mapping.md) supplies the field-level mapping, sample evidence, conditional derivations, unavailable inputs and ingestion worklist for these logical entities. Source labels do not establish verified trading dates, financial scope or complete history; unresolved fields retain the unavailable behavior specified here and in the financial contract.
+[Source-To-Calculation Mapping v0.5](../../docs/reference/tradvisor_source_mapping.md) supplies the field-level mapping, sample evidence, conditional derivations, unavailable inputs and ingestion worklist for these logical entities. Source labels do not establish verified trading dates, financial scope or complete history; unresolved fields retain the unavailable behavior specified here and in the financial contract.
 
 These are normalized contracts to map from the supplied tables, not confirmed physical columns. `required` means necessary to the dependent computation, not that ingestion may fabricate it. Each record carries schema/parser version and source evidence references. Missing semantic fields leave dependent results unavailable.
 
