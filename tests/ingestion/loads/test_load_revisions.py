@@ -8,9 +8,9 @@ import pytest
 
 from loads_support import (
     _FakeBigQueryClient,
-    loader,
+    loader,  # noqa: F401
     _rows,
-)  # noqa: F401 (imported fixtures)
+)
 
 
 def test_conflicting_duplicate_source_keys_are_rejected_before_bigquery(

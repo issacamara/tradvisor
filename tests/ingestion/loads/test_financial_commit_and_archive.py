@@ -9,11 +9,11 @@ import pytest
 
 from loads_support import (
     _FakeBigQueryClient,
-    loader,
+    loader,  # noqa: F401
     _rows,
     _FakePdfBlob,
     _load_financial_processor,
-)  # noqa: F401 (imported fixtures)
+)
 
 
 def test_monthly_scrape_commit_order_keeps_current_and_revision_consistent(

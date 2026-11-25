@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Literal
@@ -176,7 +175,7 @@ def _profitability_term(rows: tuple[NormalizedFinancial, ...]) -> TermResult:
     annual_reasons: list[str] = []
     if _history_gap(rows):
         annual_reasons.append("annual_history_gap")
-    for year, income, opening, closing in zip(rows, earnings, opening_equities, closing_equities):
+    for _year, income, opening, closing in zip(rows, earnings, opening_equities, closing_equities):
         assert income is not None and opening is not None and closing is not None
         if opening <= 0 or closing <= 0:
             annual_factors.append(Decimal(0))

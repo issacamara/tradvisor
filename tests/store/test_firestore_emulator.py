@@ -20,7 +20,6 @@ from backend.store.repositories import (
     VersionedDocument,
 )
 from backend.store.transactions import Transaction
-from backend.contracts.scalars import OpaqueIdentifier
 
 
 class Record(BaseModel):

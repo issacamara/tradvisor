@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import ModuleType, SimpleNamespace
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, urlparse
 import pytest
 from functions.financials.fi1_job import MAX_RUNTIME_SECONDS, MODEL_ORDER, SELECTOR_URL, JobDeadlineExceeded, RuntimeAdapters, _get_response, run_batch
@@ -14,8 +14,8 @@ from fi1_support import (
     selector_html,
     Harness,
     run,
-    disable_source_pacing_in_offline_tests,
-)  # noqa: F401 (imported fixtures)
+    disable_source_pacing_in_offline_tests,  # noqa: F401
+)
 
 
 def test_symbol_pages_are_requested_serially_in_selector_order() -> None:

@@ -43,14 +43,16 @@ jobs:
       - name: Run backend regression and wave suites
         run: python -m pytest tests -q
 
-      - name: Type check backend authentication
-        run: mypy --strict backend/auth tests/auth
+      - name: Lint Python (ruff)
+        run: |
+          python -m pip install ruff==0.17.6
+          ruff check backend functions scripts tests
+
+      - name: Type check backend
+        run: mypy --config-file backend/pyproject.toml --strict backend tests/auth tests/store
 
       - name: Run application store tests
         run: python -m pytest tests/store -q
-
-      - name: Type check application store
-        run: mypy --strict backend/store tests/store
 
       - name: Check Python syntax
         run: python -m compileall functions/ingestion functions

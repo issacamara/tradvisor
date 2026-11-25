@@ -60,7 +60,6 @@ class CloudTasksPublicationScheduler:
             f"projects/{self._configuration.project_id}/locations/"
             f"{self._configuration.region}/queues/{self._configuration.queue_name}"
         )
-        payload = json.dumps({"completion": completion.model_dump(mode="json")}).encode()
         request = {
             "task": {
                 "httpRequest": {
@@ -125,9 +124,9 @@ class CloudRunJobInvoker:
 
 def build_controller() -> PublicationRequestController:
     configuration = PublicationControlRuntimeConfiguration.from_environment()
-    from google.cloud import storage  # type: ignore[import-untyped]
+    from google.cloud import storage
 
-    bucket = storage.Client(project=configuration.project_id).bucket(configuration.state_bucket)
+    bucket = storage.Client(project=configuration.project_id).bucket(configuration.state_bucket)  # type: ignore[no-untyped-call]
     return PublicationRequestController(
         GcsPublicationControlStore(bucket),
         CloudRunJobInvoker(configuration),

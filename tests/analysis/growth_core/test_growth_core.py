@@ -8,7 +8,6 @@ from decimal import Decimal
 import pytest
 
 from backend.analysis.growth_core import (
-    GrowthCalculationError,
     GrowthInput,
     calculate_growth_core,
 )

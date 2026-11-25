@@ -14,8 +14,8 @@ from fi1_support import (
     runtime_environment,
     Harness,
     run,
-    disable_source_pacing_in_offline_tests,
-)  # noqa: F401 (imported fixtures)
+    disable_source_pacing_in_offline_tests,  # noqa: F401
+)
 
 
 def test_invalid_run_batch_mode_fails_before_adapter_access() -> None:

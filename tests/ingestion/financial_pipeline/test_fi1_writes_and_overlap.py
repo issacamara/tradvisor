@@ -15,8 +15,8 @@ from fi1_support import (
     VALID,
     Harness,
     run,
-    disable_source_pacing_in_offline_tests,
-)  # noqa: F401 (imported fixtures)
+    disable_source_pacing_in_offline_tests,  # noqa: F401
+)
 
 
 def test_default_writer_uses_legacy_managed_helper_call_shape(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,7 +97,7 @@ def test_overlapping_fi1_modes_can_insert_duplicate_logical_keys(
     read_barrier = threading.Barrier(2)
     stored_rows: list[dict[str, Any]] = []
     adapters = []
-    for mode in (first_mode, second_mode):
+    for _mode in (first_mode, second_mode):
         run_adapters = fake.adapters()
         read_existing = run_adapters.read_existing
         write_rows = run_adapters.write_rows

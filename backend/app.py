@@ -64,7 +64,7 @@ ERROR_MESSAGES: Final = {
 @lru_cache(maxsize=1)
 def _production_admissions() -> AdmissionRepository:
     configuration = _api_configuration()
-    from google.cloud import firestore  # type: ignore[import-untyped]
+    from google.cloud import firestore
     from google.cloud import storage
     from backend.recovery.register import GcsStorageAdapter
 
@@ -72,8 +72,8 @@ def _production_admissions() -> AdmissionRepository:
         project=configuration.project_id,
         database=configuration.firestore_database,
     )
-    storage_client = storage.Client(project=configuration.project_id)
-    register = GcsStorageAdapter(storage_client.bucket(configuration.recovery_bucket))
+    storage_client = storage.Client(project=configuration.project_id)  # type: ignore[no-untyped-call]
+    register = GcsStorageAdapter(storage_client.bucket(configuration.recovery_bucket))  # type: ignore[no-untyped-call]
     return FirestoreAdmissionRepository(client, deny_fence=RegisterAdmissionDenyFence(register))
 
 

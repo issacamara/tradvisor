@@ -9,9 +9,8 @@ from functions.financials.fi1_job import MODEL_ORDER, RuntimeConfiguration, _def
 
 from fi1_support import (
     runtime_environment,
-    run,
-    disable_source_pacing_in_offline_tests,
-)  # noqa: F401 (imported fixtures)
+    disable_source_pacing_in_offline_tests,  # noqa: F401
+)
 
 
 def test_runtime_configuration_consumes_terraform_managed_values() -> None:

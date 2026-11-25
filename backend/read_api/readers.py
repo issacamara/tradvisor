@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from backend.publication.analysis import AnalyticalPublisher, ServingStock
-from backend.read_api.cursors import CursorClaims, CursorError, decode_cursor, encode_cursor
+from backend.publication.analysis import ServingStock
+from backend.read_api.cursors import CursorClaims, decode_cursor, encode_cursor
 from backend.store.repositories import MAX_PAGE_SIZE, Page
 class AnalysisPublisher(Protocol):
     def active_publication(self) -> Any:

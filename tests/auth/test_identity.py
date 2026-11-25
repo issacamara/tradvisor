@@ -205,7 +205,7 @@ def test_restored_old_allowlist_is_rejected_by_durable_deny_fence() -> None:
 
 
 def test_register_head_deny_fence_rejects_restored_allowlist() -> None:
-    from backend.recovery.register import InventoryPage, Intent, SubjectHead, build_intent
+    from backend.recovery.register import InventoryPage, SubjectHead, build_intent
 
     class Register:
         def get_head(self, subject: str) -> SubjectHead:

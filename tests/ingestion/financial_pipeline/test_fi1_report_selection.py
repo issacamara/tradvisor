@@ -14,8 +14,8 @@ from fi1_support import (
     selector_html,
     Harness,
     run,
-    disable_source_pacing_in_offline_tests,
-)  # noqa: F401 (imported fixtures)
+    disable_source_pacing_in_offline_tests,  # noqa: F401
+)
 
 
 @pytest.mark.parametrize(("year", "expected"), [(2026, [2025, 2021]), (2027, [2026, 2025])])

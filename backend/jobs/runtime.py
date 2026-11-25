@@ -18,7 +18,7 @@ from backend.configuration import RuntimeConfiguration
 from backend.analysis.atr import calculate_atr14
 from backend.analysis.ema import calculate_ema20_50
 from backend.analysis.inputs import AnalyticalInputSnapshot as TechnicalSnapshot, SessionInput
-from backend.analysis.liquidity import CurrentTradeGate as LiquidityTradeGate, LiquidityResult
+from backend.analysis.liquidity import LiquidityResult
 from backend.analysis.rsi import calculate_rsi14
 from backend.analysis.swing import CurrentTradeGate, SwingStrategyInput, evaluate_swing
 from backend.analysis.growth_core import GrowthInput, calculate_growth_core
@@ -57,7 +57,7 @@ class BigQuerySharesReader(AnalyticalSnapshotReader):
         self._active_publication = active_publication
 
     def read(self, snapshot_name: str) -> AnalyticalInputSnapshot | None:
-        from google.cloud import bigquery  # type: ignore[import-untyped]
+        from google.cloud import bigquery
 
         del snapshot_name
         # The analytical snapshot currently contains indicators only. Enrich it
@@ -382,7 +382,7 @@ def _development_swing_output(
         high = _micros(row.get("high"))
         low = _micros(row.get("low"))
         true_range = None
-        true_range_state = "unknown"
+        true_range_state: Literal["observed", "modeled_zero_range", "unknown"] = "unknown"
         if close is not None and high is not None and low is not None:
             if previous_close is None:
                 true_range = high - low
@@ -425,7 +425,7 @@ def _development_swing_output(
         technical.snapshot_id, "assessable" if len(turnovers) == 20 else "unavailable",
         median if len(turnovers) == 20 else None,
         len(turnovers) if len(turnovers) == 20 else None, "estimated" if len(turnovers) == 20 else None,
-        None if len(turnovers) != 20 else median >= Decimal("5000000") and len(turnovers) >= 18,
+        None if len(turnovers) != 20 else median is not None and median >= Decimal("5000000") and len(turnovers) >= 18,
         tuple(item.session_id for item in technical.sessions[-20:]), (evidence,),
         () if len(turnovers) == 20 else ("history_incomplete",),
     )

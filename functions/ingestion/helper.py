@@ -93,6 +93,7 @@ def table_exists(table_name='ratings', project_id=None, dataset='stocks'):
     Returns:
     - True if table exists, False otherwise
     """
+    from google.api_core.exceptions import NotFound
     from google.auth import default
     from google.cloud import bigquery
     
@@ -108,8 +109,12 @@ def table_exists(table_name='ratings', project_id=None, dataset='stocks'):
         table_ref = dataset_ref.table(table_name)
         client.get_table(table_ref)
         return True
-    except Exception:
+    except NotFound:
         return False
+    except Exception as error:
+        # Permission, quota and network failures must not read as "table missing".
+        emit_event("ingestion.table_exists", "failed", error_class=type(error).__name__)
+        raise
 
 
 def parse_french_date(date_text):

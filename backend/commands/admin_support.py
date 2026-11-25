@@ -47,15 +47,15 @@ def require_identifier(value: str, *, field: str) -> str:
 def build_clients(environ: Mapping[str, str] | None = None) -> AdminClients:
     """Validate the admin target before importing or constructing cloud clients."""
     config = RuntimeConfiguration.from_environment("admin", environ)
-    from google.cloud import firestore  # type: ignore[import-untyped]
-    from google.cloud import storage  # type: ignore[import-untyped]
+    from google.cloud import firestore
+    from google.cloud import storage
 
     firestore_client = firestore.Client(
         project=config.project_id,
         database=config.firestore_database,
     )
-    storage_client = storage.Client(project=config.project_id)
-    register: StorageAdapter = GcsStorageAdapter(storage_client.bucket(config.recovery_bucket))
+    storage_client = storage.Client(project=config.project_id)  # type: ignore[no-untyped-call]
+    register: StorageAdapter = GcsStorageAdapter(storage_client.bucket(config.recovery_bucket))  # type: ignore[no-untyped-call]
     return AdminClients(FirestoreAdmissionStore(register, firestore_client), config)
 
 

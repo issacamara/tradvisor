@@ -115,6 +115,7 @@ def scrape_dividends(url):
         )
 
     all_data = []
+    skipped_rows = 0
 
     # --- Method 1: Extract direct JS data array (window.rbSimData) ---
     # Richbourse embeds complete dividend JSON data on page load
@@ -199,9 +200,12 @@ def scrape_dividends(url):
                             "source_table_row": [cell.get_text(" ", strip=True) for cell in cells],
                         }
                     )
-                except Exception:
+                except (ValueError, IndexError, KeyError, AttributeError):
+                    skipped_rows += 1
                     continue
 
+    if skipped_rows:
+        emit_event("ingestion.dividends.rows", "skipped", count=skipped_rows)
     if not all_data:
         raise ValueError("No dividend data could be extracted.")
 
